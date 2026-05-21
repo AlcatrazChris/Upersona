@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
 
     if (isMultiSelect) {
       for (const user of users) {
-        const arr = (user as Record<string, string[]>)[key as string] as string[] | undefined;
+        const arr = (user as unknown as Record<string, string[]>)[key as string] as string[] | undefined;
         if (!arr) continue;
         for (const val of arr) {
           if (!val || val === '(跳过)') continue;
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
     } else {
       let skipped = 0;
       for (const user of users) {
-        const val = String((user as Record<string, string>)[key as string] || '').trim();
+        const val = String((user as unknown as Record<string, string>)[key as string] || '').trim();
         if (!val || val === '(跳过)') { skipped++; continue; }
         counter[val] = (counter[val] || 0) + 1;
       }

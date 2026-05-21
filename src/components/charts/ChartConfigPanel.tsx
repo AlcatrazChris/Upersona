@@ -66,7 +66,7 @@ export function ChartConfigPanel({ config, onChange, showLegendOption = false }:
       </button>
 
       {open && typeof window !== 'undefined' && createPortal(
-        <div ref={panelRef} style={panelStyle}
+        <div ref={panelRef}
           className="glass-card-elevated p-4 animate-scale-in shadow-ios-xl overflow-y-auto"
           style={{ ...panelStyle, maxHeight: 'calc(100vh - 120px)' }}>
 

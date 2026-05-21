@@ -36,13 +36,15 @@ export async function GET(req: NextRequest) {
   if (orderStatus !== 'all') natQ = natQ.eq('order_status', orderStatus);
   const { data: natUsers } = await natQ;
 
+  type InsightUser = NonNullable<typeof users>[number];
+
   const totalSamples = users.length;
   const strongCount  = users.filter(u => u.intent_label === 1).length;
   const weakCount    = totalSamples - strongCount;
   const strongRatio  = parseFloat((strongCount / totalSamples * 100).toFixed(1));
 
   // 统计函数
-  function topN(arr: typeof users, extract: (u: typeof users[0]) => string | string[], n: number) {
+  function topN(arr: InsightUser[], extract: (u: InsightUser) => string | string[] | null | undefined, n: number) {
     const counter: Record<string, number> = {};
     for (const u of arr) {
       const val = extract(u);
@@ -71,6 +73,7 @@ export async function GET(req: NextRequest) {
   // 计算与全国的偏差（TOP 职业、TOP 年龄段、TOP 渠道）
   const deviations: { dimension: string; local: number; national: number; diff: number; label: string }[] = [];
   if (natUsers && natUsers.length > 0) {
+    type NatUser = NonNullable<typeof natUsers>[number];
     const natN = natUsers.length;
 
     // 各维度 TOP1 的地区 vs 全国占比
@@ -84,7 +87,7 @@ export async function GET(req: NextRequest) {
       { key: 'interest', label: '关注内容', localTop: stats.topCarInterests[0] },
     ];
 
-    const natExtract: Record<string, (u: typeof natUsers[0]) => string | string[]> = {
+    const natExtract: Record<string, (u: NatUser) => string | string[] | null | undefined> = {
       occupation: u => u.occupation_category,
       age:        u => u.age_group,
       education:  u => u.education,

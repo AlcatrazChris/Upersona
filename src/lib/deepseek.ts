@@ -2,6 +2,61 @@ const DEEPSEEK_BASE = 'https://api.deepseek.com/v1';
 
 interface Message { role: 'system' | 'user' | 'assistant'; content: string; }
 
+export interface PredictUserIntentInput {
+  ageGroup?: string | null;
+  education?: string | null;
+  occupation?: string | null;
+  familyStructure?: string | null;
+  income?: string | null;
+  isUpgrade?: string | null;
+  consumptionViews?: string[] | null;
+  useScenarios?: string[] | null;
+  carInterests?: string[] | null;
+  infoChannels?: string[] | null;
+  hobbies?: string[] | null;
+  competingModels?: string[] | null;
+  familyTripFreq?: string[] | null;
+  city?: string | null;
+  province?: string | null;
+  area?: string | null;
+}
+
+export interface PredictUserIntentResult {
+  score: number;
+  keyFactors: string[];
+  marketingAdvice: string;
+}
+
+export async function predictUserIntent(user: PredictUserIntentInput): Promise<PredictUserIntentResult> {
+  const prompt = `You are an automotive user-research analyst.
+Based on the following user profile, predict this user's purchase intent for the Huajing vehicle.
+
+Return strict JSON only, with this shape:
+{
+  "score": 0-100,
+  "keyFactors": ["factor 1", "factor 2", "factor 3"],
+  "marketingAdvice": "one concise, actionable recommendation"
+}
+Use Simplified Chinese for every user-facing string value.
+
+User profile:
+${JSON.stringify(user, null, 2)}`;
+
+  const content = await chat([{ role: 'user', content: prompt }], 0.3);
+  const m = content.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('DeepSeek returned invalid JSON for intent prediction');
+
+  const parsed = JSON.parse(m[0]) as Partial<PredictUserIntentResult> & { intentScore?: number };
+  const rawScore = Number(parsed.score ?? parsed.intentScore ?? 0);
+  const score = Math.max(0, Math.min(100, Number.isFinite(rawScore) ? Math.round(rawScore) : 0));
+  const keyFactors = Array.isArray(parsed.keyFactors)
+    ? parsed.keyFactors.map(String).filter(Boolean).slice(0, 5)
+    : [];
+  const marketingAdvice = typeof parsed.marketingAdvice === 'string' ? parsed.marketingAdvice : '';
+
+  return { score, keyFactors, marketingAdvice };
+}
+
 async function chat(messages: Message[], temperature = 0.3): Promise<string> {
   const res = await fetch(`${DEEPSEEK_BASE}/chat/completions`, {
     method: 'POST',

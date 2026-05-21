@@ -5,8 +5,25 @@ import { User, Search, Heart, RefreshCw, Loader2, TrendingUp, Users } from 'luci
 import { cn } from '@/lib/utils';
 import type { CoreUserProfile } from '@/types';
 
+interface WeightedStat {
+  label: string;
+  weightedPct: number;
+}
+
+interface LegacyCoreUserProfile extends CoreUserProfile {
+  topOccupations: WeightedStat[];
+  topFamilyStructure: string;
+  topIncome: string;
+  topAgeGroups: { label: string }[];
+  topCarInterests: string[];
+  topInfoChannels: string[];
+  topConsumptionViews: string[];
+  topHobbies: string[];
+  narrativeSummary?: string;
+}
+
 interface Props {
-  data: CoreUserProfile;
+  data: LegacyCoreUserProfile;
   onRefresh?: () => void;
   refreshing?: boolean;
 }
