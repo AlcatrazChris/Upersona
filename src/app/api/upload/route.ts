@@ -6,7 +6,6 @@ import { parseMultiSelect } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 // 允许较大的 body（Excel 文件）
-export const config = { api: { bodyParser: false } };
 
 const INSERT_BATCH = 100;
 
