@@ -50,10 +50,10 @@ export async function GET(req: NextRequest) {
   for (const region of regions) regionData[region] = { count: 0, counter: {} };
 
   for (const user of users || []) {
-    const reg = (user as Record<string, string>)[regionField];
+    const reg = (user as unknown as Record<string, string>)[regionField];
     if (!regionData[reg]) continue;
     regionData[reg].count++;
-    const rawVal = (user as Record<string, string | string[]>)[dimension];
+    const rawVal = (user as unknown as Record<string, string | string[]>)[dimension];
     if (isMultiSelect && Array.isArray(rawVal)) {
       for (const v of rawVal) {
         if (!v || v === '(跳过)') continue;
