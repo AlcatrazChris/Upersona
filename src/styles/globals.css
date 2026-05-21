@@ -1,0 +1,313 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   iOS 毛玻璃设计系统 - 全局基础样式
+   ============================================================ */
+
+@layer base {
+  :root {
+    --font-sf: "SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+
+    /* iOS Dynamic Colors */
+    --ios-blue:    #007AFF;
+    --ios-indigo:  #5856D6;
+    --ios-purple:  #AF52DE;
+    --ios-pink:    #FF2D55;
+    --ios-red:     #FF3B30;
+    --ios-orange:  #FF9500;
+    --ios-yellow:  #FFCC00;
+    --ios-green:   #34C759;
+    --ios-teal:    #5AC8FA;
+    --ios-cyan:    #32ADE6;
+
+    /* Background mesh */
+    --bg-mesh: radial-gradient(ellipse 80% 60% at 15% 5%, rgba(0,122,255,0.18) 0%, transparent 55%),
+               radial-gradient(ellipse 60% 70% at 85% 85%, rgba(88,86,214,0.14) 0%, transparent 55%),
+               radial-gradient(ellipse 90% 80% at 50% 50%, rgba(52,199,89,0.06) 0%, transparent 65%),
+               linear-gradient(160deg, #f0f4ff 0%, #faf0ff 40%, #f0fff4 100%);
+  }
+
+  html {
+    font-family: var(--font-sf);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background: var(--bg-mesh);
+    background-attachment: fixed;
+    min-height: 100vh;
+    color: rgba(0, 0, 0, 0.85);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  /* iOS-style scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.20);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.32);
+  }
+}
+
+@layer components {
+  /* ── 毛玻璃卡片 ── */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.60);
+    border-radius: 16px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.80),
+      0 4px 16px rgba(0, 0, 0, 0.08),
+      0 1px 4px rgba(0, 0, 0, 0.04);
+  }
+
+  .glass-card-elevated {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(40px) saturate(200%);
+    -webkit-backdrop-filter: blur(40px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    border-radius: 20px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.90),
+      0 8px 32px rgba(0, 0, 0, 0.10),
+      0 2px 8px rgba(0, 0, 0, 0.06);
+  }
+
+  .glass-card-subtle {
+    background: rgba(255, 255, 255, 0.48);
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 12px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.60),
+      0 2px 8px rgba(0, 0, 0, 0.06);
+  }
+
+  /* ── 导航栏毛玻璃 ── */
+  .glass-nav {
+    background: rgba(248, 248, 252, 0.82);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.80);
+  }
+
+  /* ── iOS 按钮 ── */
+  .btn-ios {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 20px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    outline: none;
+    border: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .btn-ios:active {
+    transform: scale(0.97);
+  }
+
+  .btn-primary {
+    background: var(--ios-blue);
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.35);
+  }
+
+  .btn-primary:hover {
+    background: #0066dd;
+    box-shadow: 0 4px 16px rgba(0, 122, 255, 0.45);
+  }
+
+  .btn-secondary {
+    background: rgba(0, 122, 255, 0.10);
+    color: var(--ios-blue);
+  }
+
+  .btn-secondary:hover {
+    background: rgba(0, 122, 255, 0.16);
+  }
+
+  .btn-glass {
+    background: rgba(255, 255, 255, 0.56);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.60);
+    color: rgba(0, 0, 0, 0.75);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  }
+
+  .btn-glass:hover {
+    background: rgba(255, 255, 255, 0.72);
+  }
+
+  /* ── 标签/Badge ── */
+  .badge-ios {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+
+  .badge-blue   { background: rgba(0,122,255,0.12); color: var(--ios-blue); }
+  .badge-green  { background: rgba(52,199,89,0.12); color: #1a8c3a; }
+  .badge-orange { background: rgba(255,149,0,0.12); color: #b36600; }
+  .badge-red    { background: rgba(255,59,48,0.12); color: var(--ios-red); }
+  .badge-purple { background: rgba(88,86,214,0.12); color: var(--ios-indigo); }
+  .badge-gray   { background: rgba(120,120,128,0.12); color: rgba(0,0,0,0.55); }
+
+  /* ── 分隔线 ── */
+  .separator-ios {
+    height: 1px;
+    background: rgba(60, 60, 67, 0.12);
+  }
+
+  /* ── 数字大标题 ── */
+  .stat-number {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── 加载骨架屏 ── */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      rgba(0,0,0,0.06) 25%,
+      rgba(0,0,0,0.10) 50%,
+      rgba(0,0,0,0.06) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s infinite;
+    border-radius: 8px;
+  }
+
+  /* ── iOS 风格输入框 ── */
+  .input-ios {
+    background: rgba(120, 120, 128, 0.08);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 15px;
+    color: rgba(0, 0, 0, 0.85);
+    outline: none;
+    transition: all 0.2s;
+    width: 100%;
+  }
+
+  .input-ios:focus {
+    background: rgba(255, 255, 255, 0.80);
+    border-color: var(--ios-blue);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+  }
+
+  .input-ios::placeholder {
+    color: rgba(0, 0, 0, 0.30);
+  }
+
+  /* ── 页面标题区 ── */
+  .page-header {
+    padding: 32px 0 24px;
+  }
+
+  .page-title {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: rgba(0, 0, 0, 0.85);
+  }
+
+  .page-subtitle {
+    font-size: 15px;
+    color: rgba(0, 0, 0, 0.50);
+    margin-top: 4px;
+  }
+
+  /* ── 图表容器 ── */
+  .chart-wrapper {
+    position: relative;
+  }
+
+  /* Recharts 自定义样式 */
+  .recharts-tooltip-wrapper .recharts-default-tooltip {
+    background: rgba(255, 255, 255, 0.92) !important;
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.70) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.10) !important;
+    padding: 10px 14px !important;
+  }
+
+  /* ── iOS 风格进度条 ── */
+  .progress-ios {
+    height: 6px;
+    border-radius: 100px;
+    background: rgba(0,0,0,0.08);
+    overflow: hidden;
+  }
+
+  .progress-ios-fill {
+    height: 100%;
+    border-radius: 100px;
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@layer utilities {
+  /* 文字渐变 */
+  .text-gradient-blue {
+    background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-green {
+    background: linear-gradient(135deg, #34C759 0%, #5AC8FA 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* 毛玻璃背景 */
+  .blur-bg {
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+  }
+
+  /* 禁用选中高亮 */
+  .no-tap {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
