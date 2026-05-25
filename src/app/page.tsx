@@ -1,46 +1,49 @@
-import { Metadata } from 'next';
-import { createServiceClient } from '@/lib/supabase';
+'use client';
+
+import { useEffect, useState } from 'react';
 import { OverviewStats } from '@/components/OverviewStats';
 
-export const metadata: Metadata = { title: '概览' };
-
-async function getOverviewData() {
-  const db = createServiceClient();
-
-  const [usersRes, versionRes] = await Promise.all([
-    db.from('active_users').select('intent_label, region_area, order_status'),
-    db.from('data_versions').select('*').eq('is_active', true).single(),
-  ]);
-
-  const users = usersRes.data || [];
-  const total = users.length;
-  const strongIntent = users.filter((u: { intent_label: number }) => u.intent_label === 1).length;
-  const weakIntent = total - strongIntent;
-
-  // 大区分布（按样本量排序）
-  const areaMap: Record<string, number> = {};
-  for (const u of users) {
-    areaMap[u.region_area] = (areaMap[u.region_area] || 0) + 1;
-  }
-  const areaDistribution = Object.entries(areaMap)
-    .sort((a, b) => b[1] - a[1])
-    .map(([area, count]) => ({ area, count, pct: (count / total * 100).toFixed(1) }));
-
-  return {
-    total,
-    strongIntent,
-    weakIntent,
-    conversionRate: total > 0 ? (strongIntent / total * 100).toFixed(1) : '0',
-    areaDistribution,
-    version: versionRes.data,
-  };
+interface OverviewData {
+  total: number;
+  locked: number;
+  pending: number;
+  cancelled: number;
+  lockedRate: string;
+  cancelledRate: string;
+  areaDistribution: { area: string; total: number; locked: number; pending: number; cancelled: number }[];
+  version: { version_id: number; record_count: number; uploaded_at: string } | null;
 }
 
-export default async function HomePage() {
-  const data = await getOverviewData();
+export default function HomePage() {
+  const [data, setData] = useState<OverviewData | null>(null);
+
+  useEffect(() => {
+    fetch('/api/overview', { cache: 'no-store' })
+      .then(r => r.json()).then(setData).catch(console.error);
+  }, []);
+
+  if (!data) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="glass-card p-5 h-28">
+              <div className="skeleton h-4 w-20 mb-3" />
+              <div className="skeleton h-8 w-16 mb-1" />
+              <div className="skeleton h-3 w-12" />
+            </div>
+          ))}
+        </div>
+        <div className="glass-card p-6 h-64">
+          <div className="skeleton h-5 w-32 mb-4" />
+          <div className="skeleton h-44 w-full" />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 animate-slide-up">
+    <div className="animate-slide-up">
       <OverviewStats data={data} />
     </div>
   );

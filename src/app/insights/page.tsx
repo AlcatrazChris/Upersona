@@ -48,7 +48,7 @@ export default function InsightsPage() {
     setError('');
     try {
       const params = new URLSearchParams({ type: regionType, name: selectedRegion, orderStatus, ...(noCache ? { noCache: '1' } : {}) });
-      const res = await fetch(`/api/insights?${params}`);
+      const res = await fetch(`/api/insights?${params}`, { cache: 'no-store' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setProfileData(json);

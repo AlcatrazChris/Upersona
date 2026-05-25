@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase';
+import { createServiceClient, fetchUsers } from '@/lib/supabase';
 import { PROFILE_DIMENSIONS } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -19,19 +19,20 @@ export async function GET(req: NextRequest) {
     .eq('is_active', true).order('version_id', { ascending: false }).limit(1).single();
   if (!versionData) return NextResponse.json({ dimensions: [], totalSamples: 0 });
 
-  let query = db.from('users').select(
-    'age_group, education, occupation_category, family_structure, ' +
-    'annual_income, is_upgrade, consumption_views, competing_models, ' +
-    'use_scenarios, family_trip_frequency, info_channels, car_interests, hobbies, order_status'
-  ).eq('data_version', versionData.version_id);
-
-  if (city)          query = query.eq('region_city', city);
-  else if (province) query = query.eq('region_province', province);
-  else if (area)     query = query.eq('region_area', area);
-  if (orderStatus && orderStatus !== 'all') query = query.eq('order_status', orderStatus);
-
-  const { data: users, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const COLS = 'age_group, education, occupation_category, family_structure, annual_income, is_upgrade, consumption_views, competing_models, use_scenarios, family_trip_frequency, info_channels, car_interests, hobbies, order_status';
+  let users;
+  try {
+    users = await fetchUsers(db, COLS, q => {
+      let r = q.eq('data_version', versionData.version_id);
+      if (city)          r = r.eq('region_city', city);
+      else if (province) r = r.eq('region_province', province);
+      else if (area)     r = r.eq('region_area', area);
+      if (orderStatus && orderStatus !== 'all') r = orderStatus === '锁单/提车' ? r.in('order_status', ['已锁单', '订单完成']) : r.eq('order_status', orderStatus);
+      return r;
+    });
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
   if (!users || users.length === 0) return NextResponse.json({ dimensions: [], totalSamples: 0 });
 
   const totalSamples = users.length;
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
 
     if (isMultiSelect) {
       for (const user of users) {
-        const arr = (user as unknown as Record<string, string[]>)[key as string] as string[] | undefined;
+        const arr = (user as Record<string, string[]>)[key as string] as string[] | undefined;
         if (!arr) continue;
         for (const val of arr) {
           if (!val || val === '(跳过)') continue;
@@ -74,7 +75,7 @@ export async function GET(req: NextRequest) {
     } else {
       let skipped = 0;
       for (const user of users) {
-        const val = String((user as unknown as Record<string, string>)[key as string] || '').trim();
+        const val = String((user as Record<string, string>)[key as string] || '').trim();
         if (!val || val === '(跳过)') { skipped++; continue; }
         counter[val] = (counter[val] || 0) + 1;
       }

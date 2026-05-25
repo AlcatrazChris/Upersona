@@ -8,7 +8,8 @@ export async function GET() {
 
   const { data, error } = await db
     .from('active_users')
-    .select('region_area, region_province, region_city');
+    .select('region_area, region_province, region_city')
+    .limit(10000);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

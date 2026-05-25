@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase';
+import { createServiceClient, fetchUsers } from '@/lib/supabase';
 import { generateCompareInsight } from '@/lib/deepseek';
 import { PROFILE_DIMENSIONS } from '@/types';
 import { makeCacheKey } from '@/lib/utils';
@@ -37,23 +37,25 @@ export async function GET(req: NextRequest) {
   const regionField = regionType === 'city' ? 'region_city'
     : regionType === 'province' ? 'region_province' : 'region_area';
 
-  let query = db.from('users')
-    .select(`${regionField}, ${dimension}`)
-    .eq('data_version', versionData.version_id)
-    .in(regionField, regions);
-  if (orderStatus && orderStatus !== 'all') query = query.eq('order_status', orderStatus);
-
-  const { data: users, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  let users;
+  try {
+    users = await fetchUsers(db, `${regionField}, ${dimension}`, q => {
+      let r = q.eq('data_version', versionData.version_id).in(regionField, regions);
+      if (orderStatus && orderStatus !== 'all') r = orderStatus === '锁单/提车' ? r.in('order_status', ['已锁单', '订单完成']) : r.eq('order_status', orderStatus);
+      return r;
+    });
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
 
   const regionData: Record<string, { count: number; counter: Record<string, number> }> = {};
   for (const region of regions) regionData[region] = { count: 0, counter: {} };
 
   for (const user of users || []) {
-    const reg = (user as unknown as Record<string, string>)[regionField];
+    const reg = (user as Record<string, string>)[regionField];
     if (!regionData[reg]) continue;
     regionData[reg].count++;
-    const rawVal = (user as unknown as Record<string, string | string[]>)[dimension];
+    const rawVal = (user as Record<string, string | string[]>)[dimension];
     if (isMultiSelect && Array.isArray(rawVal)) {
       for (const v of rawVal) {
         if (!v || v === '(跳过)') continue;

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase';
+import { createServiceClient, fetchUsers } from '@/lib/supabase';
 import { calcRadarScores, RADAR_DIMENSION_META } from '@/lib/radarScoring';
 import { makeCacheKey } from '@/lib/utils';
 import type { OrderStatus } from '@/types';
@@ -24,14 +24,19 @@ export async function GET(req: NextRequest) {
   const regionField = type === 'city' ? 'region_city'
     : type === 'province' ? 'region_province' : 'region_area';
 
-  const SELECT_COLS = 'annual_income, education, family_structure, occupation_category, is_upgrade, order_status';
+  const SELECT_COLS = 'annual_income, education, family_structure, occupation_category, age_group, order_status';
 
   // ── 查询地区数据 ──
-  let regionQ = db.from('users').select(SELECT_COLS)
-    .eq('data_version', vd.version_id).eq(regionField, name);
-  if (orderStatus !== 'all') regionQ = regionQ.eq('order_status', orderStatus);
-  const { data: regionUsers, error: rErr } = await regionQ;
-  if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 });
+  let regionUsers;
+  try {
+    regionUsers = await fetchUsers(db, SELECT_COLS, q => {
+      let r = q.eq('data_version', vd.version_id).eq(regionField, name);
+      if (orderStatus !== 'all') r = orderStatus === '锁单/提车' ? r.in('order_status', ['已锁单', '订单完成']) : r.eq('order_status', orderStatus);
+      return r;
+    });
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
 
   const regionScores = calcRadarScores(regionUsers || []);
 
@@ -48,10 +53,12 @@ export async function GET(req: NextRequest) {
 
   // 没有缓存则实时计算并写入
   if (!nationalScores) {
-    let natQ = db.from('users').select(SELECT_COLS).eq('data_version', vd.version_id);
-    if (orderStatus !== 'all') natQ = natQ.eq('order_status', orderStatus);
-    const { data: natUsers } = await natQ;
-    nationalScores = calcRadarScores(natUsers || []);
+    const natUsers = await fetchUsers(db, SELECT_COLS, q => {
+      let r = q.eq('data_version', vd.version_id);
+      if (orderStatus !== 'all') r = orderStatus === '锁单/提车' ? r.in('order_status', ['已锁单', '订单完成']) : r.eq('order_status', orderStatus);
+      return r;
+    });
+    nationalScores = calcRadarScores(natUsers);
     await db.from('insights_cache').upsert({
       cache_key: natCacheKey, insight_type: 'radar_national',
       content: JSON.stringify(nationalScores),

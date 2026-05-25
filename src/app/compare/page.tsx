@@ -186,7 +186,7 @@ export default function ComparePage() {
         regions: selected.join(','), type: regionType, dim: dimension,
         orderStatus, ...(noCache ? { noCache: '1' } : {}),
       });
-      const res = await fetch(`/api/compare?${params}`);
+      const res = await fetch(`/api/compare?${params}`, { cache: 'no-store' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setCompareData(json);
@@ -214,7 +214,7 @@ export default function ComparePage() {
         regions: selected.join(','), type: regionType,
         dim: dimension, orderStatus, noCache: '1',
       });
-      const res = await fetch(`/api/compare?${params}`);
+      const res = await fetch(`/api/compare?${params}`, { cache: 'no-store' });
       const json = await res.json();
       if (res.ok) setCompareData(json);
     } finally {

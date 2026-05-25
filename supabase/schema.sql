@@ -62,6 +62,8 @@ create table if not exists users (
   info_channels         text[] not null default '{}',
   car_interests         text[] not null default '{}',
   hobbies               text[] not null default '{}',
+  -- 金融信息
+  finance_term          integer not null default 0,  -- 金融期数：0=全款，24/36/48/60/84=分期月数
   -- 订单信息
   order_status          text not null,
   intent_label          smallint not null check (intent_label in (0, 1))

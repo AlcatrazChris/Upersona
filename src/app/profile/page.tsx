@@ -12,16 +12,19 @@ import type { ChartConfig } from '@/lib/chartConfig';
 import type { ProfileData, OrderStatus } from '@/types';
 
 export default function ProfilePage() {
-  const [filter, setFilter]           = useState<{ area?: string; province?: string; city?: string }>({});
+  const [filter, setFilter]       = useState<{ area?: string; province?: string; city?: string }>({});
   const [orderStatus, setOrderStatus] = useState<OrderStatus>('all');
-  const [data, setData]               = useState<ProfileData[] | null>(null);
-  const [loading, setLoading]         = useState(true);
+  const [data, setData]           = useState<ProfileData[] | null>(null);
+  const [loading, setLoading]     = useState(true);
   const [totalSamples, setTotalSamples] = useState(0);
-  const [chartConfig, setChartConfig] = useState<ChartConfig>(() => loadChartConfig('profile'));
+  const [chartConfig, setChartConfig]   = useState<ChartConfig>(() => loadChartConfig('profile'));
 
   function handleConfigChange(c: ChartConfig) { setChartConfig(c); saveChartConfig('profile', c); }
 
   const fetchData = useCallback(async () => {
+    // 切换筛选时立即清空旧数据，避免显示上一次的样本数
+    setData(null);
+    setTotalSamples(0);
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -29,10 +32,13 @@ export default function ProfilePage() {
       else if (filter.province) params.set('province', filter.province);
       else if (filter.area)     params.set('area', filter.area);
       if (orderStatus !== 'all') params.set('orderStatus', orderStatus);
-      const res = await fetch(`/api/profile?${params}`);
+      const res  = await fetch(`/api/profile?${params}`, { cache: 'no-store' });
       const json = await res.json();
-      setData(json.dimensions);
-      setTotalSamples(json.totalSamples);
+      setData(json.dimensions ?? []);
+      setTotalSamples(json.totalSamples ?? 0);
+    } catch (e) {
+      console.error('profile fetch error', e);
+      setData([]);
     } finally {
       setLoading(false);
     }
@@ -41,6 +47,7 @@ export default function ProfilePage() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const filterLabel = filter.city || filter.province || filter.area || '全国';
+  const orderLabel  = orderStatus === 'all' ? '' : ` · ${orderStatus}`;
 
   return (
     <div className="space-y-6">
@@ -51,13 +58,19 @@ export default function ProfilePage() {
             <Filter size={13} />
             <span className="text-[13px]">筛选地区</span>
           </div>
-          <RegionCascade value={filter} onChange={setFilter} />
+          <RegionCascade value={filter} onChange={v => setFilter(v)} />
           {(filter.area || filter.province || filter.city) && (
             <button onClick={() => setFilter({})} className="text-[12px] text-[#007AFF]">清除</button>
           )}
           <div className="ml-auto flex items-center gap-3">
-            <span className="text-[13px] text-black/40">
-              {filterLabel} · <span className="font-500 text-black/65">{totalSamples.toLocaleString()}</span> 个样本
+            {/* 样本统计：始终显示当前筛选结果，loading 时显示占位 */}
+            <span className="text-[13px] text-black/40 tabular-nums">
+              {filterLabel}{orderLabel} ·{' '}
+              {loading
+                ? <span className="inline-block w-10 h-3.5 bg-black/08 rounded animate-pulse align-middle" />
+                : <span className="font-500 text-black/65">{totalSamples.toLocaleString()}</span>
+              }
+              {' '}个样本
             </span>
             <ChartConfigPanel config={chartConfig} onChange={handleConfigChange} showLegendOption={false} />
             <button onClick={fetchData} disabled={loading}
@@ -67,7 +80,7 @@ export default function ProfilePage() {
           </div>
         </div>
         {/* 订单状态筛选 */}
-        <OrderStatusFilter value={orderStatus} onChange={v => { setOrderStatus(v); }} />
+        <OrderStatusFilter value={orderStatus} onChange={v => setOrderStatus(v)} />
       </div>
 
       {/* 图表网格 */}

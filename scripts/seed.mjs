@@ -1,228 +1,233 @@
 /**
- * scripts/seed.mjs
- * 数据预处理与入库脚本
- *
- * 用法：
- *   node scripts/seed.mjs ./your-data.xlsx
- *
- * 功能：
- *   1. 读取 Excel 文件（Sheet1）
- *   2. 查询 occupation_mapping 缓存，对新出现的职业调用 DeepSeek 分类
- *   3. 解析多选字段，归并长尾"其他〖...〗"
- *   4. 创建新数据版本，批量写入 users 表
- *   5. 激活新版本
+ * scripts/seed.mjs  —  v4  扩充本地规则 + 新8类职业口径
+ * 用法：node scripts/seed.mjs <excel文件路径>
  */
 
-import { readFileSync } from 'fs';
 import { createClient } from '@supabase/supabase-js';
 import XLSX from 'xlsx';
 import { config } from './env.mjs';
 
-// ============================================================
-// 配置
-// ============================================================
-const DEEPSEEK_BASE = 'https://api.deepseek.com';
-const BATCH_SIZE = 30;    // DeepSeek 每批分类数量
-const INSERT_BATCH = 100; // 数据库每批插入数量
+const DEEPSEEK_BASE  = 'https://api.deepseek.com/v1';
+const BATCH_SIZE     = 30;
+const INSERT_BATCH   = 100;
 
-// 10 个职业分类（简洁、有区分度）
 const OCCUPATION_CATEGORIES = [
-  '管理层',     // 企业/公司管理层
-  '专业人士',   // 工程师、医生、教师、律师、设计师等
-  '白领',       // 一般职员、文员、销售、行政、金融等
-  '公职',       // 公务员、事业单位、国企
-  '个体户',     // 个体经营/自营/小老板
-  '自媒体',     // 自媒体、主播、UP主、内容创作者
-  '蓝领',       // 工人、技工、司机、农民等
-  '服务业',     // 服务员、保安、快递、客服等一线服务
-  '自由职业',   // 自由职业者、灵活就业
-  '其他',       // 学生、退休、无业、保密、无法归类
+  '管理人员', '工程技术人员', '白领', '公职人员',
+  '个体户', '基层劳动者', '自由职业', '其他',
 ];
 
-// ============================================================
-// 工具函数
-// ============================================================
+// ── 本地兜底规则（顺序敏感，精确规则在前）──────────────────────
+const LOCAL_RULES = [
+  {
+    kw: ['公务员','警察','教师','医生','军人','事业单位','编制','公职','国企','机关',
+         '政府','事业编','老师','护士','医务','军队','部队','武警','消防','海关',
+         '税务','法院','检察','央企'],
+    cat: '公职人员',
+  },
+  {
+    kw: ['总经理','董事长','总监','主管','经理','高管','ceo','coo','cto','负责人',
+         '创始','投资人','企业主','企业负责人','企业管理人员','企业管理','商业管理',
+         '管理人员','私企管理'],
+    cat: '管理人员',
+  },
+  {
+    kw: ['工程师','程序员','开发','技术','it','设计师','会计','律师','建筑师','架构',
+         '研发','科研','工程类','工程','土木','机械','电气','电力','通讯','通信',
+         '互联网','信息','轨道交通','高铁','汽车制造','电子','航空','质检','检测',
+         '咨询','财务','兽医','新媒体','教育行业','建筑业','医疗'],
+    cat: '工程技术人员',
+  },
+  {
+    kw: ['职员','文员','行政','hr','运营','市场','销售','客服','金融','审计','策划',
+         '文职','业务员','业务','外勤','传媒','银行','保险','证券','电商','汽车营销',
+         '汽车行业','培训','上班族','上班','普通职工','普通牛马','企业职工','企业职员',
+         '员工','公司员工','公司职员','企业员工','工作人员','职工','普通员工',
+         '车企员工','白领'],
+    cat: '白领',
+  },
+  {
+    kw: ['个体','老板','私营','自营','开店','做生意','小老板','经商','经营',
+         '自有公司','小作坊','餐饮店','零售','服装','物业管理','全屋定制','装饰工程'],
+    cat: '个体户',
+  },
+  {
+    kw: ['工人','蓝领','司机','驾驶','电工','技工','建筑工','体力','搬运','农','渔',
+         '厨师','工厂','务工','制造业','安装','服务类','服务行业','服务人员','服务业',
+         '保安','物流','快递','外卖','保洁','保姆','餐饮','物业'],
+    cat: '基层劳动者',
+  },
+  {
+    kw: ['自由','宝妈','全职妈','自媒体','主播','up主','博主','斜杠',
+         '在家带娃','灵活就业','导演','摄影师'],
+    cat: '自由职业',
+  },
+  {
+    kw: ['学生','退休','无业','待业','失业','离休','保密','老百姓','牛马','服务人民'],
+    cat: '其他',
+  },
+];
+
+function classifyLocal(raw) {
+  const lower = String(raw).toLowerCase().trim();
+  if (!lower || ['nan','-','/','?','？','无'].includes(lower)) return '其他';
+  for (const { kw, cat } of LOCAL_RULES) {
+    if (kw.some(k => lower.includes(k))) return cat;
+  }
+  return '其他';
+}
 
 function parseMultiSelect(raw) {
   if (!raw || raw === '(跳过)') return [];
-  return raw
-    .split('┋')
-    .map(v => v.trim())
-    .filter(Boolean)
-    .map(v => {
-      if (/^其他[〖（(]/.test(v)) return '其他';
-      return v;
-    });
+  return String(raw).split('┋').map(v => v.trim()).filter(Boolean)
+    .map(v => (/^其他[〖（(]/.test(v) ? '其他' : v));
 }
 
 function mapIntentLabel(orderStatus) {
-  if (orderStatus === '已锁单' || orderStatus === '订单完成') return 1;
-  return 0;
+  return (orderStatus === '已锁单' || orderStatus === '订单完成') ? 1 : 0;
 }
 
-function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// ============================================================
-// DeepSeek 职业批量分类
-// ============================================================
-
+// ── DeepSeek 批量分类 ────────────────────────────────────────
 async function classifyBatch(rawTexts, apiKey) {
-  const prompt = `你是职业分类专家。将下列职业描述分别归入以下10类之一：
-${OCCUPATION_CATEGORIES.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+  if (!apiKey) {
+    console.log('  📝 无 API Key，使用本地规则...');
+    return Object.fromEntries(rawTexts.map(t => [t, classifyLocal(t)]));
+  }
+  try {
+    const prompt =
+`你是职业分类专家。将下列职业描述分别归入以下8类之一：
+1. 管理人员（总经理/副总/高管/总监/经理/主管/负责人/创始人/投资人/董事等）
+2. 工程技术人员（工程师/IT/程序员/开发/设计师/会计/律师/医师/技术/研发/科研人员等）
+3. 白领（职员/文员/行政/HR/运营/市场/销售/客服/金融/采购/助理等非技术普通岗位）
+4. 公职人员（公务员/军人/警察/教师/医生/护士/事业单位/国企/编制）
+5. 个体户（个体户/小老板/私营业主/自营/开店/经商）
+6. 基层劳动者（工人/蓝领/驾驶员/电工/技工/建筑工/农民/快递/外卖/保安/服务员/厨师等）
+7. 自由职业（自由职业者/自媒体/主播/博主/宝妈/全职妈妈/灵活就业）
+8. 其他（学生/退休/离休/无业/无法判断/符号/笔名等）
 
-分类说明：
-- 管理层：总经理、高管、经理、总监、企业主、投资人等
-- 专业人士：工程师、IT/程序员、医生、教师、律师、设计师、会计师、导演、摄影师等
-- 白领：一般职员、文员、行政、HR、普通职工、金融/银行从业者、销售（非管理）等
-- 公职：公务员、事业单位人员、国企员工、教师/医生（编制内）、警察等
-- 个体户：个体经营、小老板、自营、开店、网店店主等
-- 自媒体：自媒体、主播、UP主、视频创作者、网红等
-- 蓝领：工厂工人、建筑工人、驾驶员、电工、技工、农民、厨师等
-- 服务业：服务员、保安、保洁、快递/外卖员、零售导购、一线客服等
-- 自由职业：自由职业者、灵活就业、无固定雇主（非学生/无业）
-- 其他：无法判断、，以及学生、退休、无业、保密、空值
+分类边界说明：
+- "工程"类单字词：优先考虑工程技术人员
+- "员工/职工/职员/公司员工"：白领
+- "制造业"：若无具体岗位信息，归基层劳动者
+- "医疗/教育行业"：泛指行业的归工程技术人员（含专业人员）
+- "管理"单字/管理岗：有负责人含义的归管理人员，否则归白领
 
 待分类（每行一个）：
-${rawTexts.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+${rawTexts.map((t,i) => `${i+1}. ${t}`).join('\n')}
 
 严格按此JSON返回，不输出其他内容：
 {"results":[{"raw":"原文","category":"分类"}]}`;
 
-  const res = await fetch(`${DEEPSEEK_BASE}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.1,
-      max_tokens: 2048,
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`DeepSeek error ${res.status}: ${err}`);
+    const res = await fetch(`${DEEPSEEK_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: prompt }], temperature: 0.1, max_tokens: 2048 }),
+    });
+    if (!res.ok) throw new Error(`DeepSeek HTTP ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    const content = data.choices[0].message.content.trim();
+    const m = content.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('DeepSeek returned invalid JSON');
+    const parsed = JSON.parse(m[0]);
+    const mapping = {};
+    for (const item of parsed.results) {
+      mapping[item.raw] = OCCUPATION_CATEGORIES.includes(item.category) ? item.category : classifyLocal(item.raw);
+    }
+    return mapping;
+  } catch (err) {
+    console.log(`  ⚠️  DeepSeek 失败，降级到本地规则: ${err.message}`);
+    return Object.fromEntries(rawTexts.map(t => [t, classifyLocal(t)]));
   }
-
-  const data = await res.json();
-  const content = data.choices[0].message.content.trim();
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('DeepSeek returned invalid JSON');
-
-  const parsed = JSON.parse(jsonMatch[0]);
-  const mapping = {};
-  for (const item of parsed.results) {
-    mapping[item.raw] = OCCUPATION_CATEGORIES.includes(item.category)
-      ? item.category : '其他';
-  }
-  return mapping;
 }
 
-// ============================================================
-// 主流程
-// ============================================================
-
+// ── 主流程 ───────────────────────────────────────────────────
 async function main() {
   const filePath = process.argv[2];
-  if (!filePath) {
-    console.error('用法: node scripts/seed.mjs <excel文件路径>');
-    process.exit(1);
-  }
+  if (!filePath) { console.error('用法: node scripts/seed.mjs <excel文件路径>'); process.exit(1); }
 
   const { supabaseUrl, supabaseServiceKey, deepseekApiKey } = config;
-  const db = createClient(supabaseUrl, supabaseServiceKey, {
-    auth: { persistSession: false },
-  });
+  const db = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
 
-  // --- 1. 读取 Excel ---
   console.log(`📂 读取文件: ${filePath}`);
   const workbook = XLSX.readFile(filePath);
   const sheet = workbook.Sheets['Sheet1'];
   if (!sheet) throw new Error('找不到 Sheet1');
-
   const rows = XLSX.utils.sheet_to_json(sheet);
   console.log(`✅ 共读取 ${rows.length} 行`);
 
-  // --- 2. 提取所有唯一职业 ---
-  const allRawOccupations = [...new Set(rows.map(r => String(r['职业'] || '').trim()))].filter(Boolean);
-  console.log(`🔍 发现 ${allRawOccupations.length} 种唯一职业`);
+  const allRaw = [...new Set(rows.map(r => String(r['职业'] || '').trim()))].filter(Boolean);
+  console.log(`🔍 发现 ${allRaw.length} 种唯一职业`);
 
-  // --- 3. 从缓存表查询已有映射 ---
-  const { data: existingMappings } = await db
-    .from('occupation_mapping')
-    .select('raw_text, category')
-    .in('raw_text', allRawOccupations);
+  // 清理旧口径缓存
+  console.log('🧹 清理旧口径职业缓存...');
+  const validCats = OCCUPATION_CATEGORIES.map(c => `"${c}"`).join(',');
+  await db.from('occupation_mapping').delete().not('category', 'in', `(${validCats})`);
 
+  const { data: existingMappings } = await db.from('occupation_mapping')
+    .select('raw_text, category').in('raw_text', allRaw);
   const cachedMap = {};
-  for (const m of existingMappings || []) {
-    cachedMap[m.raw_text] = m.category;
-  }
+  for (const m of existingMappings || []) cachedMap[m.raw_text] = m.category;
   console.log(`💾 缓存命中: ${Object.keys(cachedMap).length} 条`);
 
-  // --- 4. 对新职业调用 DeepSeek 分类 ---
-  const uncached = allRawOccupations.filter(o => !cachedMap[o]);
-  console.log(`🤖 需要 DeepSeek 分类: ${uncached.length} 条`);
-
-  const newMappings = {};
-  for (let i = 0; i < uncached.length; i += BATCH_SIZE) {
-    const batch = uncached.slice(i, i + BATCH_SIZE);
-    console.log(`  批次 ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(uncached.length / BATCH_SIZE)}：分类 ${batch.length} 条...`);
-
-    try {
-      const result = await classifyBatch(batch, deepseekApiKey);
-      Object.assign(newMappings, result);
-    } catch (err) {
-      console.warn(`  ⚠️ 批次分类失败，回退为"其他": ${err.message}`);
-      for (const t of batch) newMappings[t] = '其他';
+  // 对未命中缓存的先跑本地规则，仍是"其他"的再送 DeepSeek
+  const uncached = allRaw.filter(o => !cachedMap[o]);
+  const preClassified = {};
+  const needAI = [];
+  for (const t of uncached) {
+    const local = classifyLocal(t);
+    if (local !== '其他') {
+      preClassified[t] = local;
+    } else {
+      needAI.push(t);
     }
+  }
+  console.log(`⚡ 本地规则命中: ${Object.keys(preClassified).length} 条`);
+  console.log(`🤖 送 DeepSeek: ${needAI.length} 条（本地无法判断的"其他"）`);
 
-    // 避免速率限制
-    if (i + BATCH_SIZE < uncached.length) await sleep(500);
+  const newMappings = { ...preClassified };
+  for (let i = 0; i < needAI.length; i += BATCH_SIZE) {
+    const batch = needAI.slice(i, i + BATCH_SIZE);
+    console.log(`  批次 ${Math.floor(i/BATCH_SIZE)+1}/${Math.ceil(needAI.length/BATCH_SIZE)}: ${batch.length} 条...`);
+    const result = await classifyBatch(batch, deepseekApiKey);
+    Object.assign(newMappings, result);
+    if (i + BATCH_SIZE < needAI.length) await sleep(500);
   }
 
-  // --- 5. 保存新映射到缓存表 ---
+  // 保存新映射
   if (Object.keys(newMappings).length > 0) {
     const toInsert = Object.entries(newMappings).map(([raw_text, category]) => ({
-      raw_text,
-      category,
-      mapped_at: new Date().toISOString(),
+      raw_text, category, mapped_at: new Date().toISOString(),
     }));
-
-    // upsert：如果 raw_text 已存在则跳过（保持一致性）
-    const { error } = await db
-      .from('occupation_mapping')
-      .upsert(toInsert, { onConflict: 'raw_text', ignoreDuplicates: true });
-
-    if (error) console.warn(`⚠️ 保存映射缓存时出错: ${error.message}`);
-    else console.log(`✅ 保存 ${toInsert.length} 条新映射到缓存`);
+    const { error } = await db.from('occupation_mapping')
+      .upsert(toInsert, { onConflict: 'raw_text', ignoreDuplicates: false });
+    if (error) console.warn(`⚠️ 保存缓存出错: ${error.message}`);
+    else console.log(`✅ 保存 ${toInsert.length} 条新映射`);
   }
 
-  // 合并完整映射
   const fullOccMap = { ...cachedMap, ...newMappings };
 
-  // --- 6. 创建新数据版本 ---
-  const { data: versionRow, error: vErr } = await db
-    .from('data_versions')
-    .insert({ record_count: rows.length, is_active: false })
-    .select()
-    .single();
+  // 打印分布
+  const distrib = {};
+  for (const occ of allRaw) {
+    const cat = fullOccMap[occ] || '其他';
+    distrib[cat] = (distrib[cat] || 0) + 1;
+  }
+  console.log('\n职业分类分布（唯一职业文本维度）:');
+  Object.entries(distrib).sort((a,b) => b[1]-a[1]).forEach(([cat, cnt]) => console.log(`  ${cat}: ${cnt}`));
 
+  // 创建版本
+  const { data: versionRow, error: vErr } = await db.from('data_versions')
+    .insert({ record_count: rows.length, is_active: false }).select().single();
   if (vErr) throw new Error(`创建版本失败: ${vErr.message}`);
   const versionId = versionRow.version_id;
-  console.log(`📋 创建数据版本 v${versionId}`);
+  console.log(`\n📋 创建数据版本 v${versionId}`);
 
-  // --- 7. 转换并批量插入 users ---
-  console.log(`📝 开始写入 users 表...`);
+  // 插入 users
+  console.log(`📝 写入 users 表...`);
   let inserted = 0;
-
   for (let i = 0; i < rows.length; i += INSERT_BATCH) {
     const batch = rows.slice(i, i + INSERT_BATCH);
-
     const records = batch.map(r => {
       const occRaw = String(r['职业'] || '').trim();
       return {
@@ -234,7 +239,7 @@ async function main() {
         age_group:             String(r['年龄段'] || ''),
         education:             String(r['学历'] || ''),
         occupation_raw:        occRaw,
-        occupation_category:   fullOccMap[occRaw] || '其他',
+        occupation_category:   fullOccMap[occRaw] || classifyLocal(occRaw),
         family_structure:      String(r['家庭结构'] || ''),
         annual_income:         String(r['家庭年收入'] || ''),
         is_upgrade:            String(r['是否增换购'] || ''),
@@ -245,30 +250,26 @@ async function main() {
         info_channels:         parseMultiSelect(r['了解华境S的渠道']),
         car_interests:         parseMultiSelect(r['关注的汽车内容']),
         hobbies:               parseMultiSelect(r['日常爱好']),
+        finance_term:          parseInt(String(r['金融期数'] || '0'), 10) || 0,
         order_status:          String(r['订单状态'] || ''),
         intent_label:          mapIntentLabel(String(r['订单状态'] || '')),
       };
     });
-
     const { error: iErr } = await db.from('users').insert(records);
     if (iErr) throw new Error(`插入失败（批次 ${i}）: ${iErr.message}`);
-
     inserted += records.length;
     process.stdout.write(`\r  已写入 ${inserted}/${rows.length}`);
   }
   console.log(`\n✅ users 写入完成`);
 
-  // --- 8. 激活新版本（RPC 函数） ---
+  // 激活
   const { error: aErr } = await db.rpc('set_active_version', { v_id: versionId });
   if (aErr) throw new Error(`激活版本失败: ${aErr.message}`);
 
-  console.log(`\n🎉 完成！数据版本 v${versionId} 已激活`);
+  console.log(`\n🎉 完成！版本 v${versionId} 已激活`);
   console.log(`   总记录数: ${rows.length}`);
-  console.log(`   强意向(已锁单+完成): ${rows.filter(r => ['已锁单','订单完成'].includes(String(r['订单状态']))).length}`);
-  console.log(`   弱意向(未锁单): ${rows.filter(r => r['订单状态'] === '未锁单').length}`);
+  const strong = rows.filter(r => ['已锁单','订单完成'].includes(String(r['订单状态']))).length;
+  console.log(`   强意向: ${strong}  弱意向: ${rows.length - strong}`);
 }
 
-main().catch(err => {
-  console.error('\n❌ 脚本执行失败:', err.message);
-  process.exit(1);
-});
+main().catch(err => { console.error('❌ 失败:', err.message); process.exit(1); });

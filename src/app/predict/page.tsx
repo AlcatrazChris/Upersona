@@ -46,7 +46,7 @@ export default function PredictPage() {
     setLoading(true); setError('');
     try {
       const params = new URLSearchParams({ type: regionType, name: selectedRegion, orderStatus });
-      const res = await fetch(`/api/radar?${params}`);
+      const res = await fetch(`/api/radar?${params}`, { cache: 'no-store' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setRadarData(json);
