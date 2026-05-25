@@ -348,7 +348,11 @@ export async function generateCoreUserCard(params: {
     .replace('{statsText}', statsText);
 
   const result = await chat([{ role: 'user', content: finalPrompt }], 0.65);
-  return extractJSON(result);
+  return extractJSON(result) as {
+    title: string;
+    bullets: [string, string, string, string];
+    tags: { age?: string; income?: string; competing?: string; attitude?: string; extra?: string };
+  };
 }
 
 // ── 意向预测（保留导出，供旧代码引用）────────────────────────
