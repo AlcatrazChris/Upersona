@@ -228,6 +228,12 @@ export async function generateCoreUserCard(params: {
   };
   deviations: { dimension: string; local: number; national: number; diff: number; label: string }[];
   sampleUserRows: string[];
+  financeRate: {
+    financeRate: number;
+    avgTerm: number;
+    financeCount: number;
+    byIncome: { income: string; n: number; finPct: number }[];
+  };
 }): Promise<{
   title: string;
   bullets: [string, string, string, string];
