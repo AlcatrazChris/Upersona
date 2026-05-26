@@ -127,6 +127,7 @@ export async function POST(req: NextRequest) {
     if (saveCustom) {
       const stored = await getExisting();
       stored.custom = customText ?? '';
+      if (stored.custom.trim()) stored.prefer = 'custom';
       await upsert(stored);
       return NextResponse.json(buildResponse(stored));
     }

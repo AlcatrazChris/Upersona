@@ -306,15 +306,17 @@ interface DimsData {
 // ── AI 洞察面板（可编辑）─────────────────────────────────────
 function InsightPanel({
   insight, customText, prefer = 'ai', editing, editDraft, savingCustom, insightLoading,
-  onEdit, onDraftChange, onSave, onCancelEdit, onRegenerate, label, hideRegenerate = false,
+  onEdit, onDraftChange, onSave, onCancelEdit, onRegenerate, onSwitchPrefer, label, hideRegenerate = false,
 }: {
   insight: string; customText: string; prefer?: 'ai' | 'custom'; editing: boolean;
   editDraft: string; savingCustom: boolean; insightLoading: boolean;
   onEdit: () => void; onDraftChange: (v: string) => void;
-  onSave: () => void; onCancelEdit: () => void; onRegenerate: () => void; label: string;
-  hideRegenerate?: boolean;
+  onSave: () => void; onCancelEdit: () => void; onRegenerate: () => void;
+  onSwitchPrefer?: (p: 'ai' | 'custom') => void;
+  label: string; hideRegenerate?: boolean;
 }) {
   const displayText = (prefer === 'custom' && customText) ? customText : insight;
+  const showPreferToggle = !hideRegenerate && !!onSwitchPrefer && !!(insight && customText);
 
   return (
     <div className="glass-card p-5">
@@ -325,7 +327,20 @@ function InsightPanel({
           <span className="text-[12px] text-black/35">{label}</span>
         </div>
         <div className="flex items-center gap-2">
-
+          {showPreferToggle && (
+            <div className="flex items-center gap-0.5 glass-card-subtle p-0.5 rounded-full">
+              <button onClick={() => onSwitchPrefer('ai')}
+                className={cn('px-2 py-0.5 rounded-full text-[11px] font-500 transition-all no-tap',
+                  prefer === 'ai' ? 'bg-white shadow-sm text-[#AF52DE]' : 'text-black/35 hover:text-black/55')}>
+                AI
+              </button>
+              <button onClick={() => onSwitchPrefer('custom')}
+                className={cn('px-2 py-0.5 rounded-full text-[11px] font-500 transition-all no-tap',
+                  prefer === 'custom' ? 'bg-white shadow-sm text-[#007AFF]' : 'text-black/35 hover:text-black/55')}>
+                自定义
+              </button>
+            </div>
+          )}
           {!editing && !hideRegenerate && (
             <button onClick={onRegenerate} disabled={insightLoading}
               className="flex items-center gap-1 text-[12px] text-black/35 hover:text-[#007AFF] transition-colors">
@@ -453,16 +468,22 @@ export default function StatusComparePage() {
 
   async function saveOverviewCustom() {
     setOvSaving(true);
-    await fetch('/api/status-compare-insight', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        isOverview: true,
-        dimensionLabel: '全维度概览', filter: '全国',
-        rows: [], globalStatus: [], saveCustom: true, customText: ovDraft,
-      }),
-    });
-    setOvCustom(ovDraft); setOvEditing(false); setOvSaving(false);
+    try {
+      const res = await fetch('/api/status-compare-insight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isOverview: true,
+          dimensionLabel: '全维度概览', filter: '全国',
+          rows: [], globalStatus: [], saveCustom: true, customText: ovDraft,
+        }),
+      });
+      const json = await res.json();
+      setOvCustom(json.custom ?? ovDraft);
+      setOvPrefer(json.prefer ?? 'custom');
+    } finally {
+      setOvEditing(false); setOvSaving(false);
+    }
   }
 
   // ── 维度对比数据 ──
@@ -471,7 +492,7 @@ export default function StatusComparePage() {
     if (key === prevKey.current) return;
     prevKey.current = key;
     setLoading(true); setError(''); setData(null);
-    setInsight(''); setCustomText(''); setCacheKey('');
+    setInsight(''); setCustomText(''); setPrefer('ai'); setCacheKey('');
     try {
       const params = new URLSearchParams({ dim });
       if (filter.city)          params.set('city', filter.city);
@@ -481,6 +502,19 @@ export default function StatusComparePage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setData(json);
+      // 自动从缓存加载已有的洞察内容（含 prefer 配置），无需用户手动点"生成洞察"
+      const filterLabel = filter.city || filter.province || filter.area || '全国';
+      const k = `status_insight:${json.dimensionLabel}:${filterLabel}:${(json.rows as { label: string }[]).map(r => r.label).join(',')}`;
+      setCacheKey(k);
+      try {
+        const insightRes = await fetch(`/api/status-compare-insight?cacheKey=${encodeURIComponent(k)}`);
+        const insightJson = await insightRes.json();
+        if (insightJson.cached) {
+          setInsight(insightJson.insight ?? '');
+          setCustomText(insightJson.custom ?? '');
+          setPrefer(insightJson.prefer ?? 'ai');
+        }
+      } catch {}
     } catch (e) {
       setError(e instanceof Error ? e.message : '请求失败');
     } finally { setLoading(false); }
@@ -513,16 +547,38 @@ export default function StatusComparePage() {
     if (!data || !cacheKey) return;
     setSavingCustom(true);
     const filterLabel = filter.city || filter.province || filter.area || '全国';
-    await fetch('/api/status-compare-insight', {
+    try {
+      const res = await fetch('/api/status-compare-insight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dimensionLabel: data.dimensionLabel, filter: filterLabel,
+          rows: data.rows, globalStatus: data.globalStatus,
+          saveCustom: true, customText: editDraft,
+        }),
+      });
+      const json = await res.json();
+      setCustomText(json.custom ?? editDraft);
+      setPrefer(json.prefer ?? 'custom');
+    } finally {
+      setEditing(false); setSavingCustom(false);
+    }
+  }
+
+  async function switchPrefer(p: 'ai' | 'custom') {
+    if (!data || !cacheKey) return;
+    const filterLabel = filter.city || filter.province || filter.area || '全国';
+    const res = await fetch('/api/status-compare-insight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         dimensionLabel: data.dimensionLabel, filter: filterLabel,
         rows: data.rows, globalStatus: data.globalStatus,
-        saveCustom: true, customText: editDraft,
+        savePrefer: true, prefer: p,
       }),
     });
-    setCustomText(editDraft); setEditing(false); setSavingCustom(false);
+    const json = await res.json();
+    setPrefer(json.prefer ?? p);
   }
 
   function toggleStatus(s: string) {
@@ -687,6 +743,7 @@ export default function StatusComparePage() {
                 onSave={saveCustom}
                 onCancelEdit={() => setEditing(false)}
                 onRegenerate={() => generateInsight(!insight ? false : true)}
+                onSwitchPrefer={switchPrefer}
               />
             </>
           )}

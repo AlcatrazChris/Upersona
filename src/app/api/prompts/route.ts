@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
+import { clearPromptCache } from '@/lib/deepseek';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,17 +44,24 @@ export async function PUT(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // 保存后清除相关洞察缓存，确保下次生成用新 prompt
-  const insightType = prompt_key === 'compare_insight' ? 'compare' : 'core_card_v3';
-  await db.from('insights_cache').delete().eq('insight_type', insightType);
+  // 立即清除内存中的 prompt 缓存，确保下次生成立刻用新 prompt
+  clearPromptCache(prompt_key);
 
-  // 同时清除内存中的 prompt 缓存（通知 deepseek.ts 重新从 DB 读）
-  // 这里通过调用一个内部 API 或直接在下次请求时 TTL 过期来实现
-  // 简单方案：保存时对应的 promptCache 通过 TTL 在 1 分钟内自动过期
+  // 清除相关洞察缓存，确保下次生成时用新 prompt 重新计算
+  const insightTypeMap: Record<string, string> = {
+    'compare_insight': 'compare',
+    'core_card':       'core_card_v3',
+    'insights_fields': 'core_card_v3',
+    'status_insight':  'status_insight',
+  };
+  const insightType = insightTypeMap[prompt_key];
+  if (insightType) {
+    await db.from('insights_cache').delete().eq('insight_type', insightType);
+  }
 
   return NextResponse.json({
     success: true,
     message: `Prompt "${prompt_key}" 已更新，相关洞察缓存已清除`,
-    cleared_type: insightType,
+    cleared_type: insightType ?? null,
   });
 }

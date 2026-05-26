@@ -77,6 +77,35 @@ insert into ai_prompts (prompt_key, prompt_name, system_hint, user_prompt) value
 )
 on conflict (prompt_key) do nothing;
 
+-- 订单状态对比洞察 prompt
+INSERT INTO ai_prompts (prompt_key, prompt_name, system_hint, user_prompt)
+VALUES (
+  'status_insight',
+  '订单状态对比 AI 洞察',
+  '变量占位符：{dimensionLabel}（出现两次）{filter} {globalLine} {rowLines} {maxLocked} {maxCancelled}',
+  '你是华境S汽车用户研究专家，分析「{dimensionLabel}」维度下不同取值的订单状态分布差异。
+筛选范围：{filter}
+全局基准：{globalLine}
+
+各取值订单状态分布：
+{rowLines}
+
+锁单率最高：{maxLocked}
+退单率最高：{maxCancelled}
+
+请按以下两个部分输出，两部分之间空一行，纯文本格式不加任何Markdown符号（不加**、##、-等）：
+
+核心差异：
+直接说明锁单/提车用户在「{dimensionLabel}」上最集中的1-2个特征，与退单用户的具体数字对比。例如：锁单用户中35-39岁占61%，退单用户中该年龄段仅占42%。
+
+原因分析：
+如果两者差异显著（差值超过10%），分析背后的用户心理或决策逻辑。如果差异不显著，说明该维度对转化影响有限的可能原因。'
+)
+ON CONFLICT (prompt_key) DO UPDATE
+  SET prompt_name = EXCLUDED.prompt_name,
+      system_hint = EXCLUDED.system_hint,
+      updated_at  = now();
+
 -- 洞察字段配置（单独一行存 JSON）
 INSERT INTO ai_prompts (prompt_key, prompt_name, system_hint, user_prompt)
 VALUES (
