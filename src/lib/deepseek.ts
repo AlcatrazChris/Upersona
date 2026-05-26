@@ -348,11 +348,7 @@ export async function generateCoreUserCard(params: {
     .replace('{statsText}', statsText);
 
   const result = await chat([{ role: 'user', content: finalPrompt }], 0.65);
-  return extractJSON(result) as {
-    title: string;
-    bullets: [string, string, string, string];
-    tags: { age?: string; income?: string; competing?: string; attitude?: string; extra?: string };
-  };
+  return extractJSON(result);
 }
 
 // ── 意向预测（保留导出，供旧代码引用）────────────────────────
@@ -381,4 +377,56 @@ export async function predictUserIntent(userProfile: {
     content: `你是华境S销售分析专家。基于用户画像，评估转化为锁单用户的概率（0-100分）。\n\n${profileText}\n\n严格按JSON返回：\n{"score":数字,"keyFactors":["因素1","因素2","因素3"],"marketingAdvice":"针对性营销建议（25字内）"}`,
   }], 0.3);
   return extractJSON(content) as { score: number; keyFactors: string[]; marketingAdvice: string };
+}
+
+// ── 订单状态对比洞察 ──────────────────────────────────────────
+export async function generateStatusInsight(params: {
+  dimensionLabel: string;
+  filter: string;
+  rows: {
+    label: string;
+    total: number;
+    statusCounts: { status: string; count: number; pct: number }[];
+  }[];
+  globalStatus: { status: string; count: number; pct: number }[];
+}): Promise<string> {
+  const { dimensionLabel, filter, rows, globalStatus } = params;
+
+  const globalLine = globalStatus.map(s => `${s.status} ${s.pct}%`).join(' / ');
+
+  // 找出差异最大的几个标签
+  const lockedIdx    = 0; // 锁单/提车
+  const cancelledIdx = 2; // 退单
+
+  const rowLines = rows.map(r => {
+    const locked    = r.statusCounts[lockedIdx];
+    const pending   = r.statusCounts[1];
+    const cancelled = r.statusCounts[cancelledIdx];
+    return `• ${r.label}(n=${r.total})：锁单/提车 ${locked.pct}% / 未锁单 ${pending.pct}% / 退单 ${cancelled.pct}%`;
+  }).join('\n');
+
+  // 找差异最突出的标签
+  const maxLocked    = rows.reduce((a, b) => a.statusCounts[lockedIdx].pct    > b.statusCounts[lockedIdx].pct    ? a : b);
+  const maxCancelled = rows.reduce((a, b) => a.statusCounts[cancelledIdx].pct > b.statusCounts[cancelledIdx].pct ? a : b);
+
+  const prompt =
+`你是华境S汽车用户研究专家，分析「${dimensionLabel}」维度下不同取值的订单状态分布差异。
+筛选范围：${filter || '全国'}
+全局基准：${globalLine}
+
+各取值订单状态分布：
+${rowLines}
+
+锁单率最高：${maxLocked.label}（${maxLocked.statusCounts[lockedIdx].pct}%）
+退单率最高：${maxCancelled.label}（${maxCancelled.statusCounts[cancelledIdx].pct}%）
+
+请按以下两个部分输出，两部分之间空一行，纯文本格式不加任何Markdown符号（不加**、##、-等）：
+
+核心差异：
+直接说明锁单/提车用户在「${dimensionLabel}」上最集中的1-2个特征，与退单用户的具体数字对比。例如：锁单用户中35-39岁占61%，退单用户中该年龄段仅占42%。
+
+原因分析：
+如果两者差异显著（差值超过10%），分析背后的用户心理或决策逻辑。如果差异不显著，说明该维度对转化影响有限的可能原因。`;
+
+  return chat([{ role: 'user', content: prompt }], 0.7);
 }

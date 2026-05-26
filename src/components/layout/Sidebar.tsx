@@ -3,14 +3,16 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutGrid, Users, BarChart2, Activity, Sparkles, Settings } from 'lucide-react';
+import { LayoutGrid, Users, BarChart2, Activity, Sparkles, Settings, GitCompare, Map } from 'lucide-react';
 
 const NAV_ITEMS = [
   { href: '/',         icon: LayoutGrid, label: '概览',      desc: 'Overview' },
   { href: '/profile',  icon: Users,      label: '用户画像',  desc: 'Profile' },
   { href: '/compare',  icon: BarChart2,  label: '地域对比',  desc: 'Compare' },
   { href: '/predict',  icon: Activity,   label: '雷达对比',  desc: 'Radar' },
-  { href: '/insights', icon: Sparkles,   label: '核心洞察',  desc: 'Insights' },
+  { href: '/insights',       icon: Sparkles,    label: '核心洞察',  desc: 'Insights' },
+  { href: '/status-compare',   icon: GitCompare,  label: '状态对比',   desc: 'Status' },
+  { href: '/area-portrait',     icon: Map,         label: '区域特征',   desc: 'Regional' },
 ];
 
 export function Sidebar() {
