@@ -4,12 +4,8 @@ import { useEffect, useState } from 'react';
 import { OverviewStats } from '@/components/OverviewStats';
 
 interface OverviewData {
-  total: number;
-  locked: number;
-  pending: number;
-  cancelled: number;
-  lockedRate: string;
-  cancelledRate: string;
+  total: number; locked: number; pending: number; cancelled: number;
+  lockedRate: string; cancelledRate: string;
   areaDistribution: { area: string; total: number; locked: number; pending: number; cancelled: number }[];
   version: { version_id: number; record_count: number; uploaded_at: string } | null;
 }
@@ -34,17 +30,9 @@ export default function HomePage() {
             </div>
           ))}
         </div>
-        <div className="glass-card p-6 h-64">
-          <div className="skeleton h-5 w-32 mb-4" />
-          <div className="skeleton h-44 w-full" />
-        </div>
       </div>
     );
   }
 
-  return (
-    <div className="animate-slide-up">
-      <OverviewStats data={data} />
-    </div>
-  );
+  return <div className="animate-slide-up"><OverviewStats data={data} /></div>;
 }

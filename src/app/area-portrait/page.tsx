@@ -147,13 +147,16 @@ function DataTable({ data, baselineLabel }: { data: PortraitData; baselineLabel:
                         <DiffBadge diff={items[0].diff} />
                       </div>
                     )}
-                    {items[1] && (
-                      <div className="mt-0.5 leading-tight">
-                        <span className="text-[10px] text-black/50">{items[1].label}</span>
-                        <span className="text-[10px] text-black/30 ml-0.5">{items[1].pct}%</span>
-                        <DiffBadge diff={items[1].diff} />
+                    {items.slice(1).map((item, idx) => (
+                      <div key={idx} className="mt-0.5 leading-tight">
+                        <span className={cn('text-[10px]',
+                          item.diff > 10 ? 'text-[#34C759]' : item.diff < -10 ? 'text-[#FF3B30]' : 'text-black/50')}>
+                          {item.label}
+                        </span>
+                        <span className="text-[10px] text-black/30 ml-0.5">{item.pct}%</span>
+                        <DiffBadge diff={item.diff} />
                       </div>
-                    )}
+                    ))}
                   </td>
                 );
               })}

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Upload, CheckCircle, AlertCircle, Loader2,
   Database, History, Sparkles, ChevronDown, ChevronUp,
-  Save, RotateCcw, Info,
+  Save, RotateCcw, Info, RefreshCw, Eye, Edit3,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -26,6 +26,201 @@ interface FieldConfig {
   enabled: boolean;
   type: string;
 }
+
+// ── 概览洞察编辑面板 ─────────────────────────────────────────
+function OverviewInsightPanel({ password }: { password: string }) {
+  const _ = password; void _; // admin 已在上层验证
+  const [expanded, setExpanded]         = useState(false);
+  const [aiText, setAiText]             = useState('');
+  const [customText, setCustomText]     = useState('');
+  const [prefer, setPrefer]             = useState<'ai'|'custom'>('ai');
+  const [editDraft, setEditDraft]       = useState('');
+  const [editing, setEditing]           = useState(false);
+  const [regenLoading, setRegenLoading] = useState(false);
+  const [saving, setSaving]             = useState(false);
+  const [preferSaving, setPreferSaving] = useState(false);
+  const [saveMsg, setSaveMsg]           = useState('');
+  const [saveOk, setSaveOk]             = useState(true);
+
+  // 展开时从固定 key 读取
+  useEffect(() => {
+    if (!expanded) return;
+    fetch('/api/status-compare-insight?isOverview=1')
+      .then(r => r.json())
+      .then(d => {
+        setAiText(d.insight ?? '');
+        setCustomText(d.custom ?? '');
+        setPrefer(d.prefer ?? 'ai');
+      });
+  }, [expanded]);
+
+  async function regenerate() {
+    setRegenLoading(true);
+    try {
+      const res = await fetch('/api/status-compare-insight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isOverview: true, forceRegenerate: true, rows: [], globalStatus: [], dimensionLabel: '全维度概览', filter: '全国' }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || '生成失败');
+      setAiText(d.insight ?? '');
+    } finally {
+      setRegenLoading(false);
+    }
+  }
+
+  async function handleSaveCustom() {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/status-compare-insight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isOverview: true, saveCustom: true, customText: editDraft, rows: [], globalStatus: [], dimensionLabel: '全维度概览', filter: '全国' }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || '保存失败');
+      setCustomText(d.custom ?? editDraft);
+      setPrefer(d.prefer ?? 'custom');
+      setEditing(false);
+      setSaveOk(true);
+      setSaveMsg('已保存，并切换为概览页展示内容');
+    } catch (e) {
+      setSaveOk(false);
+      setSaveMsg(e instanceof Error ? e.message : '保存失败');
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSaveMsg(''), 2500);
+    }
+  }
+
+  async function handleSavePrefer(p: 'ai'|'custom') {
+    if (p === 'custom' && !customText) return;
+    setPreferSaving(true);
+    try {
+      const res = await fetch('/api/status-compare-insight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isOverview: true, savePrefer: true, prefer: p, rows: [], globalStatus: [], dimensionLabel: '全维度概览', filter: '全国' }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || '切换失败');
+      setPrefer(d.prefer ?? p);
+      setSaveOk(true);
+      setSaveMsg(`概览页已切换为显示${p === 'ai' ? 'AI内容' : '自定义内容'}`);
+    } catch (e) {
+      setSaveOk(false);
+      setSaveMsg(e instanceof Error ? e.message : '切换失败');
+    } finally {
+      setPreferSaving(false);
+      setTimeout(() => setSaveMsg(''), 2500);
+    }
+  }
+
+  return (
+    <div className="glass-card overflow-hidden">
+      <button className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/02 transition-colors no-tap"
+        onClick={() => setExpanded(p => !p)}>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-[#AF52DE]/10 flex items-center justify-center">
+            <Sparkles size={14} className="text-[#AF52DE]" />
+          </div>
+          <div className="text-left">
+            <div className="text-[14px] font-600 text-black/80">概览页数据洞察</div>
+            <div className="text-[11px] text-black/35 mt-0.5">
+              当前显示：<span className={prefer === 'custom' ? 'text-[#007AFF]' : 'text-[#AF52DE]'}>
+                {prefer === 'custom' ? '自定义内容' : 'AI 内容'}
+              </span>
+            </div>
+          </div>
+        </div>
+        {expanded ? <ChevronUp size={14} className="text-black/30" /> : <ChevronDown size={14} className="text-black/30" />}
+      </button>
+
+      {expanded && (
+        <div className="px-5 pb-5 border-t border-black/06 space-y-5">
+
+          {/* 显示切换 */}
+          <div className="mt-4">
+            <div className="text-[11px] text-black/40 font-500 uppercase tracking-wider mb-2">概览页显示哪个内容</div>
+            <div className="flex items-center gap-1 glass-card-subtle p-1 rounded-ios w-fit">
+              {(['ai', 'custom'] as const).map(p => (
+                <button key={p} onClick={() => handleSavePrefer(p)}
+                  disabled={preferSaving || (p === 'custom' && !customText)}
+                  className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-500 transition-all no-tap',
+                    prefer === p ? 'bg-white shadow-sm text-black/80' : 'text-black/40 hover:text-black/65',
+                    p === 'custom' && !customText && 'opacity-30 cursor-not-allowed')}>
+                  {p === 'ai' ? <><Sparkles size={11} className="text-[#AF52DE]" />AI 内容</> : <><Edit3 size={11} className="text-[#007AFF]" />自定义内容</>}
+                </button>
+              ))}
+            </div>
+            {prefer === 'custom' && !customText && (
+              <p className="text-[11px] text-[#FF9500] mt-1.5">需先填写自定义内容</p>
+            )}
+          </div>
+
+          {/* AI 内容 */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] text-black/40 font-500 uppercase tracking-wider">AI 生成内容</span>
+              <button onClick={regenerate} disabled={regenLoading}
+                className="flex items-center gap-1 text-[11px] text-black/35 hover:text-[#007AFF] transition-colors">
+                <RefreshCw size={10} className={regenLoading ? 'animate-spin' : ''} />重新生成
+              </button>
+            </div>
+            <div className="rounded-ios border border-black/08 bg-black/02 px-3 py-2.5 text-[12px] text-black/55 leading-relaxed min-h-[50px]">
+              {regenLoading
+                ? <span className="flex items-center gap-1.5 text-black/30"><Loader2 size={11} className="animate-spin" />生成中…</span>
+                : aiText || <span className="text-black/25 italic">暂无，点击重新生成</span>}
+            </div>
+          </div>
+
+          {/* 自定义内容 */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] text-black/40 font-500 uppercase tracking-wider">自定义内容</span>
+              {!editing && (
+                <button onClick={() => { setEditDraft(customText); setEditing(true); }}
+                  className="flex items-center gap-1 text-[11px] text-black/35 hover:text-[#007AFF] transition-colors">
+                  <Edit3 size={10} />{customText ? '编辑' : '新增'}
+                </button>
+              )}
+            </div>
+            {editing ? (
+              <div className="space-y-2">
+                <textarea value={editDraft} onChange={e => setEditDraft(e.target.value)} rows={5}
+                  className="w-full rounded-ios border border-black/10 bg-white/60 px-3 py-2.5 text-[12px] text-black/70 leading-relaxed resize-y focus:outline-none focus:border-[#007AFF]/40 transition-all"
+                  placeholder="输入要在概览页展示的文字…" />
+                <div className="flex items-center justify-end gap-2">
+                  <button onClick={() => setEditing(false)} className="text-[12px] text-black/35">取消</button>
+                  <button onClick={handleSaveCustom} disabled={saving}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-ios text-[12px] bg-[#007AFF] text-white font-500 disabled:opacity-50">
+                    <Save size={11} />{saving ? '保存中…' : '保存'}
+                  </button>
+                </div>
+              </div>
+            ) : customText ? (
+              <div className="rounded-ios border border-black/08 bg-black/02 px-3 py-2.5 text-[12px] text-black/60 leading-relaxed whitespace-pre-wrap">
+                {customText}
+              </div>
+            ) : (
+              <div className="rounded-ios border border-dashed border-black/12 px-3 py-3 text-[12px] text-black/25 text-center">
+                暂无自定义内容
+              </div>
+            )}
+          </div>
+
+          {saveMsg && (
+            <div className={cn('text-[12px] flex items-center gap-1.5', saveOk ? 'text-[#34C759]' : 'text-[#FF3B30]')}>
+              {saveOk ? <CheckCircle size={12} /> : <AlertCircle size={12} />}{ saveMsg}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 // ── 洞察字段配置面板 ──────────────────────────────────────────
 function InsightsFieldPanel({ password, onSaved }: { password: string; onSaved: () => void }) {
@@ -391,6 +586,10 @@ export default function AdminPage() {
         <div className="flex items-center gap-2 mb-3 px-1">
           <Sparkles size={14} className="text-[#AF52DE]" />
           <h2 className="text-[15px] font-600 text-black/70">AI 洞察 Prompt 管理</h2>
+        </div>
+        {/* 概览洞察编辑 */}
+        <div className="mb-3">
+          <OverviewInsightPanel password={password} />
         </div>
         {prompts.length === 0 ? (
           <div className="glass-card p-6 text-center">

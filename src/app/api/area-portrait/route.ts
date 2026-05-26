@@ -111,7 +111,7 @@ export async function GET(req: NextRequest) {
     const areaUsers = users.filter((u: Record<string, unknown>) => String(u[regionField]) === area);
     const dims: Record<string, { label: string; pct: number; diff: number }[]> = {};
     for (const dim of ANALYSIS_DIMS) {
-      const topItems = getTopN(areaUsers, dim.key, 3);
+      const topItems = getTopN(areaUsers, dim.key, dim.key === 'occupation_category' ? 4 : 3);
       dims[dim.key] = topItems.map(item => {
         const nat = nationalTops[dim.key].find(n => n.label === item.label);
         const natPct = nat ? nat.pct : Math.round(
