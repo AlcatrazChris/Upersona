@@ -81,10 +81,11 @@ function OverviewInsightPanel({ password }: { password: string }) {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || '保存失败');
       setCustomText(d.custom ?? editDraft);
+      // 服务端 saveCustom 已自动切换为 custom，直接读取返回值
       setPrefer(d.prefer ?? 'custom');
       setEditing(false);
       setSaveOk(true);
-      setSaveMsg('已保存，并切换为概览页展示内容');
+      setSaveMsg('已保存自定义内容，概览页已自动切换为显示自定义内容');
     } catch (e) {
       setSaveOk(false);
       setSaveMsg(e instanceof Error ? e.message : '保存失败');

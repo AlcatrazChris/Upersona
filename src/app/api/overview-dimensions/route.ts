@@ -11,9 +11,11 @@ const STATUS_GROUPS = [
 ];
 
 // Overview 展示的维度（精简版）
+// 全量维度（与 PROFILE_DIMENSIONS 保持一致，多选字段也包含）
 const OVERVIEW_DIMS = [
-  'age_group', 'annual_income', 'education',
-  'family_structure', 'occupation_category', 'is_upgrade',
+  'age_group', 'education', 'occupation_category', 'family_structure',
+  'annual_income', 'is_upgrade', 'consumption_views', 'use_scenarios',
+  'info_channels', 'car_interests', 'hobbies', 'competing_models',
 ];
 
 export async function GET() {
@@ -37,11 +39,16 @@ export async function GET() {
     const dimConfig = PROFILE_DIMENSIONS.find(d => d.key === dimKey);
     if (!dimConfig) return null;
 
-    // 收集所有标签并排序
+    // 收集所有标签并排序（多选字段需展开数组）
     const labelSet = new Set<string>();
     for (const u of users) {
-      const v = String((u as Record<string, unknown>)[dimKey] || '').trim();
-      if (v && v !== '(跳过)') labelSet.add(v);
+      const raw = (u as Record<string, unknown>)[dimKey];
+      if (dimConfig.isMultiSelect && Array.isArray(raw)) {
+        (raw as string[]).forEach(v => { if (v && v !== '(跳过)') labelSet.add(v); });
+      } else {
+        const v = String(raw || '').trim();
+        if (v && v !== '(跳过)') labelSet.add(v);
+      }
     }
     let allLabels = Array.from(labelSet);
     if (dimConfig.isOrdered && dimConfig.orderedValues) {

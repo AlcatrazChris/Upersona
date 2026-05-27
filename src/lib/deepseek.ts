@@ -41,7 +41,7 @@ function extractJSON(raw: string): Record<string, unknown> {
 const promptCache: Record<string, { text: string; ts: number }> = {};
 const PROMPT_TTL = 60 * 1000; // 1 分钟内复用缓存，避免每次调 DB
 
-async function getPrompt(key: string, defaultPrompt: string): Promise<string> {
+export async function getPrompt(key: string, defaultPrompt: string): Promise<string> {
   const now = Date.now();
   if (promptCache[key] && now - promptCache[key].ts < PROMPT_TTL) {
     return promptCache[key].text;
@@ -58,6 +58,14 @@ async function getPrompt(key: string, defaultPrompt: string): Promise<string> {
     // DB 读取失败时降级到默认 prompt
   }
   return defaultPrompt;
+}
+
+export function clearPromptCache(key?: string) {
+  if (key) {
+    delete promptCache[key];
+  } else {
+    for (const k of Object.keys(promptCache)) delete promptCache[k];
+  }
 }
 
 // ── 新 8 类职业分类 ──────────────────────────────────────────
@@ -351,7 +359,15 @@ export async function generateCoreUserCard(params: {
   return extractJSON(result) as { title: string; bullets: [string, string, string, string]; tags: { age?: string; income?: string; competing?: string; attitude?: string; extra?: string } };
 }
 
-// ── 意向预测（保留导出，供旧代码引用）────────────────────────
+// ── 意向预测 ─────────────────────────────────────────────────
+const DEFAULT_PREDICT_INTENT_PROMPT =
+`你是华境S销售分析专家。基于用户画像，评估转化为锁单用户的概率（0-100分）。
+
+{profileText}
+
+严格按JSON返回，不输出其他内容：
+{"score":数字,"keyFactors":["关键因素1","关键因素2","关键因素3"],"marketingAdvice":"针对性营销建议（25字内）"}`;
+
 export async function predictUserIntent(userProfile: {
   ageGroup: string; education: string; occupation: string; familyStructure: string;
   income: string; isUpgrade: string; consumptionViews: string[]; useScenarios: string[];
@@ -372,14 +388,33 @@ export async function predictUserIntent(userProfile: {
     '出行频率': userProfile.familyTripFreq.join('、'),
   }).map(([k, v]) => `${k}：${v}`).join('\n');
 
-  const content = await chat([{
-    role: 'user',
-    content: `你是华境S销售分析专家。基于用户画像，评估转化为锁单用户的概率（0-100分）。\n\n${profileText}\n\n严格按JSON返回：\n{"score":数字,"keyFactors":["因素1","因素2","因素3"],"marketingAdvice":"针对性营销建议（25字内）"}`,
-  }], 0.3);
+  const template = await getPrompt('predict_intent', DEFAULT_PREDICT_INTENT_PROMPT);
+  const finalPrompt = template.replace('{profileText}', profileText);
+
+  const content = await chat([{ role: 'user', content: finalPrompt }], 0.3);
   return extractJSON(content) as { score: number; keyFactors: string[]; marketingAdvice: string };
 }
 
 // ── 订单状态对比洞察 ──────────────────────────────────────────
+const DEFAULT_STATUS_INSIGHT_PROMPT =
+`你是华境S汽车用户研究专家，分析「{dimensionLabel}」维度下不同取值的订单状态分布差异。
+筛选范围：{filter}
+全局基准：{globalLine}
+
+各取值订单状态分布：
+{rowLines}
+
+锁单率最高：{maxLockedLabel}（{maxLockedPct}%）
+退单率最高：{maxCancelledLabel}（{maxCancelledPct}%）
+
+请按以下两个部分输出，两部分之间空一行，纯文本格式不加任何Markdown符号（不加**、##、-等）：
+
+核心差异：
+直接说明锁单/提车用户在「{dimensionLabel}」上最集中的1-2个特征，与退单用户的具体数字对比。例如：锁单用户中35-39岁占61%，退单用户中该年龄段仅占42%。
+
+原因分析：
+如果两者差异显著（差值超过10%），分析背后的用户心理或决策逻辑。如果差异不显著，说明该维度对转化影响有限的可能原因。`;
+
 export async function generateStatusInsight(params: {
   dimensionLabel: string;
   filter: string;
@@ -394,9 +429,8 @@ export async function generateStatusInsight(params: {
 
   const globalLine = globalStatus.map(s => `${s.status} ${s.pct}%`).join(' / ');
 
-  // 找出差异最大的几个标签
-  const lockedIdx    = 0; // 锁单/提车
-  const cancelledIdx = 2; // 退单
+  const lockedIdx    = 0;
+  const cancelledIdx = 2;
 
   const rowLines = rows.map(r => {
     const locked    = r.statusCounts[lockedIdx];
@@ -405,28 +439,19 @@ export async function generateStatusInsight(params: {
     return `• ${r.label}(n=${r.total})：锁单/提车 ${locked.pct}% / 未锁单 ${pending.pct}% / 退单 ${cancelled.pct}%`;
   }).join('\n');
 
-  // 找差异最突出的标签
   const maxLocked    = rows.reduce((a, b) => a.statusCounts[lockedIdx].pct    > b.statusCounts[lockedIdx].pct    ? a : b);
   const maxCancelled = rows.reduce((a, b) => a.statusCounts[cancelledIdx].pct > b.statusCounts[cancelledIdx].pct ? a : b);
 
-  const prompt =
-`你是华境S汽车用户研究专家，分析「${dimensionLabel}」维度下不同取值的订单状态分布差异。
-筛选范围：${filter || '全国'}
-全局基准：${globalLine}
+  const template = await getPrompt('status_insight', DEFAULT_STATUS_INSIGHT_PROMPT);
+  const finalPrompt = template
+    .replace(/\{dimensionLabel\}/g, dimensionLabel)
+    .replace('{filter}', filter || '全国')
+    .replace('{globalLine}', globalLine)
+    .replace('{rowLines}', rowLines)
+    .replace('{maxLockedLabel}', maxLocked.label)
+    .replace('{maxLockedPct}', String(maxLocked.statusCounts[lockedIdx].pct))
+    .replace('{maxCancelledLabel}', maxCancelled.label)
+    .replace('{maxCancelledPct}', String(maxCancelled.statusCounts[cancelledIdx].pct));
 
-各取值订单状态分布：
-${rowLines}
-
-锁单率最高：${maxLocked.label}（${maxLocked.statusCounts[lockedIdx].pct}%）
-退单率最高：${maxCancelled.label}（${maxCancelled.statusCounts[cancelledIdx].pct}%）
-
-请按以下两个部分输出，两部分之间空一行，纯文本格式不加任何Markdown符号（不加**、##、-等）：
-
-核心差异：
-直接说明锁单/提车用户在「${dimensionLabel}」上最集中的1-2个特征，与退单用户的具体数字对比。例如：锁单用户中35-39岁占61%，退单用户中该年龄段仅占42%。
-
-原因分析：
-如果两者差异显著（差值超过10%），分析背后的用户心理或决策逻辑。如果差异不显著，说明该维度对转化影响有限的可能原因。`;
-
-  return chat([{ role: 'user', content: prompt }], 0.7);
+  return chat([{ role: 'user', content: finalPrompt }], 0.7);
 }

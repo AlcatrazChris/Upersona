@@ -129,18 +129,15 @@ function ClusteredChart({ data, activeStatuses }: {
               return (
                 <div className="glass-card-elevated px-3 py-2 text-[11px] min-w-[140px]">
                   <div className="font-600 text-black/75 mb-1.5">{label}</div>
-                  {payload.map((p, i: number) => {
-                    const name = String(p.name ?? '');
-                    return (
-                      <div key={i} className="flex items-center justify-between gap-3 mb-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-2 h-2 rounded-sm" style={{ background: STATUS_COLORS[name] }} />
-                          <span className="text-black/55">{name}</span>
-                        </div>
-                        <span className="font-600 tabular-nums">{Number(p.value ?? 0).toFixed(1)}%</span>
+                  {payload.map((p: { name: string; value: number }, i: number) => (
+                    <div key={i} className="flex items-center justify-between gap-3 mb-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-sm" style={{ background: STATUS_COLORS[p.name] }} />
+                        <span className="text-black/55">{p.name}</span>
                       </div>
-                    );
-                  })}
+                      <span className="font-600 tabular-nums">{Number(p.value).toFixed(1)}%</span>
+                    </div>
+                  ))}
                 </div>
               );
             }}
@@ -204,18 +201,15 @@ function OverviewDimCard({ dimData, activeStatuses }: {
                 return (
                   <div className="glass-card-elevated px-2.5 py-2 text-[11px] min-w-[130px]">
                     <div className="font-600 text-black/70 mb-1">{label}</div>
-                    {payload.map((p, i: number) => {
-                      const name = String(p.name ?? '');
-                      return (
-                        <div key={i} className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-sm" style={{ background: STATUS_COLORS[name] }} />
-                            <span className="text-black/50">{name}</span>
-                          </div>
-                          <span className="font-600 tabular-nums">{Number(p.value ?? 0).toFixed(1)}%</span>
+                    {payload.map((p: { name: string; value: number }, i: number) => (
+                      <div key={i} className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-sm" style={{ background: STATUS_COLORS[p.name] }} />
+                          <span className="text-black/50">{p.name}</span>
                         </div>
-                      );
-                    })}
+                        <span className="font-600 tabular-nums">{Number(p.value).toFixed(1)}%</span>
+                      </div>
+                    ))}
                   </div>
                 );
               }}
@@ -303,18 +297,19 @@ interface DimsData {
   totalSamples: number;
 }
 
-// ── AI 洞察面板（可编辑）─────────────────────────────────────
+// ── AI 洞察面板（可编辑）────────────────────────────────────────
 function InsightPanel({
   insight, customText, prefer = 'ai', editing, editDraft, savingCustom, insightLoading,
-  onEdit, onDraftChange, onSave, onCancelEdit, onRegenerate, label, hideRegenerate = false,
+  onEdit, onDraftChange, onSave, onCancelEdit, onRegenerate, label, noAI = false,
 }: {
   insight: string; customText: string; prefer?: 'ai' | 'custom'; editing: boolean;
   editDraft: string; savingCustom: boolean; insightLoading: boolean;
   onEdit: () => void; onDraftChange: (v: string) => void;
   onSave: () => void; onCancelEdit: () => void; onRegenerate: () => void; label: string;
-  hideRegenerate?: boolean;
+  noAI?: boolean;
 }) {
-  const displayText = (prefer === 'custom' && customText) ? customText : insight;
+  // noAI 模式：只显示 customText；普通模式：prefer 决定显示哪个
+  const displayText = noAI ? customText : (prefer === 'custom' && customText ? customText : insight);
 
   return (
     <div className="glass-card p-5">
@@ -323,15 +318,38 @@ function InsightPanel({
           <Sparkles size={14} className="text-[#AF52DE]" />
           <span className="text-[14px] font-600 text-black/70">数据洞察</span>
           <span className="text-[12px] text-black/35">{label}</span>
+          {/* 普通 AI 模式才显示徽章 */}
+          {!noAI && !editing && (insight || customText) && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-500 bg-[#AF52DE]/10 text-[#AF52DE]">
+              AI
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
-
-          {!editing && !hideRegenerate && (
-            <button onClick={onRegenerate} disabled={insightLoading}
-              className="flex items-center gap-1 text-[12px] text-black/35 hover:text-[#007AFF] transition-colors">
-              <RefreshCw size={11} className={insightLoading ? 'animate-spin' : ''} />
-              {insight ? '重新生成' : '生成洞察'}
-            </button>
+          {!editing && (
+            <>
+              <button onClick={onEdit}
+                className="flex items-center gap-1 text-[12px] text-black/35 hover:text-[#007AFF] transition-colors">
+                <Edit3 size={11} />
+                编辑
+              </button>
+              {/* noAI 模式不显示重新生成按钮 */}
+              {!noAI && (
+                <button
+                  onClick={onRegenerate}
+                  disabled={insightLoading || (prefer === 'custom' && !!customText)}
+                  title={prefer === 'custom' && !!customText ? '已有手动编辑内容，如需重新生成请先在编辑框中清空内容并保存' : ''}
+                  className={cn(
+                    'flex items-center gap-1 text-[12px] transition-colors',
+                    prefer === 'custom' && !!customText
+                      ? 'text-black/20 cursor-not-allowed'
+                      : 'text-black/35 hover:text-[#007AFF]'
+                  )}>
+                  <RefreshCw size={11} className={insightLoading ? 'animate-spin' : ''} />
+                  {(insight || customText) ? '重新生成' : '生成洞察'}
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -344,13 +362,16 @@ function InsightPanel({
         <div className="space-y-3">
           <textarea value={editDraft} onChange={e => onDraftChange(e.target.value)} rows={6}
             className="w-full rounded-ios border border-black/10 bg-white/60 px-3 py-2.5 text-[13px] text-black/70 leading-relaxed resize-y focus:outline-none focus:border-[#007AFF]/40 transition-all"
-            placeholder="输入自定义洞察内容…" />
-          <div className="flex items-center gap-2 justify-end">
-            <button onClick={onCancelEdit} className="text-[12px] text-black/35 hover:text-black/60">取消</button>
-            <button onClick={onSave} disabled={savingCustom}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-ios text-[12px] bg-[#007AFF] text-white font-500 disabled:opacity-50">
-              <Save size={11} />{savingCustom ? '保存中…' : '保存'}
-            </button>
+            placeholder="输入洞察内容…保存后直接显示" />
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] text-black/30">保存后直接显示；清空内容保存可删除</p>
+            <div className="flex items-center gap-2">
+              <button onClick={onCancelEdit} className="text-[12px] text-black/35 hover:text-black/60">取消</button>
+              <button onClick={onSave} disabled={savingCustom}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-ios text-[12px] bg-[#007AFF] text-white font-500 disabled:opacity-50">
+                <Save size={11} />{savingCustom ? '保存中…' : '保存'}
+              </button>
+            </div>
           </div>
         </div>
       ) : displayText ? (
@@ -358,19 +379,13 @@ function InsightPanel({
           {displayText.split('\n\n').filter(Boolean).map((p, i) => (
             <p key={i} className="text-[13px] text-black/65 leading-relaxed mb-2">{p.trim()}</p>
           ))}
-          {prefer === 'custom' && customText && (
-            <div className="mt-1 flex items-center gap-1 text-[11px] text-black/25">
-              <Eye size={10} />显示自定义内容
-            </div>
-          )}
-        </div>
-      ) : hideRegenerate ? (
-        <div className="py-3 text-[13px] text-black/35 text-center">
-          暂无内容，请前往数据管理中配置概览洞察
         </div>
       ) : (
         <div className="text-center py-4">
-          <p className="text-[13px] text-black/35 mb-3">点击"生成洞察"开始分析</p>
+          <p className="text-[13px] text-black/35 mb-2">暂无洞察内容</p>
+          <p className="text-[11px] text-black/25">
+            {noAI ? '请在数据管理中填写洞察内容' : '点击「生成洞察」获取 AI 分析，或点击「编辑」直接填写'}
+          </p>
         </div>
       )}
     </div>
@@ -385,14 +400,11 @@ export default function StatusComparePage() {
   const [dimsData, setDimsData]           = useState<DimsData | null>(null);
   const [dimsLoading, setDimsLoading]     = useState(false);
   const [overviewActive, setOverviewActive] = useState<string[]>(ALL_STATUSES);
-  // 概览 AI
-  const [ovInsight, setOvInsight]         = useState('');
+  // 概览洞察（仅自定义内容，无 AI 生成）
   const [ovCustom, setOvCustom]           = useState('');
-  const [ovPrefer, setOvPrefer]           = useState<'ai'|'custom'>('ai');
   const [ovEditing, setOvEditing]         = useState(false);
   const [ovDraft, setOvDraft]             = useState('');
   const [ovSaving, setOvSaving]           = useState(false);
-  const [ovLoading, setOvLoading]         = useState(false);
 
   // 维度对比 Tab
   const [dim, setDim]                     = useState(DIMS[0].key as string);
@@ -417,43 +429,16 @@ export default function StatusComparePage() {
     setDimsLoading(true);
     fetch('/api/overview-dimensions', { cache: 'no-store' })
       .then(r => r.json()).then(setDimsData).finally(() => setDimsLoading(false));
-    // 自动读取概览洞察（用固定 key，不需要用户点"生成"）
+    // 自动读取概览自定义洞察内容
     fetch('/api/status-compare-insight?isOverview=1', { cache: 'no-store' })
       .then(r => r.json())
-      .then(d => {
-        setOvInsight(d.insight ?? d.displayText ?? '');
-        setOvCustom(d.custom ?? '');
-        setOvPrefer(d.prefer ?? 'ai');
-      })
+      .then(d => { setOvCustom(d.custom ?? ''); })
       .catch(() => {});
   }, []);
 
-  // ── 概览 AI ──
-  async function loadOverviewInsight(force = false) {
-    setOvLoading(true);
-    try {
-      const res = await fetch('/api/status-compare-insight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          isOverview: true,
-          dimensionLabel: '全维度概览',
-          filter: '全国',
-          rows: [],
-          globalStatus: [],
-          forceRegenerate: force,
-        }),
-      });
-      const json = await res.json();
-      setOvInsight(json.insight ?? json.displayText ?? '');
-      setOvCustom(json.custom ?? '');
-      setOvPrefer(json.prefer ?? 'ai');
-    } finally { setOvLoading(false); }
-  }
-
   async function saveOverviewCustom() {
     setOvSaving(true);
-    await fetch('/api/status-compare-insight', {
+    const res = await fetch('/api/status-compare-insight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -462,7 +447,10 @@ export default function StatusComparePage() {
         rows: [], globalStatus: [], saveCustom: true, customText: ovDraft,
       }),
     });
-    setOvCustom(ovDraft); setOvEditing(false); setOvSaving(false);
+    const json = await res.json();
+    setOvCustom(json.custom ?? ovDraft);
+    setOvEditing(false);
+    setOvSaving(false);
   }
 
   // ── 维度对比数据 ──
@@ -471,7 +459,8 @@ export default function StatusComparePage() {
     if (key === prevKey.current) return;
     prevKey.current = key;
     setLoading(true); setError(''); setData(null);
-    setInsight(''); setCustomText(''); setCacheKey('');
+    // 切换维度时先清空洞察，防止显示上一个维度的旧内容
+    setInsight(''); setCustomText(''); setPrefer('ai'); setCacheKey('');
     try {
       const params = new URLSearchParams({ dim });
       if (filter.city)          params.set('city', filter.city);
@@ -481,6 +470,23 @@ export default function StatusComparePage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setData(json);
+
+      // ── 图表数据就绪后，立即自动加载该维度已有的洞察缓存 ──
+      // 不需要用户点按钮，自定义内容也会直接显示
+      const fl = filter.city || filter.province || filter.area || '全国';
+      const ck = `status_insight:${json.dimensionLabel}:${fl}:${(json.rows as { label: string }[]).map(r => r.label).join(',')}`;
+      setCacheKey(ck);
+      try {
+        const ir = await fetch(
+          `/api/status-compare-insight?cacheKey=${encodeURIComponent(ck)}`,
+          { cache: 'no-store' }
+        );
+        const id = await ir.json();
+        // 不管是 AI 内容还是自定义内容，都直接填充，InsightPanel 按 prefer 决定显示哪个
+        setInsight(id.insight ?? '');
+        setCustomText(id.custom ?? '');
+        setPrefer(id.prefer ?? 'ai');
+      } catch { /* 缓存读取失败不影响主流程，保持空白等待用户点击生成 */ }
     } catch (e) {
       setError(e instanceof Error ? e.message : '请求失败');
     } finally { setLoading(false); }
@@ -488,9 +494,12 @@ export default function StatusComparePage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // ── 维度 AI ──
-  async function generateInsight(force = false) {
+  // ── 维度 AI 生成 ──
+  // prefer='custom' 且有自定义内容时：不调用 DeepSeek，直接返回（自定义内容已经在页面显示）
+  // 其余情况：强制重新生成 AI，服务端会保留已有的 prefer 配置
+  async function generateInsight() {
     if (!data) return;
+    if (prefer === 'custom' && customText) return; // 自定义模式下不触发 AI
     setInsightLoading(true);
     const filterLabel = filter.city || filter.province || filter.area || '全国';
     try {
@@ -499,21 +508,25 @@ export default function StatusComparePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           dimensionLabel: data.dimensionLabel, filter: filterLabel,
-          rows: data.rows, globalStatus: data.globalStatus, forceRegenerate: force,
+          rows: data.rows, globalStatus: data.globalStatus,
+          forceRegenerate: true,
         }),
       });
       const json = await res.json();
-      setInsight(json.insight ?? ''); setCustomText(json.custom ?? ''); setPrefer(json.prefer ?? 'ai');
-      const k = `status_insight:${data.dimensionLabel}:${filterLabel}:${data.rows.map((r: { label: string }) => r.label).join(',')}`;
-      setCacheKey(k);
+      setInsight(json.insight ?? '');
+      setCustomText(json.custom ?? '');
+      setPrefer(json.prefer ?? 'ai');
+      if (!cacheKey) {
+        setCacheKey(`status_insight:${data.dimensionLabel}:${filterLabel}:${data.rows.map((r: { label: string }) => r.label).join(',')}`);
+      }
     } finally { setInsightLoading(false); }
   }
 
   async function saveCustom() {
-    if (!data || !cacheKey) return;
+    if (!data) return; // cacheKey 由服务端自行从请求体构建，无需客户端传递
     setSavingCustom(true);
     const filterLabel = filter.city || filter.province || filter.area || '全国';
-    await fetch('/api/status-compare-insight', {
+    const res = await fetch('/api/status-compare-insight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -522,7 +535,11 @@ export default function StatusComparePage() {
         saveCustom: true, customText: editDraft,
       }),
     });
-    setCustomText(editDraft); setEditing(false); setSavingCustom(false);
+    const json = await res.json();
+    setCustomText(json.custom ?? editDraft);
+    setPrefer(json.prefer ?? 'custom'); // 服务端已自动切为 custom，同步到前端
+    setEditing(false);
+    setSavingCustom(false);
   }
 
   function toggleStatus(s: string) {
@@ -594,38 +611,38 @@ export default function StatusComparePage() {
       {/* ── 概览 Tab ── */}
       {activeTab === 'overview' && (
         <div className="space-y-5 animate-slide-up">
+          {/* 数据洞察放最上面 */}
+          <InsightPanel
+            noAI
+            insight="" customText={ovCustom} prefer="custom"
+            editing={ovEditing} editDraft={ovDraft} savingCustom={ovSaving} insightLoading={false}
+            label="各维度整体差异分析"
+            onEdit={() => { setOvDraft(ovCustom); setOvEditing(true); }}
+            onDraftChange={setOvDraft}
+            onSave={saveOverviewCustom}
+            onCancelEdit={() => setOvEditing(false)}
+            onRegenerate={() => {}}
+          />
+          {/* 各维度簇状图 */}
           {dimsLoading ? (
             <div className="glass-card p-12 flex flex-col items-center gap-3">
               <Loader2 size={24} className="animate-spin text-[#007AFF]" />
               <span className="text-[13px] text-black/45">加载中…</span>
             </div>
           ) : dimsData && dimsData.dims.length > 0 ? (
-            <>
-              <div className="glass-card p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="text-[15px] font-600 text-black/75">各维度订单状态对比</h3>
-                    <p className="text-[12px] text-black/35 mt-0.5">各订单状态组内的维度分布占比，X轴以各图自身最大值为基准</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {dimsData.dims.map(dim => (
-                    <OverviewDimCard key={dim.dimKey} dimData={dim} activeStatuses={overviewActive} />
-                  ))}
+            <div className="glass-card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-[15px] font-600 text-black/75">各维度订单状态对比</h3>
+                  <p className="text-[12px] text-black/35 mt-0.5">各订单状态组内维度分布占比，X 轴以各图自身最大值为基准</p>
                 </div>
               </div>
-              <InsightPanel
-                insight={ovInsight} customText={ovCustom} prefer={ovPrefer}
-                editing={ovEditing} editDraft={ovDraft} savingCustom={ovSaving} insightLoading={ovLoading}
-                label="各维度整体差异分析（内容由数据管理配置）"
-                hideRegenerate
-                onEdit={() => {}}
-                onDraftChange={() => {}}
-                onSave={() => {}}
-                onCancelEdit={() => {}}
-                onRegenerate={() => {}}
-              />
-            </>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {dimsData.dims.map(dim => (
+                  <OverviewDimCard key={dim.dimKey} dimData={dim} activeStatuses={overviewActive} />
+                ))}
+              </div>
+            </div>
           ) : null}
         </div>
       )}
@@ -686,7 +703,7 @@ export default function StatusComparePage() {
                 onDraftChange={setEditDraft}
                 onSave={saveCustom}
                 onCancelEdit={() => setEditing(false)}
-                onRegenerate={() => generateInsight(!insight ? false : true)}
+                onRegenerate={generateInsight}
               />
             </>
           )}
