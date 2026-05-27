@@ -129,13 +129,13 @@ function ClusteredChart({ data, activeStatuses }: {
               return (
                 <div className="glass-card-elevated px-3 py-2 text-[11px] min-w-[140px]">
                   <div className="font-600 text-black/75 mb-1.5">{label}</div>
-                  {payload.map((p: { name: string; value: number }, i: number) => (
+                  {payload.map((p, i) => (
                     <div key={i} className="flex items-center justify-between gap-3 mb-0.5">
                       <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-sm" style={{ background: STATUS_COLORS[p.name] }} />
+                        <div className="w-2 h-2 rounded-sm" style={{ background: STATUS_COLORS[String(p.name ?? '')] }} />
                         <span className="text-black/55">{p.name}</span>
                       </div>
-                      <span className="font-600 tabular-nums">{Number(p.value).toFixed(1)}%</span>
+                      <span className="font-600 tabular-nums">{Number(p.value ?? 0).toFixed(1)}%</span>
                     </div>
                   ))}
                 </div>
@@ -201,13 +201,13 @@ function OverviewDimCard({ dimData, activeStatuses }: {
                 return (
                   <div className="glass-card-elevated px-2.5 py-2 text-[11px] min-w-[130px]">
                     <div className="font-600 text-black/70 mb-1">{label}</div>
-                    {payload.map((p: { name: string; value: number }, i: number) => (
+                    {payload.map((p, i) => (
                       <div key={i} className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-1.5">
-                          <div className="w-2 h-2 rounded-sm" style={{ background: STATUS_COLORS[p.name] }} />
+                          <div className="w-2 h-2 rounded-sm" style={{ background: STATUS_COLORS[String(p.name ?? '')] }} />
                           <span className="text-black/50">{p.name}</span>
                         </div>
-                        <span className="font-600 tabular-nums">{Number(p.value).toFixed(1)}%</span>
+                        <span className="font-600 tabular-nums">{Number(p.value ?? 0).toFixed(1)}%</span>
                       </div>
                     ))}
                   </div>
