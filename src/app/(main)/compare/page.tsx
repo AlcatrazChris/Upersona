@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { BarChart2, Sparkles, RefreshCw, Loader2, AlertCircle, ChevronDown } from 'lucide-react';
+import { BarChart2, Loader2, AlertCircle, ChevronDown, RefreshCw } from 'lucide-react';
+import { InsightOverlay } from '@/components/InsightOverlay';
 import { createPortal } from 'react-dom';
 import { StackedBarChart } from '@/components/charts/StackedBarChart';
 import { ChartConfigPanel } from '@/components/charts/ChartConfigPanel';
@@ -306,28 +307,18 @@ export default function ComparePage() {
             <StackedBarChart data={compareData} config={chartConfig} chartHeight={chartSize.height} maxBarWidth={chartSize.maxBarWidth} />
           </div>
 
-          <div className="glass-card p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Sparkles size={14} className="text-[#AF52DE]" />
-                <span className="text-[14px] font-600 text-black/70">AI 对比洞察</span>
-                {compareData.insightCached && <span className="badge-ios badge-gray text-[10px]">缓存</span>}
-              </div>
-              <button onClick={refreshInsight} disabled={insightLoading}
-                className="flex items-center gap-1 text-[12px] text-black/35 hover:text-[#007AFF] transition-colors">
-                <RefreshCw size={11} className={insightLoading ? 'animate-spin' : ''} />重新生成
-              </button>
-            </div>
-            {insightLoading ? (
-              <div className="flex items-center gap-2 text-[13px] text-black/40">
-                <Loader2 size={13} className="animate-spin" />正在生成洞察…
-              </div>
-            ) : compareData.insight ? (
-              <p className="text-[14px] text-black/65 leading-relaxed">{compareData.insight}</p>
-            ) : (
-              <p className="text-[13px] text-black/35 italic">洞察生成失败，请点击重新生成</p>
-            )}
-          </div>
+          <InsightOverlay
+            cacheKey={compareData.cacheKey || ''}
+            label={`${compareData.dimensionLabel} · ${compareData.regions.map(r => r.region).join(' vs ')}`}
+            aiContent={
+              compareData.insight
+                ? <p className="text-[14px] text-black/65 leading-relaxed">{compareData.insight}</p>
+                : <p className="text-[13px] text-black/35 italic">AI 洞察生成失败</p>
+            }
+            hasAiContent={!!compareData.insight}
+            onRegenerate={refreshInsight}
+            loading={insightLoading}
+          />
 
           <div className="glass-card p-5">
             <h3 className="text-[14px] font-600 text-black/65 mb-3">数据明细</h3>

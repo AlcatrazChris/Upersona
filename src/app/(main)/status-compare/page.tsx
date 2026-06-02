@@ -10,6 +10,7 @@ import {
   CartesianGrid, Legend,
 } from 'recharts';
 import { RegionCascade } from '@/components/RegionCascade';
+import { useRole } from '@/components/RoleProvider';
 import { PROFILE_DIMENSIONS } from '@/types';
 import { cn } from '@/lib/utils';
 import { createPortal } from 'react-dom';
@@ -308,6 +309,9 @@ function InsightPanel({
   onSave: () => void; onCancelEdit: () => void; onRegenerate: () => void; label: string;
   noAI?: boolean;
 }) {
+  const role = useRole();
+  const isAdmin = role === 'admin';
+
   // noAI 模式：只显示 customText；普通模式：prefer 决定显示哪个
   const displayText = noAI ? customText : (prefer === 'custom' && customText ? customText : insight);
 
@@ -320,45 +324,53 @@ function InsightPanel({
           <span className="text-[12px] text-black/35">{label}</span>
           {/* 普通 AI 模式才显示徽章 */}
           {!noAI && !editing && (insight || customText) && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-500 bg-[#AF52DE]/10 text-[#AF52DE]">
-              AI
+            <span className={cn(
+              'text-[10px] px-1.5 py-0.5 rounded-full font-500',
+              prefer === 'custom' && customText
+                ? 'bg-[#007AFF]/10 text-[#007AFF]'
+                : 'bg-[#AF52DE]/10 text-[#AF52DE]'
+            )}>
+              {prefer === 'custom' && customText ? '自定义' : 'AI'}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          {!editing && (
-            <>
-              <button onClick={onEdit}
-                className="flex items-center gap-1 text-[12px] text-black/35 hover:text-[#007AFF] transition-colors">
-                <Edit3 size={11} />
-                编辑
-              </button>
-              {/* noAI 模式不显示重新生成按钮 */}
-              {!noAI && (
-                <button
-                  onClick={onRegenerate}
-                  disabled={insightLoading || (prefer === 'custom' && !!customText)}
-                  title={prefer === 'custom' && !!customText ? '已有手动编辑内容，如需重新生成请先在编辑框中清空内容并保存' : ''}
-                  className={cn(
-                    'flex items-center gap-1 text-[12px] transition-colors',
-                    prefer === 'custom' && !!customText
-                      ? 'text-black/20 cursor-not-allowed'
-                      : 'text-black/35 hover:text-[#007AFF]'
-                  )}>
-                  <RefreshCw size={11} className={insightLoading ? 'animate-spin' : ''} />
-                  {(insight || customText) ? '重新生成' : '生成洞察'}
+        {/* 仅管理员可见的控制按钮 */}
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            {!editing && (
+              <>
+                <button onClick={onEdit}
+                  className="flex items-center gap-1 text-[12px] text-black/35 hover:text-[#007AFF] transition-colors">
+                  <Edit3 size={11} />
+                  编辑
                 </button>
-              )}
-            </>
-          )}
-        </div>
+                {/* noAI 模式不显示重新生成按钮 */}
+                {!noAI && (
+                  <button
+                    onClick={onRegenerate}
+                    disabled={insightLoading || (prefer === 'custom' && !!customText)}
+                    title={prefer === 'custom' && !!customText ? '已有手动编辑内容，如需重新生成请先在编辑框中清空内容并保存' : ''}
+                    className={cn(
+                      'flex items-center gap-1 text-[12px] transition-colors',
+                      prefer === 'custom' && !!customText
+                        ? 'text-black/20 cursor-not-allowed'
+                        : 'text-black/35 hover:text-[#007AFF]'
+                    )}>
+                    <RefreshCw size={11} className={insightLoading ? 'animate-spin' : ''} />
+                    {(insight || customText) ? '重新生成' : '生成洞察'}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {insightLoading ? (
         <div className="flex items-center gap-2 text-[13px] text-black/40 py-2">
           <Loader2 size={13} className="animate-spin" />正在分析…
         </div>
-      ) : editing ? (
+      ) : editing && isAdmin ? (
         <div className="space-y-3">
           <textarea value={editDraft} onChange={e => onDraftChange(e.target.value)} rows={6}
             className="w-full rounded-ios border border-black/10 bg-white/60 px-3 py-2.5 text-[13px] text-black/70 leading-relaxed resize-y focus:outline-none focus:border-[#007AFF]/40 transition-all"
@@ -384,7 +396,9 @@ function InsightPanel({
         <div className="text-center py-4">
           <p className="text-[13px] text-black/35 mb-2">暂无洞察内容</p>
           <p className="text-[11px] text-black/25">
-            {noAI ? '请在数据管理中填写洞察内容' : '点击「生成洞察」获取 AI 分析，或点击「编辑」直接填写'}
+            {isAdmin
+              ? (noAI ? '点击「编辑」填写洞察内容' : '点击「生成洞察」获取 AI 分析，或点击「编辑」直接填写')
+              : '管理员尚未配置此洞察内容'}
           </p>
         </div>
       )}

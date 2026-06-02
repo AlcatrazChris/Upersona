@@ -4,7 +4,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Upload, CheckCircle, AlertCircle, Loader2,
   Database, History, Sparkles, ChevronDown, ChevronUp,
-  Save, RotateCcw, Info, RefreshCw, Eye, Edit3,
+  Save, RotateCcw, Info, RefreshCw, Edit3,
+  Users, Trash2, UserPlus, Key,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -28,8 +29,7 @@ interface FieldConfig {
 }
 
 // ── 概览洞察编辑面板 ─────────────────────────────────────────
-function OverviewInsightPanel({ password }: { password: string }) {
-  const _ = password; void _; // admin 已在上层验证
+function OverviewInsightPanel() {
   const [expanded, setExpanded]         = useState(false);
   const [aiText, setAiText]             = useState('');
   const [customText, setCustomText]     = useState('');
@@ -42,7 +42,6 @@ function OverviewInsightPanel({ password }: { password: string }) {
   const [saveMsg, setSaveMsg]           = useState('');
   const [saveOk, setSaveOk]             = useState(true);
 
-  // 展开时从固定 key 读取
   useEffect(() => {
     if (!expanded) return;
     fetch('/api/status-compare-insight?isOverview=1')
@@ -65,9 +64,7 @@ function OverviewInsightPanel({ password }: { password: string }) {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || '生成失败');
       setAiText(d.insight ?? '');
-    } finally {
-      setRegenLoading(false);
-    }
+    } finally { setRegenLoading(false); }
   }
 
   async function handleSaveCustom() {
@@ -81,11 +78,10 @@ function OverviewInsightPanel({ password }: { password: string }) {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || '保存失败');
       setCustomText(d.custom ?? editDraft);
-      // 服务端 saveCustom 已自动切换为 custom，直接读取返回值
       setPrefer(d.prefer ?? 'custom');
       setEditing(false);
       setSaveOk(true);
-      setSaveMsg('已保存自定义内容，概览页已自动切换为显示自定义内容');
+      setSaveMsg('已保存自定义内容');
     } catch (e) {
       setSaveOk(false);
       setSaveMsg(e instanceof Error ? e.message : '保存失败');
@@ -108,7 +104,7 @@ function OverviewInsightPanel({ password }: { password: string }) {
       if (!res.ok) throw new Error(d.error || '切换失败');
       setPrefer(d.prefer ?? p);
       setSaveOk(true);
-      setSaveMsg(`概览页已切换为显示${p === 'ai' ? 'AI内容' : '自定义内容'}`);
+      setSaveMsg(`已切换为${p === 'ai' ? 'AI内容' : '自定义内容'}`);
     } catch (e) {
       setSaveOk(false);
       setSaveMsg(e instanceof Error ? e.message : '切换失败');
@@ -140,7 +136,6 @@ function OverviewInsightPanel({ password }: { password: string }) {
 
       {expanded && (
         <div className="px-5 pb-5 border-t border-black/06 space-y-5">
-
           {/* 显示切换 */}
           <div className="mt-4">
             <div className="text-[11px] text-black/40 font-500 uppercase tracking-wider mb-2">概览页显示哪个内容</div>
@@ -155,9 +150,6 @@ function OverviewInsightPanel({ password }: { password: string }) {
                 </button>
               ))}
             </div>
-            {prefer === 'custom' && !customText && (
-              <p className="text-[11px] text-[#FF9500] mt-1.5">需先填写自定义内容</p>
-            )}
           </div>
 
           {/* AI 内容 */}
@@ -213,7 +205,7 @@ function OverviewInsightPanel({ password }: { password: string }) {
 
           {saveMsg && (
             <div className={cn('text-[12px] flex items-center gap-1.5', saveOk ? 'text-[#34C759]' : 'text-[#FF3B30]')}>
-              {saveOk ? <CheckCircle size={12} /> : <AlertCircle size={12} />}{ saveMsg}
+              {saveOk ? <CheckCircle size={12} /> : <AlertCircle size={12} />}{saveMsg}
             </div>
           )}
         </div>
@@ -222,9 +214,8 @@ function OverviewInsightPanel({ password }: { password: string }) {
   );
 }
 
-
 // ── 洞察字段配置面板 ──────────────────────────────────────────
-function InsightsFieldPanel({ password, onSaved }: { password: string; onSaved: () => void }) {
+function InsightsFieldPanel({ onSaved }: { onSaved: () => void }) {
   const [fields, setFields]     = useState<FieldConfig[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving]     = useState(false);
@@ -246,7 +237,7 @@ function InsightsFieldPanel({ password, onSaved }: { password: string; onSaved: 
     try {
       const res = await fetch('/api/prompts', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-admin-password': password },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt_key: 'insights_fields', user_prompt: JSON.stringify(fields) }),
       });
       const json = await res.json();
@@ -262,10 +253,8 @@ function InsightsFieldPanel({ password, onSaved }: { password: string; onSaved: 
 
   return (
     <div className="glass-card overflow-hidden">
-      <button
-        className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/02 transition-colors no-tap"
-        onClick={() => setExpanded(p => !p)}
-      >
+      <button className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/02 transition-colors no-tap"
+        onClick={() => setExpanded(p => !p)}>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-[#007AFF]/10 flex items-center justify-center">
             <Database size={14} className="text-[#007AFF]" />
@@ -279,16 +268,12 @@ function InsightsFieldPanel({ password, onSaved }: { password: string; onSaved: 
         </div>
         {expanded ? <ChevronUp size={14} className="text-black/30" /> : <ChevronDown size={14} className="text-black/30" />}
       </button>
-
       {expanded && (
         <div className="px-5 pb-5 border-t border-black/06">
-          <div className="text-[11px] text-black/40 mt-3 mb-3">
-            开启/关闭字段后点击保存生效。新增字段需先在数据库添加对应列，再在此处添加配置行。
-          </div>
+          <div className="text-[11px] text-black/40 mt-3 mb-3">开启/关闭字段后点击保存生效。</div>
           <div className="space-y-1.5">
             {fields.map(f => (
-              <div key={f.key}
-                className="flex items-center justify-between py-2 px-3 rounded-ios hover:bg-black/03 transition-colors">
+              <div key={f.key} className="flex items-center justify-between py-2 px-3 rounded-ios hover:bg-black/03 transition-colors">
                 <div className="flex items-center gap-3">
                   <button onClick={() => toggle(f.key)}
                     className={cn('relative rounded-full transition-all duration-200 flex-shrink-0',
@@ -306,7 +291,7 @@ function InsightsFieldPanel({ password, onSaved }: { password: string; onSaved: 
           </div>
           <div className="flex items-center justify-between mt-4">
             <div className="text-[12px] text-black/35">
-              {status === 'ok' && <span className="text-[#34C759]">✓ 已保存，洞察缓存已清除</span>}
+              {status === 'ok' && <span className="text-[#34C759]">✓ 已保存</span>}
               {status === 'err' && <span className="text-[#FF3B30]">保存失败</span>}
             </div>
             <button onClick={save} disabled={saving}
@@ -322,34 +307,8 @@ function InsightsFieldPanel({ password, onSaved }: { password: string; onSaved: 
   );
 }
 
-// ── 登录门 ────────────────────────────────────────────────────
-function LoginGate({ onAuth }: { onAuth: (pw: string) => void }) {
-  const [pw, setPw] = useState('');
-  return (
-    <div className="max-w-sm mx-auto mt-20 space-y-4 animate-slide-up">
-      <div className="glass-card p-8 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-[#007AFF]/10 flex items-center justify-center mx-auto mb-6">
-          <Database size={24} className="text-[#007AFF]" />
-        </div>
-        <h2 className="text-[20px] font-700 text-black/80 mb-1">数据管理</h2>
-        <p className="text-[13px] text-black/40 mb-6">请输入管理密码继续</p>
-        <input type="password" className="input-ios mb-4" placeholder="管理密码"
-          value={pw} onChange={e => setPw(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && pw && onAuth(pw)} />
-        <button onClick={() => pw && onAuth(pw)} className="btn-ios btn-primary w-full">
-          进入管理
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ── Prompt 编辑卡片 ───────────────────────────────────────────
-function PromptCard({ prompt, password, onSaved }: {
-  prompt: AiPrompt;
-  password: string;
-  onSaved: () => void;
-}) {
+function PromptCard({ prompt, onSaved }: { prompt: AiPrompt; onSaved: () => void }) {
   const [expanded, setExpanded]     = useState(false);
   const [draft, setDraft]           = useState(prompt.user_prompt);
   const [saving, setSaving]         = useState(false);
@@ -362,7 +321,7 @@ function PromptCard({ prompt, password, onSaved }: {
     try {
       const res = await fetch('/api/prompts', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-admin-password': password },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt_key: prompt.prompt_key, user_prompt: draft }),
       });
       const json = await res.json();
@@ -373,17 +332,13 @@ function PromptCard({ prompt, password, onSaved }: {
     } catch (e) {
       setErrMsg(e instanceof Error ? e.message : '保存失败');
       setSaveStatus('err');
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
   return (
     <div className="glass-card overflow-hidden">
-      <button
-        className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/02 transition-colors no-tap"
-        onClick={() => setExpanded(p => !p)}
-      >
+      <button className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/02 transition-colors no-tap"
+        onClick={() => setExpanded(p => !p)}>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-[#AF52DE]/10 flex items-center justify-center">
             <Sparkles size={14} className="text-[#AF52DE]" />
@@ -401,50 +356,24 @@ function PromptCard({ prompt, password, onSaved }: {
 
       {expanded && (
         <div className="px-5 pb-5 border-t border-black/06">
-          {/* 变量说明 */}
           <div className="flex items-start gap-1.5 mt-3 mb-2 text-[11px] text-black/40">
             <Info size={11} className="mt-0.5 flex-shrink-0" />
             <span>可用变量：{prompt.system_hint}</span>
           </div>
-
-          {/* 编辑框 */}
-          <textarea
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            rows={16}
+          <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={16}
             className="w-full rounded-ios border border-black/10 bg-white/60 px-3 py-2.5 text-[12px] text-black/70 font-mono leading-relaxed resize-y focus:outline-none focus:border-[#007AFF]/40 focus:bg-white transition-all"
-            style={{ minHeight: 220 }}
-          />
-
-          {/* 操作行 */}
+            style={{ minHeight: 220 }} />
           <div className="flex items-center justify-between mt-3">
-            <button
-              onClick={() => { setDraft(prompt.user_prompt); setSaveStatus('idle'); }}
-              disabled={!dirty}
-              className="flex items-center gap-1 text-[12px] text-black/35 hover:text-black/60 disabled:opacity-30 transition-colors"
-            >
+            <button onClick={() => { setDraft(prompt.user_prompt); setSaveStatus('idle'); }} disabled={!dirty}
+              className="flex items-center gap-1 text-[12px] text-black/35 hover:text-black/60 disabled:opacity-30 transition-colors">
               <RotateCcw size={11} />撤销修改
             </button>
-
             <div className="flex items-center gap-2">
-              {saveStatus === 'ok' && (
-                <span className="text-[12px] text-[#34C759] flex items-center gap-1">
-                  <CheckCircle size={12} />已保存，洞察缓存已清除
-                </span>
-              )}
-              {saveStatus === 'err' && (
-                <span className="text-[12px] text-[#FF3B30]">{errMsg}</span>
-              )}
-              <button
-                onClick={handleSave}
-                disabled={!dirty || saving}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-ios text-[13px] font-500 transition-all',
-                  dirty && !saving
-                    ? 'bg-[#007AFF] text-white shadow-sm hover:bg-[#0066DD]'
-                    : 'bg-black/08 text-black/30 cursor-not-allowed'
-                )}
-              >
+              {saveStatus === 'ok' && <span className="text-[12px] text-[#34C759] flex items-center gap-1"><CheckCircle size={12} />已保存，缓存已清除</span>}
+              {saveStatus === 'err' && <span className="text-[12px] text-[#FF3B30]">{errMsg}</span>}
+              <button onClick={handleSave} disabled={!dirty || saving}
+                className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-ios text-[13px] font-500 transition-all',
+                  dirty && !saving ? 'bg-[#007AFF] text-white shadow-sm hover:bg-[#0066DD]' : 'bg-black/08 text-black/30 cursor-not-allowed')}>
                 {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                 {saving ? '保存中…' : '保存并生效'}
               </button>
@@ -456,10 +385,219 @@ function PromptCard({ prompt, password, onSaved }: {
   );
 }
 
+// ── 账号管理 ─────────────────────────────────────────────────
+interface Account {
+  id: number;
+  username: string;
+  role: 'admin' | 'client';
+  created_at: string;
+  updated_at: string;
+}
+
+function AccountManager() {
+  const [accounts, setAccounts]       = useState<Account[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [showCreate, setShowCreate]   = useState(false);
+  const [newUser, setNewUser]         = useState('');
+  const [newPass, setNewPass]         = useState('');
+  const [newRole, setNewRole]         = useState<'admin' | 'client'>('client');
+  const [creating, setCreating]       = useState(false);
+  const [createMsg, setCreateMsg]     = useState('');
+  const [createOk, setCreateOk]       = useState(true);
+  const [changingPw, setChangingPw]   = useState<number | null>(null);
+  const [pwDraft, setPwDraft]         = useState('');
+  const [pwSaving, setPwSaving]       = useState(false);
+
+  const loadAccounts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/accounts');
+      const json = await res.json();
+      if (Array.isArray(json)) setAccounts(json);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadAccounts(); }, [loadAccounts]);
+
+  async function handleCreate() {
+    if (!newUser.trim() || !newPass.trim()) return;
+    setCreating(true); setCreateMsg('');
+    try {
+      const res = await fetch('/api/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: newUser.trim(), password: newPass.trim(), role: newRole }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || '创建失败');
+      setCreateOk(true); setCreateMsg(`账号 "${newUser}" 创建成功`);
+      setNewUser(''); setNewPass(''); setShowCreate(false);
+      loadAccounts();
+    } catch (e) {
+      setCreateOk(false); setCreateMsg(e instanceof Error ? e.message : '创建失败');
+    } finally {
+      setCreating(false);
+      setTimeout(() => setCreateMsg(''), 3000);
+    }
+  }
+
+  async function handleChangePassword(id: number) {
+    if (!pwDraft.trim()) return;
+    setPwSaving(true);
+    try {
+      const res = await fetch('/api/accounts', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, password: pwDraft.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || '修改失败');
+      setChangingPw(null); setPwDraft('');
+      setCreateOk(true); setCreateMsg('密码修改成功');
+      setTimeout(() => setCreateMsg(''), 3000);
+    } catch (e) {
+      setCreateOk(false); setCreateMsg(e instanceof Error ? e.message : '修改失败');
+      setTimeout(() => setCreateMsg(''), 3000);
+    } finally { setPwSaving(false); }
+  }
+
+  async function handleDelete(id: number, username: string) {
+    if (!confirm(`确定要删除账号 "${username}" 吗？`)) return;
+    try {
+      const res = await fetch('/api/accounts', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || '删除失败');
+      loadAccounts();
+      setCreateOk(true); setCreateMsg(`账号 "${username}" 已删除`);
+      setTimeout(() => setCreateMsg(''), 3000);
+    } catch (e) {
+      setCreateOk(false); setCreateMsg(e instanceof Error ? e.message : '删除失败');
+      setTimeout(() => setCreateMsg(''), 3000);
+    }
+  }
+
+  return (
+    <div className="glass-card p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Users size={15} className="text-[#5856D6]" />
+          <h2 className="text-[15px] font-600 text-black/70">账号管理</h2>
+          <span className="text-[11px] text-black/30">数据库账号 · 环境变量超管不可修改</span>
+        </div>
+        <button onClick={() => setShowCreate(p => !p)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-ios text-[12px] bg-[#5856D6]/10 text-[#5856D6] hover:bg-[#5856D6]/18 transition-colors font-500 no-tap">
+          <UserPlus size={12} />{showCreate ? '取消' : '新建账号'}
+        </button>
+      </div>
+
+      {/* 创建表单 */}
+      {showCreate && (
+        <div className="glass-card-subtle p-4 mb-4 space-y-3 rounded-ios">
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-[11px] text-black/40 font-500 mb-1 block">用户名</label>
+              <input type="text" value={newUser} onChange={e => setNewUser(e.target.value)}
+                placeholder="username"
+                className="input-ios text-[13px] py-1.5 w-full" />
+            </div>
+            <div>
+              <label className="text-[11px] text-black/40 font-500 mb-1 block">密码</label>
+              <input type="text" value={newPass} onChange={e => setNewPass(e.target.value)}
+                placeholder="password"
+                className="input-ios text-[13px] py-1.5 w-full" />
+            </div>
+            <div>
+              <label className="text-[11px] text-black/40 font-500 mb-1 block">角色</label>
+              <select value={newRole} onChange={e => setNewRole(e.target.value as 'admin' | 'client')}
+                className="input-ios text-[13px] py-1.5 w-full">
+                <option value="client">客户 (client)</option>
+                <option value="admin">管理员 (admin)</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button onClick={handleCreate} disabled={creating || !newUser.trim() || !newPass.trim()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-ios text-[12px] bg-[#5856D6] text-white font-500 disabled:opacity-50 no-tap">
+              {creating ? <Loader2 size={11} className="animate-spin" /> : <UserPlus size={11} />}
+              {creating ? '创建中…' : '创建'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 账号列表 */}
+      {loading ? (
+        <div className="flex items-center gap-2 text-[13px] text-black/40 py-4">
+          <Loader2 size={13} className="animate-spin" />加载中…
+        </div>
+      ) : accounts.length === 0 ? (
+        <div className="text-[13px] text-black/35 text-center py-4">
+          暂无数据库账号。使用上方「新建账号」创建。
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {accounts.map(acc => (
+            <div key={acc.id}
+              className="flex items-center justify-between px-3 py-2.5 rounded-ios hover:bg-black/03 transition-colors">
+              <div className="flex items-center gap-3">
+                <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-600',
+                  acc.role === 'admin' ? 'bg-[#FF9500]/12 text-[#FF9500]' : 'bg-[#007AFF]/10 text-[#007AFF]')}>
+                  {acc.username[0].toUpperCase()}
+                </div>
+                <div>
+                  <div className="text-[13px] font-500 text-black/70">{acc.username}</div>
+                  <div className="text-[11px] text-black/35">
+                    {acc.role === 'admin' ? '管理员' : '客户'} ·
+                    创建于 {new Date(acc.created_at).toLocaleDateString('zh-CN')}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {changingPw === acc.id ? (
+                  <div className="flex items-center gap-1.5">
+                    <input type="text" value={pwDraft} onChange={e => setPwDraft(e.target.value)}
+                      placeholder="新密码" className="input-ios text-[12px] py-1 w-[120px]" />
+                    <button onClick={() => handleChangePassword(acc.id)} disabled={pwSaving || !pwDraft.trim()}
+                      className="text-[11px] text-[#007AFF] font-500 disabled:opacity-50">
+                      {pwSaving ? '…' : '确定'}
+                    </button>
+                    <button onClick={() => { setChangingPw(null); setPwDraft(''); }}
+                      className="text-[11px] text-black/35">取消</button>
+                  </div>
+                ) : (
+                  <>
+                    <button onClick={() => { setChangingPw(acc.id); setPwDraft(''); }}
+                      className="flex items-center gap-1 text-[11px] text-black/35 hover:text-[#007AFF] transition-colors no-tap">
+                      <Key size={10} />改密
+                    </button>
+                    <button onClick={() => handleDelete(acc.id, acc.username)}
+                      className="flex items-center gap-1 text-[11px] text-black/35 hover:text-[#FF3B30] transition-colors no-tap">
+                      <Trash2 size={10} />删除
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 状态消息 */}
+      {createMsg && (
+        <div className={cn('mt-3 text-[12px] flex items-center gap-1.5',
+          createOk ? 'text-[#34C759]' : 'text-[#FF3B30]')}>
+          {createOk ? <CheckCircle size={12} /> : <AlertCircle size={12} />}{createMsg}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── 主页面 ────────────────────────────────────────────────────
 export default function AdminPage() {
-  const [password, setPassword]   = useState('');
-  const [authed, setAuthed]       = useState(false);
   const [file, setFile]           = useState<File | null>(null);
   const [status, setStatus]       = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [uploadResult, setUploadResult] = useState<{ versionId: number; recordCount: number } | null>(null);
@@ -482,10 +620,9 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    if (!authed) return;
     loadVersions();
     loadPrompts();
-  }, [authed, loadVersions, loadPrompts]);
+  }, [loadVersions, loadPrompts]);
 
   async function handleUpload() {
     if (!file) return;
@@ -493,11 +630,7 @@ export default function AdminPage() {
     const form = new FormData();
     form.append('file', file);
     try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'x-admin-password': password },
-        body: form,
-      });
+      const res = await fetch('/api/upload', { method: 'POST', body: form });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || '上传失败');
       setUploadResult({ versionId: json.versionId, recordCount: json.recordCount });
@@ -510,12 +643,13 @@ export default function AdminPage() {
     }
   }
 
-  if (!authed) return <LoginGate onAuth={pw => { setPassword(pw); setAuthed(true); }} />;
-
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-slide-up">
 
-      {/* ── 上传区域 ── */}
+      {/* 账号管理 */}
+      <AccountManager />
+
+      {/* 上传区域 */}
       <div className="glass-card p-6">
         <h2 className="text-[17px] font-600 text-black/80 mb-4">上传新数据</h2>
         <div
@@ -532,8 +666,7 @@ export default function AdminPage() {
             dragging ? 'border-[#007AFF] bg-[#007AFF]/05'
               : file  ? 'border-[#34C759] bg-[#34C759]/04'
               : 'border-black/12 hover:border-[#007AFF]/40 hover:bg-[#007AFF]/02'
-          )}
-        >
+          )}>
           <input ref={inputRef} type="file" accept=".xlsx" className="hidden"
             onChange={e => setFile(e.target.files?.[0] || null)} />
           <Upload size={28} className={cn('mx-auto mb-3', file ? 'text-[#34C759]' : 'text-black/30')} />
@@ -557,21 +690,17 @@ export default function AdminPage() {
         </div>
 
         <div className="flex items-center justify-between mt-4">
-          <span className="text-[12px] text-black/35">已登录 · 数据将完全替换</span>
+          <span className="text-[12px] text-black/35">已登录为管理员 · 数据将完全替换</span>
           <button onClick={handleUpload} disabled={!file || status === 'uploading'}
             className={cn('btn-ios btn-primary', (!file || status === 'uploading') && 'opacity-50 cursor-not-allowed')}>
-            {status === 'uploading'
-              ? <><Loader2 size={14} className="animate-spin" /> 处理中…</>
-              : '开始上传'}
+            {status === 'uploading' ? <><Loader2 size={14} className="animate-spin" /> 处理中…</> : '开始上传'}
           </button>
         </div>
 
         {status === 'success' && uploadResult && (
           <div className="mt-3 glass-card-subtle p-3 flex items-center gap-2 border border-[#34C759]/20">
             <CheckCircle size={16} className="text-[#34C759] flex-shrink-0" />
-            <span className="text-[13px] text-black/65">
-              v{uploadResult.versionId} 已激活，共 {uploadResult.recordCount.toLocaleString()} 条 · 页面已自动刷新
-            </span>
+            <span className="text-[13px] text-black/65">v{uploadResult.versionId} 已激活，共 {uploadResult.recordCount.toLocaleString()} 条 · AI缓存已清除</span>
           </div>
         )}
         {status === 'error' && (
@@ -582,34 +711,29 @@ export default function AdminPage() {
         )}
       </div>
 
-      {/* ── AI Prompt 管理 ── */}
+      {/* AI Prompt 管理 */}
       <div>
         <div className="flex items-center gap-2 mb-3 px-1">
           <Sparkles size={14} className="text-[#AF52DE]" />
           <h2 className="text-[15px] font-600 text-black/70">AI 洞察 Prompt 管理</h2>
         </div>
-        {/* 概览洞察编辑 */}
-        <div className="mb-3">
-          <OverviewInsightPanel password={password} />
-        </div>
+        <div className="mb-3"><OverviewInsightPanel /></div>
         {prompts.length === 0 ? (
           <div className="glass-card p-6 text-center">
             <div className="text-[13px] text-black/35">暂无 Prompt 配置</div>
-            <div className="text-[12px] text-black/25 mt-1">
-              请先在 Supabase SQL Editor 执行 supabase/add_prompts_table.sql
-            </div>
+            <div className="text-[12px] text-black/25 mt-1">请先在 Supabase SQL Editor 执行 supabase/add_prompts_table.sql</div>
           </div>
         ) : (
           <div className="space-y-3">
-            <InsightsFieldPanel password={password} onSaved={loadPrompts} />
+            <InsightsFieldPanel onSaved={loadPrompts} />
             {prompts.filter(p => p.prompt_key !== 'insights_fields').map(p => (
-              <PromptCard key={p.id} prompt={p} password={password} onSaved={loadPrompts} />
+              <PromptCard key={p.id} prompt={p} onSaved={loadPrompts} />
             ))}
           </div>
         )}
       </div>
 
-      {/* ── 版本历史 ── */}
+      {/* 版本历史 */}
       {versions.length > 0 && (
         <div className="glass-card p-6">
           <div className="flex items-center gap-2 mb-4">

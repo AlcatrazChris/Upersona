@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
+import { requireAdmin } from '@/lib/auth-server';
 import { clearPromptCache } from '@/lib/deepseek';
 
 export const dynamic = 'force-dynamic';
-
-function checkAuth(req: NextRequest): boolean {
-  const provided = req.headers.get('x-admin-password') || '';
-  const expected = process.env.ADMIN_PASSWORD || '';
-  // 如果环境变量未设置，开发模式下放行（Vercel 必须设置）
-  if (!expected) return process.env.NODE_ENV !== 'production';
-  return provided === expected;
-}
 
 // GET: 获取所有 prompt（无需认证，前端展示用）
 export async function GET() {
@@ -23,10 +16,10 @@ export async function GET() {
   return NextResponse.json(data || []);
 }
 
-// PUT: 更新 prompt（需要认证）
+// PUT: 更新 prompt（需要管理员权限）
 export async function PUT(req: NextRequest) {
-  if (!checkAuth(req)) {
-    return NextResponse.json({ error: '认证失败：密码错误或未设置 ADMIN_PASSWORD 环境变量' }, { status: 401 });
+  if (!requireAdmin()) {
+    return NextResponse.json({ error: '需要管理员权限' }, { status: 401 });
   }
 
   const body = await req.json();

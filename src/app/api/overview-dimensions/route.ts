@@ -10,13 +10,15 @@ const STATUS_GROUPS = [
   { key: '退单',     values: ['退单'],                color: '#FF3B30' },
 ];
 
-// Overview 展示的维度（精简版）
-// 全量维度（与 PROFILE_DIMENSIONS 保持一致，多选字段也包含）
+// 计算时涉及的维度列
 const OVERVIEW_DIMS = [
   'age_group', 'education', 'occupation_category', 'family_structure',
   'annual_income', 'is_upgrade', 'consumption_views', 'use_scenarios',
   'info_channels', 'car_interests', 'hobbies', 'competing_models',
 ];
+
+// ── 进程内缓存：版本不变时跳过重复计算（overview-dimensions 是最重的路由）──
+let _cache: { versionId: number; data: unknown } | null = null;
 
 export async function GET() {
   const db = createServiceClient();
@@ -24,66 +26,104 @@ export async function GET() {
     .eq('is_active', true).order('version_id', { ascending: false }).limit(1).single();
   if (!vd) return NextResponse.json({ dims: [] });
 
-  const cols = OVERVIEW_DIMS.join(', ') + ', order_status';
+  // 命中缓存：直接返回，跳过全表扫描
+  if (_cache && _cache.versionId === vd.version_id) {
+    return NextResponse.json(_cache.data);
+  }
+
+  const cols  = OVERVIEW_DIMS.join(', ') + ', order_status';
   const users = await fetchUsers(db, cols, q => q.eq('data_version', vd.version_id));
   if (!users.length) return NextResponse.json({ dims: [] });
 
-  const statusGroups = STATUS_GROUPS.map(sg => ({
-    ...sg,
-    users: users.filter((u: Record<string, unknown>) => sg.values.includes(String(u.order_status))),
-    total: 0,
-  }));
-  statusGroups.forEach(sg => { sg.total = sg.users.length; });
+  // 按订单状态分组（仍需 O(n) 一次 filter）
+  const statusGroups = STATUS_GROUPS.map(sg => {
+    const grpUsers = (users as Record<string, unknown>[]).filter(u =>
+      sg.values.includes(String(u.order_status))
+    );
+    return { ...sg, users: grpUsers, total: grpUsers.length };
+  });
 
+  // ── 为每个维度预建计数 Map（O(n × dims)），替代行级 filter()（O(n² × dims × groups)）──
   const result = OVERVIEW_DIMS.map(dimKey => {
     const dimConfig = PROFILE_DIMENSIONS.find(d => d.key === dimKey);
     if (!dimConfig) return null;
 
-    // 收集所有标签并排序（多选字段需展开数组）
-    const labelSet = new Set<string>();
-    for (const u of users) {
-      const raw = (u as Record<string, unknown>)[dimKey];
+    // 收集标签集合 + 全局计数（O(n) 一次遍历）
+    const labelSet      = new Set<string>();
+    const totalCntMap: Record<string, number> = {};
+
+    for (const u of users as Record<string, unknown>[]) {
+      const raw = u[dimKey];
       if (dimConfig.isMultiSelect && Array.isArray(raw)) {
-        (raw as string[]).forEach(v => { if (v && v !== '(跳过)') labelSet.add(v); });
+        for (const v of raw as string[]) {
+          if (v && v !== '(跳过)') {
+            labelSet.add(v);
+            totalCntMap[v] = (totalCntMap[v] || 0) + 1;
+          }
+        }
       } else {
         const v = String(raw || '').trim();
-        if (v && v !== '(跳过)') labelSet.add(v);
+        if (v && v !== '(跳过)') {
+          labelSet.add(v);
+          totalCntMap[v] = (totalCntMap[v] || 0) + 1;
+        }
       }
     }
+
     let allLabels = Array.from(labelSet);
     if (dimConfig.isOrdered && dimConfig.orderedValues) {
       const om = Object.fromEntries(dimConfig.orderedValues.map((v, i) => [v, i]));
       allLabels.sort((a, b) => (om[a] ?? 999) - (om[b] ?? 999));
     } else {
-      const cnt: Record<string, number> = {};
-      for (const u of users) {
-        const v = String((u as Record<string, unknown>)[dimKey] || '').trim();
-        if (v) cnt[v] = (cnt[v] || 0) + 1;
-      }
-      allLabels.sort((a, b) => (cnt[b] || 0) - (cnt[a] || 0));
+      allLabels.sort((a, b) => (totalCntMap[b] || 0) - (totalCntMap[a] || 0));
     }
 
-    // 每个标签在各订单状态组内的占比
+    // 为每个订单状态组建 Map（O(n × groups) 总计）
+    interface GroupMap {
+      map: Record<string, number>;
+      multiSelectDenom: number;
+      total: number;
+    }
+    const groupMaps: GroupMap[] = statusGroups.map(sg => {
+      const map: Record<string, number> = {};
+      let multiSelectDenom = 0;
+      for (const u of sg.users) {
+        const raw = (u as Record<string, unknown>)[dimKey];
+        if (dimConfig.isMultiSelect && Array.isArray(raw)) {
+          for (const v of raw as string[]) {
+            if (v && v !== '(跳过)') {
+              map[v] = (map[v] || 0) + 1;
+              multiSelectDenom++;
+            }
+          }
+        } else {
+          const v = String(raw || '').trim();
+          if (v && v !== '(跳过)') map[v] = (map[v] || 0) + 1;
+        }
+      }
+      return { map, multiSelectDenom, total: sg.total };
+    });
+
+    // 生成行数据（O(labels × groups)，无 filter）
     const rows = allLabels.map(label => {
       const entry: Record<string, string | number> = { label };
-      for (const sg of statusGroups) {
-        const count = sg.users.filter((u: Record<string, unknown>) =>
-          String((u as Record<string, unknown>)[dimKey] || '').trim() === label
-        ).length;
-        entry[sg.key] = sg.total > 0
-          ? parseFloat((count / sg.total * 100).toFixed(1))
-          : 0;
+      for (let gi = 0; gi < statusGroups.length; gi++) {
+        const sg = statusGroups[gi];
+        const gm = groupMaps[gi];
+        const count = gm.map[label] || 0;
+        const denom = dimConfig.isMultiSelect ? gm.multiSelectDenom : gm.total;
+        entry[sg.key] = denom > 0 ? parseFloat((count / denom * 100).toFixed(1)) : 0;
       }
       return entry;
     });
 
-    return {
-      dimKey,
-      dimLabel: dimConfig.label,
-      rows,
-      allLabels,
-    };
+    return { dimKey, dimLabel: dimConfig.label, rows, allLabels };
   }).filter(Boolean);
 
-  return NextResponse.json({ dims: result, statusGroups: STATUS_GROUPS, totalSamples: users.length });
+  const data = { dims: result, statusGroups: STATUS_GROUPS, totalSamples: users.length };
+
+  // 写入进程缓存
+  _cache = { versionId: vd.version_id, data };
+
+  return NextResponse.json(data);
 }

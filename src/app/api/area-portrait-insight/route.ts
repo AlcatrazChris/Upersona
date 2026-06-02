@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   const { data: cached } = await db.from('insights_cache')
     .select('content').eq('cache_key', cacheKey).single();
   if (cached && !body.noCache) {
-    return NextResponse.json({ result: JSON.parse(cached.content), cached: true });
+    return NextResponse.json({ result: JSON.parse(cached.content), cached: true, cacheKey });
   }
 
   // ── 构建给 AI 的数据：每个地域传所有维度的 TOP3，含全国对比 ──
@@ -117,12 +117,17 @@ ${areaLines}
     result = JSON.parse(fixed);
   }
 
+  // 获取活跃版本号用于缓存标记
+  const { data: vd } = await db.from('data_versions').select('version_id')
+    .eq('is_active', true).order('version_id', { ascending: false }).limit(1).single();
+
   await db.from('insights_cache').upsert({
     cache_key: cacheKey,
     insight_type: 'area_portrait',
     content: JSON.stringify(result),
+    data_version: vd?.version_id ?? 0,
     generated_at: new Date().toISOString(),
   }, { onConflict: 'cache_key' });
 
-  return NextResponse.json({ result, cached: false });
+  return NextResponse.json({ result, cached: false, cacheKey });
 }

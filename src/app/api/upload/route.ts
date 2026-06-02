@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { createServiceClient, fetchUsers } from '@/lib/supabase';
+import { createServiceClient } from '@/lib/supabase';
+import { requireAdmin } from '@/lib/auth-server';
 import * as XLSX from 'xlsx';
 import { classifyOccupations } from '@/lib/deepseek';
 import { parseMultiSelect } from '@/lib/utils';
@@ -19,16 +20,9 @@ function mapIntentLabel(orderStatus: string): 0 | 1 {
   return orderStatus === '已锁单' || orderStatus === '订单完成' ? 1 : 0;
 }
 
-function checkAuth(req: NextRequest): boolean {
-  const provided = req.headers.get('x-admin-password') || '';
-  const expected = process.env.ADMIN_PASSWORD || '';
-  if (!expected) return process.env.NODE_ENV !== 'production';
-  return provided === expected;
-}
-
 export async function POST(req: NextRequest) {
-  if (!checkAuth(req)) {
-    return NextResponse.json({ error: '认证失败：密码错误或未设置 ADMIN_PASSWORD 环境变量' }, { status: 401 });
+  if (!requireAdmin()) {
+    return NextResponse.json({ error: '需要管理员权限' }, { status: 401 });
   }
 
   const db = createServiceClient();
@@ -134,8 +128,11 @@ export async function POST(req: NextRequest) {
     // 激活新版本
     await db.rpc('set_active_version', { v_id: versionId });
 
-    // 清除所有 AI 洞察缓存（新数据入库后旧缓存失效）
-    await db.from('insights_cache').delete().lt('version_id', versionId);
+    // 清除旧版本 AI 洞察缓存（新数据入库后旧缓存失效）
+    // data_version=0 是自定义内容的哨兵值，必须保留；只删除有版本号的旧 AI 缓存
+    await db.from('insights_cache').delete()
+      .gt('data_version', 0)
+      .lt('data_version', versionId);
 
     // ── 关键：触发 Next.js revalidate，清除 Server Component 缓存 ──
     revalidatePath('/', 'layout');   // 清除所有路由缓存

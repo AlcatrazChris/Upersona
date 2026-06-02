@@ -125,5 +125,5 @@ export async function GET(req: NextRequest) {
     } catch (err) { console.error('生成洞察失败:', err); }
   }
 
-  return NextResponse.json({ dimension, dimensionLabel: dimLabel, regions: compareRegions, allLabels, insight, insightCached });
+  return NextResponse.json({ dimension, dimensionLabel: dimLabel, regions: compareRegions, allLabels, insight, insightCached, cacheKey });
 }

@@ -221,6 +221,6 @@ export async function GET(req: NextRequest) {
     regionType: type, regionName: name, orderStatusFilter: orderStatus,
     sampleCount: totalSamples, strongIntentCount: strongCount,
     weakIntentCount: weakCount, strongIntentRatio: strongRatio,
-    aiCard, cached,
+    aiCard, cached, cacheKey,
   });
 }

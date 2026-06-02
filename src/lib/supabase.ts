@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
+// requireAdmin / requireAuth → 请从 '@/lib/auth-server' 导入（仅 API Route / Server Component 中使用）
+
 const supabaseUrl     = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 

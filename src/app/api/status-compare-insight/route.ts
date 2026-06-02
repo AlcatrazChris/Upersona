@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
+import { requireAdmin } from '@/lib/auth-server';
 import { generateStatusInsight, getPrompt } from '@/lib/deepseek';
 
 const DEFAULT_OVERVIEW_INSIGHT_PROMPT =
@@ -123,12 +124,14 @@ export async function POST(req: NextRequest) {
   // ── 概览模式 ──
   if (isOverview) {
     if (savePrefer) {
+      if (!requireAdmin()) return NextResponse.json({ error: '需要管理员权限' }, { status: 401 });
       const stored = await getExisting();
       stored.prefer = prefer ?? 'ai';
       await upsert(stored);
       return NextResponse.json(buildResponse(stored));
     }
     if (saveCustom) {
+      if (!requireAdmin()) return NextResponse.json({ error: '需要管理员权限' }, { status: 401 });
       const stored = await getExisting();
       stored.custom = customText ?? '';
       stored.prefer = 'custom'; // 保存自定义时自动切换为显示自定义
@@ -143,7 +146,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(buildResponse(parseContent(cached.content), { cached: true }));
       }
     }
-    // forceRegenerate=true 时：先检查 prefer 配置，custom 模式下不调用 DeepSeek
+    // forceRegenerate=true 时：需要管理员权限，先检查 prefer 配置，custom 模式下不调用 DeepSeek
+    if (!requireAdmin()) return NextResponse.json({ error: '需要管理员权限' }, { status: 401 });
     const existingOverview = await getExisting();
     if (existingOverview.prefer === 'custom' && existingOverview.custom) {
       return NextResponse.json(buildResponse(existingOverview, { cached: true, skipped: 'custom_mode' }));
@@ -229,6 +233,7 @@ export async function POST(req: NextRequest) {
 
   // ── 普通维度模式 ──
   if (savePrefer) {
+    if (!requireAdmin()) return NextResponse.json({ error: '需要管理员权限' }, { status: 401 });
     const stored = await getExisting();
     stored.prefer = prefer ?? 'ai';
     await upsert(stored);
@@ -236,6 +241,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (saveCustom) {
+    if (!requireAdmin()) return NextResponse.json({ error: '需要管理员权限' }, { status: 401 });
     const stored = await getExisting();
     stored.custom = customText ?? '';
     stored.prefer = 'custom'; // 保存自定义时自动切换为显示自定义
@@ -252,7 +258,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // forceRegenerate=true 时：先检查 DB 中 prefer 配置，custom 模式下不调用 DeepSeek
+  // forceRegenerate=true 时：需要管理员权限
+  if (!requireAdmin()) return NextResponse.json({ error: '需要管理员权限' }, { status: 401 });
+  // 先检查 DB 中 prefer 配置，custom 模式下不调用 DeepSeek
   const existingStored = await getExisting();
   if (existingStored.prefer === 'custom' && existingStored.custom) {
     return NextResponse.json(buildResponse(existingStored, { cached: true, skipped: 'custom_mode' }));

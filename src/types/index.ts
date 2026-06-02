@@ -41,6 +41,7 @@ export interface CompareData {
   dimension: string; dimensionLabel: string;
   regions: CompareDataItem[]; allLabels: string[];
   insight?: string; insightCached: boolean;
+  cacheKey?: string;
 }
 
 export interface CoreUserProfile {
@@ -54,6 +55,7 @@ export interface CoreUserProfile {
     tags: { age?: string; income?: string; competing?: string; attitude?: string; extra?: string };
   } | null;
   cached: boolean;
+  cacheKey?: string;
 }
 
 // 雷达图

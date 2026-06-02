@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { MapPin, Loader2, AlertCircle, ChevronDown } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { AiUserCard } from '@/components/insights/AiUserCard';
+import { InsightOverlay } from '@/components/InsightOverlay';
 import { OrderStatusFilter } from '@/components/OrderStatusFilter';
 import { cn } from '@/lib/utils';
 import type { CoreUserProfile, OrderStatus, RegionType } from '@/types';
@@ -115,10 +116,13 @@ export default function InsightsPage() {
 
       {/* AI 画像卡片 */}
       {!loading && profileData && (
-        <AiUserCard
-          data={profileData}
-          onRefresh={() => fetchProfile(true)}
-          refreshing={refreshing}
+        <InsightOverlay
+          cacheKey={profileData.cacheKey || ''}
+          label={`${profileData.regionName} · 核心用户画像`}
+          aiContent={<AiUserCard data={profileData} refreshing={refreshing} />}
+          hasAiContent={!!profileData.aiCard}
+          onRegenerate={() => fetchProfile(true)}
+          loading={refreshing}
         />
       )}
     </div>

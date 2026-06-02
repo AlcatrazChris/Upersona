@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Sparkles, RefreshCw, Loader2, ChevronDown, Download } from 'lucide-react';
+import { Loader2, ChevronDown, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createPortal } from 'react-dom';
+import { InsightOverlay } from '@/components/InsightOverlay';
 import { RegionMultiSelect } from '@/components/RegionMultiSelect';
 import type { RegionType as RType } from '@/components/RegionMultiSelect';
 
@@ -240,6 +241,7 @@ export default function AreaPortraitPage() {
   const [aiResult,        setAiResult]        = useState<AiResult | null>(null);
   const [loading,         setLoading]         = useState(false);
   const [aiLoading,       setAiLoading]       = useState(false);
+  const [aiCacheKey,      setAiCacheKey]      = useState('');
   const [error,           setError]           = useState('');
   const autoFired = useRef(false);
 
@@ -292,7 +294,10 @@ export default function AreaPortraitPage() {
         }),
       });
       const json = await res.json();
-      if (res.ok) setAiResult(json.result);
+      if (res.ok) {
+        setAiResult(json.result);
+        setAiCacheKey(json.cacheKey || '');
+      }
     } finally { setAiLoading(false); }
   }, [data, orderStatus, regionType]);
 
@@ -389,18 +394,13 @@ export default function AreaPortraitPage() {
             <StatusSelect value={orderStatus} onChange={setOrderStatus} />
           </div>
 
-          <div className="ml-auto flex items-center gap-3">
-            {data && (
+          {data && (
+            <div className="ml-auto">
               <span className="text-[12px] text-black/35 tabular-nums">
                 共 <span className="font-600 text-black/55">{data.totalSamples.toLocaleString()}</span> 人
               </span>
-            )}
-            <button onClick={() => generateAI(true)} disabled={aiLoading || !data}
-              className="flex items-center gap-1.5 text-[12px] text-black/35 hover:text-[#007AFF] transition-colors disabled:opacity-40">
-              <RefreshCw size={11} className={aiLoading ? 'animate-spin' : ''} />
-              刷新 AI
-            </button>
-          </div>
+            </div>
+          )}
         </div>
 
         {/* 地域多选（含搜索）—— 始终显示，不依赖 data */}
@@ -462,47 +462,26 @@ export default function AreaPortraitPage() {
           </div>
 
           {/* AI 特征总结 */}
-          <div className="glass-card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Sparkles size={14} className="text-[#AF52DE]" />
-                <h3 className="text-[15px] font-600 text-black/75">AI 差异化特征总结</h3>
-                <span className="text-[12px] text-black/35">每个地域4-6条特征，含具体数据</span>
-              </div>
-              <div className="flex items-center gap-3">
+          <InsightOverlay
+            cacheKey={aiCacheKey}
+            label="AI 差异化特征总结"
+            aiContent={
+              <>
                 {aiResult && (
-                  <button onClick={exportExcel}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-ios text-[12px] bg-[#007AFF]/08 text-[#007AFF] hover:bg-[#007AFF]/15 transition-colors no-tap font-500">
-                    <Download size={12} />导出 Excel
-                  </button>
+                  <div className="flex justify-end mb-3">
+                    <button onClick={exportExcel}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-ios text-[12px] bg-[#007AFF]/08 text-[#007AFF] hover:bg-[#007AFF]/15 transition-colors no-tap font-500">
+                      <Download size={12} />导出 Excel
+                    </button>
+                  </div>
                 )}
-                {aiResult && (
-                  <button onClick={() => generateAI(true)} disabled={aiLoading}
-                    className="flex items-center gap-1 text-[12px] text-black/35 hover:text-[#007AFF] transition-colors">
-                    <RefreshCw size={11} className={aiLoading ? 'animate-spin' : ''} />重新生成
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {aiLoading ? (
-              <div className="flex items-center gap-2 text-[13px] text-black/40 py-6">
-                <Loader2 size={14} className="animate-spin" />正在分析各地域差异化特征，请稍候…
-              </div>
-            ) : aiResult ? (
-              <AiTable aiResult={aiResult} areas={data.areas} />
-            ) : (
-              <div className="text-center py-6 space-y-2">
-                <p className="text-[13px] text-black/40">
-                  {regionType === 'area' ? '正在准备生成…' : `已选 ${data.areas.length} 个${regionType === 'province' ? '省份' : '城市'}，点击开始分析`}
-                </p>
-                <button onClick={() => generateAI()}
-                  className="btn-ios btn-primary text-[13px]">
-                  <Sparkles size={13} />生成 AI 总结
-                </button>
-              </div>
-            )}
-          </div>
+                <AiTable aiResult={aiResult!} areas={data.areas} />
+              </>
+            }
+            hasAiContent={!!aiResult}
+            onRegenerate={() => generateAI(true)}
+            loading={aiLoading}
+          />
         </div>
       )}
     </div>

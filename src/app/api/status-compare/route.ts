@@ -38,15 +38,25 @@ export async function GET(req: NextRequest) {
 
   const { isOrdered, orderedValues, isMultiSelect } = dimConfig;
 
-  // 收集所有维度标签
-  const labelSet = new Set<string>();
-  for (const u of users) {
+  // ── 单次遍历收集标签集合与全局计数 Map（O(n)，取代 O(n²) filter 嵌套）──
+  const labelSet      = new Set<string>();
+  const totalCountMap: Record<string, number> = {};
+
+  for (const u of users as Record<string, unknown>[]) {
     const val = u[dim];
     if (isMultiSelect && Array.isArray(val)) {
-      (val as string[]).forEach(v => v && v !== '(跳过)' && labelSet.add(v));
+      for (const v of val as string[]) {
+        if (v && v !== '(跳过)') {
+          labelSet.add(v);
+          totalCountMap[v] = (totalCountMap[v] || 0) + 1;
+        }
+      }
     } else {
       const v = String(val || '').trim();
-      if (v && v !== '(跳过)') labelSet.add(v);
+      if (v && v !== '(跳过)') {
+        labelSet.add(v);
+        totalCountMap[v] = (totalCountMap[v] || 0) + 1;
+      }
     }
   }
 
@@ -55,89 +65,80 @@ export async function GET(req: NextRequest) {
     const orderMap = Object.fromEntries(orderedValues.map((v, i) => [v, i]));
     allLabels.sort((a, b) => (orderMap[a] ?? 999) - (orderMap[b] ?? 999));
   } else {
-    const totalCount: Record<string, number> = {};
-    for (const label of allLabels) {
-      totalCount[label] = users.filter((u: Record<string, unknown>) => {
-        const val = u[dim];
-        return isMultiSelect && Array.isArray(val)
-          ? (val as string[]).includes(label)
-          : String(val || '').trim() === label;
-      }).length;
-    }
-    allLabels.sort((a, b) => (totalCount[b] || 0) - (totalCount[a] || 0));
+    // 直接用 O(1) Map 查询，不再调用 filter()
+    allLabels.sort((a, b) => (totalCountMap[b] || 0) - (totalCountMap[a] || 0));
   }
 
-  // ── 核心修改：列内百分比（每个订单状态内，各维度取值各占多少） ──
-  //
-  // 先按订单状态分组，得到三组用户
-  // 再在每组内统计各维度取值的分布
-  // 这样"锁单/提车"组加起来=100%，"退单"组加起来=100%（多选题除外）
-
+  // ── 列内百分比：按订单状态分组 ──
   const statusUserGroups = STATUS_GROUPS.map(sg => {
-    const groupUsers = users.filter((u: Record<string, unknown>) =>
+    const groupUsers = (users as Record<string, unknown>[]).filter(u =>
       sg.values.includes(String(u.order_status))
     );
     return { ...sg, users: groupUsers, total: groupUsers.length };
   });
 
-  // 对每个维度标签，统计它在各订单状态组内的占比
-  const rows = allLabels.map(label => {
-    const statusCounts = statusUserGroups.map(sg => {
-      // 在这个订单状态组内，包含此维度标签的用户数
-      const count = sg.users.filter((u: Record<string, unknown>) => {
-        const val = u[dim];
-        return isMultiSelect && Array.isArray(val)
-          ? (val as string[]).includes(label)
-          : String(val || '').trim() === label;
-      }).length;
+  // ── 预建每个订单状态组的计数 Map（O(n × groups)，避免后续 O(labels × n × groups)）──
+  interface GroupMap {
+    map: Record<string, number>;
+    multiSelectDenom: number;   // 多选题分母：组内所有有效选项总数
+    total: number;               // 单选题分母：组内用户总数
+  }
 
-      // 多选题：分母 = 该订单状态组的所有选项计数之和
-      // 单选题：分母 = 该订单状态组的用户总数
-      let denominator = sg.total;
-      if (isMultiSelect) {
-        denominator = sg.users.reduce((sum: number, u: Record<string, unknown>) => {
-          const val = u[dim];
-          return sum + (Array.isArray(val) ? (val as string[]).filter(v => v && v !== '(跳过)').length : 0);
-        }, 0);
+  const groupMaps: GroupMap[] = statusUserGroups.map(sg => {
+    const map: Record<string, number> = {};
+    let multiSelectDenom = 0;
+    for (const u of sg.users) {
+      const val = u[dim];
+      if (isMultiSelect && Array.isArray(val)) {
+        for (const v of val as string[]) {
+          if (v && v !== '(跳过)') {
+            map[v] = (map[v] || 0) + 1;
+            multiSelectDenom++;
+          }
+        }
+      } else {
+        const v = String(val || '').trim();
+        if (v && v !== '(跳过)') map[v] = (map[v] || 0) + 1;
       }
+    }
+    return { map, multiSelectDenom, total: sg.total };
+  });
 
+  // ── 生成结果行（O(labels × groups)，不再依赖 filter()）──
+  const rows = allLabels.map(label => {
+    const statusCounts = statusUserGroups.map((sg, gi) => {
+      const gm        = groupMaps[gi];
+      const count     = gm.map[label] || 0;
+      const denom     = isMultiSelect ? gm.multiSelectDenom : gm.total;
       return {
-        status: sg.key,
+        status:     sg.key,
         count,
         groupTotal: sg.total,
-        pct: denominator > 0 ? parseFloat((count / denominator * 100).toFixed(1)) : 0,
+        pct: denom > 0 ? parseFloat((count / denom * 100).toFixed(1)) : 0,
       };
     });
 
-    // 同时保留行内总计（用于显示样本量）
-    const totalInDim = users.filter((u: Record<string, unknown>) => {
-      const val = u[dim];
-      return isMultiSelect && Array.isArray(val)
-        ? (val as string[]).includes(label)
-        : String(val || '').trim() === label;
-    }).length;
-
-    return { label, total: totalInDim, statusCounts };
+    return { label, total: totalCountMap[label] || 0, statusCounts };
   });
 
   // 全局统计
+  const totalUsers = users.length;
   const globalStatus = statusUserGroups.map(sg => ({
     status: sg.key,
-    count: sg.total,
-    pct: parseFloat((sg.total / users.length * 100).toFixed(1)),
+    count:  sg.total,
+    pct:    parseFloat((sg.total / totalUsers * 100).toFixed(1)),
   }));
 
   return NextResponse.json({
-    dimension: dim,
+    dimension:      dim,
     dimensionLabel: dimConfig.label,
-    isMultiSelect: dimConfig.isMultiSelect,
+    isMultiSelect:  dimConfig.isMultiSelect,
     allLabels,
     rows,
-    totalSamples: users.length,
+    totalSamples:  totalUsers,
     globalStatus,
-    statusGroups: STATUS_GROUPS,
-    filter: { area, province, city },
-    // 告诉前端百分比的含义
+    statusGroups:  STATUS_GROUPS,
+    filter:        { area, province, city },
     pctNote: isMultiSelect
       ? '各订单状态组内多选题各项占比，组内各项之和=100%'
       : '各订单状态组内该维度取值的占比，组内各项之和=100%',

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createServiceClient, fetchUsers } from '@/lib/supabase';
+import { createServiceClient } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,24 +15,40 @@ export async function GET() {
     areaDistribution: [], version: null,
   });
 
-  const rows = await fetchUsers(db, 'order_status, region_area',
-    q => q.eq('data_version', vd.version_id)
-  );
+  // ── 并行发起：3 条轻量 COUNT 查询 + 1 条区域明细查询 ──
+  // HEAD 请求（count:'exact', head:true）只传输 Header，无行数据，极速
+  const [totalRes, lockedRes, cancelledRes, areaRes] = await Promise.all([
+    db.from('users').select('*', { count: 'exact', head: true })
+      .eq('data_version', vd.version_id),
+    db.from('users').select('*', { count: 'exact', head: true })
+      .eq('data_version', vd.version_id)
+      .in('order_status', ['已锁单', '订单完成']),
+    db.from('users').select('*', { count: 'exact', head: true })
+      .eq('data_version', vd.version_id)
+      .eq('order_status', '退单'),
+    // 区域明细：仅拉取两列，配合 O(n) Map 聚合
+    db.from('users')
+      .select('region_area, order_status')
+      .eq('data_version', vd.version_id)
+      .limit(50000),     // 足够大的 limit，避免截断
+  ]);
 
-  const total     = rows.length;
-  const locked    = rows.filter((u: { order_status: string }) =>
-    u.order_status === '已锁单' || u.order_status === '订单完成').length;
-  const cancelled = rows.filter((u: { order_status: string }) =>
-    u.order_status === '退单').length;
+  const total     = totalRes.count     ?? 0;
+  const locked    = lockedRes.count    ?? 0;
+  const cancelled = cancelledRes.count ?? 0;
   const pending   = total - locked - cancelled;
 
-  const areaMap: Record<string, { total: number; locked: number; pending: number; cancelled: number }> = {};
-  for (const u of rows as { order_status: string; region_area: string }[]) {
-    if (!areaMap[u.region_area]) areaMap[u.region_area] = { total: 0, locked: 0, pending: 0, cancelled: 0 };
-    areaMap[u.region_area].total++;
-    if (u.order_status === '已锁单' || u.order_status === '订单完成') areaMap[u.region_area].locked++;
-    else if (u.order_status === '退单') areaMap[u.region_area].cancelled++;
-    else areaMap[u.region_area].pending++;
+  // ── O(n) Map 聚合区域分布 ──
+  type AreaStat = { total: number; locked: number; pending: number; cancelled: number };
+  const areaMap: Record<string, AreaStat> = {};
+
+  for (const u of (areaRes.data ?? []) as { order_status: string; region_area: string }[]) {
+    const a = u.region_area || '未知';
+    if (!areaMap[a]) areaMap[a] = { total: 0, locked: 0, pending: 0, cancelled: 0 };
+    areaMap[a].total++;
+    if (u.order_status === '已锁单' || u.order_status === '订单完成') areaMap[a].locked++;
+    else if (u.order_status === '退单') areaMap[a].cancelled++;
+    else areaMap[a].pending++;
   }
 
   const areaDistribution = Object.entries(areaMap)
