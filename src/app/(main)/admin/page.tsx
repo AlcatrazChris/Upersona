@@ -5,7 +5,7 @@ import {
   Upload, CheckCircle, AlertCircle, Loader2,
   Database, History, Sparkles, ChevronDown, ChevronUp,
   Save, RotateCcw, Info, RefreshCw, Edit3,
-  Users, Trash2, UserPlus, Key,
+  Users, Trash2, UserPlus, Key, Activity, Shield, ShieldOff,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -394,6 +394,15 @@ interface Account {
   updated_at: string;
 }
 
+interface LoginLog {
+  id: number;
+  username: string;
+  ip: string | null;
+  user_agent: string | null;
+  success: boolean;
+  logged_at: string;
+}
+
 function AccountManager() {
   const [accounts, setAccounts]       = useState<Account[]>([]);
   const [loading, setLoading]         = useState(true);
@@ -407,6 +416,9 @@ function AccountManager() {
   const [changingPw, setChangingPw]   = useState<number | null>(null);
   const [pwDraft, setPwDraft]         = useState('');
   const [pwSaving, setPwSaving]       = useState(false);
+  const [showLogs, setShowLogs]       = useState(false);
+  const [logs, setLogs]               = useState<LoginLog[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -415,6 +427,21 @@ function AccountManager() {
       if (Array.isArray(json)) setAccounts(json);
     } finally { setLoading(false); }
   }, []);
+
+  const loadLogs = useCallback(async () => {
+    setLogsLoading(true);
+    try {
+      const res = await fetch('/api/accounts/logs?limit=50');
+      const json = await res.json();
+      if (Array.isArray(json)) setLogs(json);
+    } finally { setLogsLoading(false); }
+  }, []);
+
+  function toggleLogs() {
+    const next = !showLogs;
+    setShowLogs(next);
+    if (next && logs.length === 0) loadLogs();
+  }
 
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
 
@@ -592,6 +619,62 @@ function AccountManager() {
           {createOk ? <CheckCircle size={12} /> : <AlertCircle size={12} />}{createMsg}
         </div>
       )}
+
+      {/* 登录日志折叠区 */}
+      <div className="mt-4 border-t border-black/06 pt-3">
+        <button onClick={toggleLogs}
+          className="flex items-center gap-2 text-[12px] text-black/40 hover:text-black/65 transition-colors no-tap w-full">
+          <Activity size={12} />
+          <span className="font-500">登录记录</span>
+          <span className="text-[11px] text-black/25">（最近50次，含各设备IP）</span>
+          <ChevronDown size={11} className={cn('ml-auto transition-transform', showLogs && 'rotate-180')} />
+        </button>
+
+        {showLogs && (
+          <div className="mt-3">
+            <div className="flex justify-end mb-2">
+              <button onClick={loadLogs} disabled={logsLoading}
+                className="flex items-center gap-1 text-[11px] text-black/35 hover:text-[#007AFF] transition-colors">
+                <RefreshCw size={10} className={logsLoading ? 'animate-spin' : ''} />刷新
+              </button>
+            </div>
+            {logsLoading ? (
+              <div className="flex items-center gap-2 text-[12px] text-black/35 py-3">
+                <Loader2 size={12} className="animate-spin" />加载中…
+              </div>
+            ) : logs.length === 0 ? (
+              <div className="text-[12px] text-black/30 text-center py-3">
+                暂无记录（需先执行 add_login_logs_table.sql）
+              </div>
+            ) : (
+              <div className="space-y-0.5 max-h-[300px] overflow-y-auto">
+                {logs.map(log => (
+                  <div key={log.id}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-ios hover:bg-black/02 transition-colors text-[11px]">
+                    {log.success
+                      ? <Shield size={10} className="text-[#34C759] flex-shrink-0" />
+                      : <ShieldOff size={10} className="text-[#FF3B30] flex-shrink-0" />}
+                    <span className={cn('font-500 w-20 truncate flex-shrink-0',
+                      log.success ? 'text-black/65' : 'text-[#FF3B30]/70')}>
+                      {log.username}
+                    </span>
+                    <span className="text-[#007AFF]/70 font-mono w-28 truncate flex-shrink-0">{log.ip || '—'}</span>
+                    <span className="text-black/30 flex-1 truncate hidden sm:block">
+                      {log.user_agent ? log.user_agent.slice(0, 60) : '—'}
+                    </span>
+                    <span className="text-black/30 flex-shrink-0 tabular-nums">
+                      {new Date(log.logged_at).toLocaleString('zh-CN', {
+                        month: 'numeric', day: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -718,19 +801,19 @@ export default function AdminPage() {
           <h2 className="text-[15px] font-600 text-black/70">AI 洞察 Prompt 管理</h2>
         </div>
         <div className="mb-3"><OverviewInsightPanel /></div>
-        {prompts.length === 0 ? (
-          <div className="glass-card p-6 text-center">
-            <div className="text-[13px] text-black/35">暂无 Prompt 配置</div>
-            <div className="text-[12px] text-black/25 mt-1">请先在 Supabase SQL Editor 执行 supabase/add_prompts_table.sql</div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <InsightsFieldPanel onSaved={loadPrompts} />
-            {prompts.filter(p => p.prompt_key !== 'insights_fields').map(p => (
-              <PromptCard key={p.id} prompt={p} onSaved={loadPrompts} />
-            ))}
-          </div>
-        )}
+        <div className="space-y-3">
+          <InsightsFieldPanel onSaved={loadPrompts} />
+          {prompts.filter(p => p.prompt_key !== 'insights_fields').map(p => (
+            <PromptCard key={p.id} prompt={p} onSaved={loadPrompts} />
+          ))}
+          {prompts.length === 0 && (
+            <div className="glass-card p-6 text-center">
+              <div className="text-[13px] text-black/35 flex items-center justify-center gap-2">
+                <Loader2 size={14} className="animate-spin" />Prompt 配置加载中…
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 版本历史 */}

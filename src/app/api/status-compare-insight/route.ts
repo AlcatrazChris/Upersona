@@ -2,16 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { requireAdmin } from '@/lib/auth-server';
 import { generateStatusInsight, getPrompt } from '@/lib/deepseek';
-
-const DEFAULT_OVERVIEW_INSIGHT_PROMPT =
-`你是华境S汽车用户研究专家。以下是各维度用户的订单状态分布（列内百分比，即各订单状态组内该维度取值的占比）：
-
-{summaryLines}
-
-请用2-3段纯文本（不加Markdown格式）分析：
-1. 哪些维度的锁单用户与退单用户差异最显著？核心差异是什么？
-2. 整体来看，什么样的用户特征与锁单率更相关？
-每段直接陈述，不加标题和编号。`;
+import { DEFAULT_OVERVIEW_INSIGHT_PROMPT } from '@/lib/prompt-defaults';
 
 // 概览洞察：基于各维度 TOP 数据生成整体差异分析
 async function generateOverviewInsight(dimsData: {

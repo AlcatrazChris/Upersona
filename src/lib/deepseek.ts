@@ -1,3 +1,11 @@
+import {
+  DEFAULT_COMPARE_PROMPT,
+  DEFAULT_CORE_PROMPT,
+  DEFAULT_PREDICT_INTENT_PROMPT,
+  DEFAULT_STATUS_INSIGHT_PROMPT,
+  DEFAULT_OVERVIEW_INSIGHT_PROMPT,
+} from '@/lib/prompt-defaults';
+
 const DEEPSEEK_BASE = 'https://api.deepseek.com/v1';
 
 interface Message { role: 'system' | 'user' | 'assistant'; content: string; }
@@ -184,21 +192,7 @@ export async function generateCompareInsight(params: {
     .sort((a, b) => b[1] - a[1]).slice(0, 4)
     .map(([l, v]) => `${l} ${v}%`).join('、');
 
-  // 默认 prompt 模板（用占位符，不用 JS 插值）
-  const DEFAULT_COMPARE_PROMPT =
-`你是华境S汽车品牌的用户研究分析师，正在分析【{orderNote}】用户群的「{dimensionLabel}」维度在不同地区之间的差异。
-
-数据（各地区 TOP3 分布，含与均值的最大偏差）：
-{regionLines}
-
-各地区均值参考：{globalLine}
-
-请从以下角度自由发挥，输出 3-5 句分析洞察：
-1. 找出最显著的地区间差异（哪个地区在哪个维度上远高/低于均值）
-2. 推断可能的原因（城市特征、消费结构、人口特点等）
-3. 给出对华境S在该维度上的差异化运营建议（如果数据足够支撑）
-
-语言风格：专业但生动，避免罗列数字，直接给出判断和建议。直接输出分析文字，不加标题或编号：`;
+  // DEFAULT_COMPARE_PROMPT 已从 prompt-defaults.ts 导入
 
   // 从 DB 读取（管理员可覆盖），再把占位符替换为实际数据
   const template = await getPrompt('compare_insight', DEFAULT_COMPARE_PROMPT);
@@ -294,54 +288,7 @@ export async function generateCoreUserCard(params: {
     ? sampleUserRows.map((r, i) => `第${i+1}人: ${r}`).join('\n')
     : '（无样本行数据）';
 
-  // 默认 prompt 模板（用占位符，不用 JS 插值）
-  const DEFAULT_CORE_PROMPT =
-`你是汽车用户研究专家，擅长从原始用户数据中发现有价值的人群规律。
-
-【任务背景】
-分析{region}地区华境S潜在用户（{orderNote}），共{totalSamples}人，强意向{strongCount}人（占{strongRatio}%）。
-
-【该地区与全国均值的显著差异】
-{devText}
-
-【原始样本行（每行是一个真实用户，字段顺序：职业|年龄|收入|家庭结构|学历|增换购|付款方式|消费观念|用车场景|对比车型|了解渠道）】
-{sampleRowsText}
-
-【维度统计汇总（辅助参考）】
-{statsText}
-
----
-
-【你的任务】
-
-**第一步：聚类**
-阅读原始样本行，将这些用户归纳为1-2个有辨识度的人群群体（不要机械列出所有职业，而是找到"什么样的人"买这辆车）。
-- 职业要合并同类项：把"信息相关/分析师/IT"统一描述为"科技/信息从业者"；把"矿工/制造业/技工"统一描述为"工矿/制造业从业者"
-- 找交叉特征：一个有价值的聚类是"35-45岁、三口之家、收入20-30万、偏好自驾游的换购用户"，而不是单独列"35-45岁占X%，三口之家占X%"
-- 如果样本太少（<10人），在描述时注明"小样本，仅供参考"
-
-**第二步：找地域特色**
-对比{devText}中的偏差数据，该地区与全国相比最突出的1-2个特征是什么？这个特征要写进标题。
-
-**第三步：输出卡片**
-基于聚类结果输出如下JSON，语言要让门店销售看得懂、能落地执行：
-
-{
-  "title": "主导人群的具体职业描述 · 该地区最突出的一个特征（8-15字，职业要具体，如：工矿/制造业从业者 · 大家庭换购需求）",
-  "bullets": [
-    "人群画像：用1-2句话描述最主要的人群组合（职业+收入+家庭+年龄要交叉描述，如：'核心群体是35-45岁、三口或四口之家的工矿/制造业从业者，家庭年收入15-25万，以换购为主'），避免逐项列数字",
-    "购车驱动与付款决策：结合用车场景+对比车型+消费观+金融决策数据，推断购车动机和付款偏好（如：分期比例高+收入偏低 → 月供敏感型；全款为主+收入中等 → 一次性决策型）。重点说明该地区是否存在明显的金融需求特征。",
-    "触媒习惯：这群人在哪里、通过什么方式获取汽车信息？结合了解渠道+爱好+信息偏好给出具体描述（如：'主要通过抖音短视频了解新车，偏好真实用车场景测评，周末有户外出行习惯'）",
-    "门店行动建议：针对{region}这一人群，给门店1条具体可执行的建议，要指向明确的触达方式或销售话术（如：'在4S店展厅重点展示第三排空间和折叠方式，准备低月供方案，触达工矿企业职工群体'）"
-  ],
-  "tags": {
-    "age": "主要年龄段",
-    "income": "主要收入区间",
-    "competing": "最主要对比车型",
-    "attitude": "购车核心动机（4字）",
-    "extra": "地域最突出特征（4字）"
-  }
-}`
+  // DEFAULT_CORE_PROMPT 已从 prompt-defaults.ts 导入
   // 从 DB 读取覆盖版 prompt（管理员可修改），再替换占位符
   const template = await getPrompt('core_card', DEFAULT_CORE_PROMPT);
   const finalPrompt = template
@@ -360,13 +307,7 @@ export async function generateCoreUserCard(params: {
 }
 
 // ── 意向预测 ─────────────────────────────────────────────────
-const DEFAULT_PREDICT_INTENT_PROMPT =
-`你是华境S销售分析专家。基于用户画像，评估转化为锁单用户的概率（0-100分）。
-
-{profileText}
-
-严格按JSON返回，不输出其他内容：
-{"score":数字,"keyFactors":["关键因素1","关键因素2","关键因素3"],"marketingAdvice":"针对性营销建议（25字内）"}`;
+// DEFAULT_PREDICT_INTENT_PROMPT 已从 prompt-defaults.ts 导入
 
 export async function predictUserIntent(userProfile: {
   ageGroup: string; education: string; occupation: string; familyStructure: string;
@@ -396,24 +337,7 @@ export async function predictUserIntent(userProfile: {
 }
 
 // ── 订单状态对比洞察 ──────────────────────────────────────────
-const DEFAULT_STATUS_INSIGHT_PROMPT =
-`你是华境S汽车用户研究专家，分析「{dimensionLabel}」维度下不同取值的订单状态分布差异。
-筛选范围：{filter}
-全局基准：{globalLine}
-
-各取值订单状态分布：
-{rowLines}
-
-锁单率最高：{maxLockedLabel}（{maxLockedPct}%）
-退单率最高：{maxCancelledLabel}（{maxCancelledPct}%）
-
-请按以下两个部分输出，两部分之间空一行，纯文本格式不加任何Markdown符号（不加**、##、-等）：
-
-核心差异：
-直接说明锁单/提车用户在「{dimensionLabel}」上最集中的1-2个特征，与退单用户的具体数字对比。例如：锁单用户中35-39岁占61%，退单用户中该年龄段仅占42%。
-
-原因分析：
-如果两者差异显著（差值超过10%），分析背后的用户心理或决策逻辑。如果差异不显著，说明该维度对转化影响有限的可能原因。`;
+// DEFAULT_STATUS_INSIGHT_PROMPT 已从 prompt-defaults.ts 导入
 
 export async function generateStatusInsight(params: {
   dimensionLabel: string;

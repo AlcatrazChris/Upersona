@@ -22,15 +22,19 @@ export default function LoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
-      const json = await res.json();
+      // 先解析响应体（可能是 HTML 或空，不能直接 res.json()）
+      const text = await res.text();
+      let json: Record<string, string> = {};
+      try { json = JSON.parse(text); } catch { /* 非 JSON 响应（如服务器配置错误的 HTML 页面） */ }
+
       if (!res.ok) {
-        setError(json.error || '登录失败');
+        setError(json.error || `登录失败 (${res.status})，请检查服务器配置`);
         return;
       }
       router.replace('/');
       router.refresh();
     } catch {
-      setError('网络错误，请重试');
+      setError('网络连接失败，请检查网络后重试');
     } finally {
       setLoading(false);
     }

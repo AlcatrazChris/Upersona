@@ -165,6 +165,58 @@ ON CONFLICT (prompt_key) DO UPDATE
       system_hint = EXCLUDED.system_hint,
       updated_at  = now();
 
+-- 地域画像差异总结 prompt（各大区/省份/城市的特征总结表格）
+INSERT INTO ai_prompts (prompt_key, prompt_name, system_hint, user_prompt)
+VALUES (
+  'area_portrait',
+  '地域画像差异总结',
+  '变量占位符：{regionLabel} {orderLabel} {natSummary} {areaLines}（由系统自动生成，含各地域各维度TOP数据及与全国偏差）',
+  '你是华境S汽车品牌的用户研究专家，为各{regionLabel}生成用户画像简述。
+当前分析对象：{orderLabel}
+
+【全国均值参考】
+{natSummary}
+
+【各{regionLabel}详细数据】
+{areaLines}
+
+【输出要求】
+为每个{regionLabel}，按照以下7个固定维度，各写一段简短的描述性词语。
+
+【描述规则——严格遵守】
+- 只用描述性词语，不写数字和百分比
+- 每条控制在5-12字，是短语而非完整句子
+- 参考示例（严格照此风格）：
+  职业：公职人员和白领为主
+  年龄：主力年龄为35-44岁
+  学历：本科为主，学历偏中等
+  收入：家庭年收入15-19万为主
+  家庭结构：四口之家为主，多代同堂特征明显
+  消费观念：务实型为主，注重性价比
+  对比车型：主要与吉利银河M9、零跑D19对比
+- 如样本不足30人，在"职业"字段开头加"小样本，"
+
+严格按此JSON格式返回，不输出其他内容：
+{
+  "areas": {
+    "地域名": {
+      "职业": "描述",
+      "年龄": "描述",
+      "学历": "描述",
+      "收入": "描述",
+      "家庭结构": "描述",
+      "消费观念": "描述",
+      "对比车型": "描述"
+    }
+  }
+}'
+)
+ON CONFLICT (prompt_key) DO UPDATE
+  SET user_prompt = EXCLUDED.user_prompt,
+      prompt_name = EXCLUDED.prompt_name,
+      system_hint = EXCLUDED.system_hint,
+      updated_at  = now();
+
 -- 用户意向预测 prompt
 INSERT INTO ai_prompts (prompt_key, prompt_name, system_hint, user_prompt)
 VALUES (
