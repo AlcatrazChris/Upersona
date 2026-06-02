@@ -313,9 +313,10 @@ export default function ComparePage() {
             aiContent={
               compareData.insight
                 ? <p className="text-[14px] text-black/65 leading-relaxed">{compareData.insight}</p>
-                : <p className="text-[13px] text-black/35 italic">AI 洞察生成失败</p>
+                : null
             }
             hasAiContent={!!compareData.insight}
+            onGenerate={refreshInsight}
             onRegenerate={refreshInsight}
             loading={insightLoading}
           />

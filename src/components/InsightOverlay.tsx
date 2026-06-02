@@ -12,8 +12,17 @@ interface InsightOverlayProps {
   aiContent: React.ReactNode;
   /** 标题旁的标签文字 */
   label?: string;
-  /** 点击「重新生成」时的回调 */
+  /**
+   * 「重新生成」回调（管理员专用，有内容时强制刷新）。
+   * 同时在空状态作为兜底生成触发器（管理员也能用）。
+   */
   onRegenerate?: () => void;
+  /**
+   * 「生成洞察」回调（所有用户可见）。
+   * 无内容时显示生成按钮，有别于 onRegenerate 的"强制刷新"语义。
+   * 若未提供，则回退到 onRegenerate。
+   */
+  onGenerate?: () => void;
   /** AI 正在生成中 */
   loading?: boolean;
   /** AI 内容是否为空（用于空状态提示） */
@@ -21,7 +30,9 @@ interface InsightOverlayProps {
 }
 
 export function InsightOverlay({
-  cacheKey, aiContent, label, onRegenerate, loading, hasAiContent = true,
+  cacheKey, aiContent, label,
+  onRegenerate, onGenerate,
+  loading, hasAiContent = true,
 }: InsightOverlayProps) {
   const role = useRole();
   const isAdmin = role === 'admin';
@@ -48,7 +59,7 @@ export function InsightOverlay({
 
   useEffect(() => { loadOverride(); }, [loadOverride]);
 
-  // ── 保存自定义文本 ──
+  // ── 保存自定义文本（管理员） ──
   async function handleSaveCustom() {
     setSaving(true);
     try {
@@ -69,7 +80,7 @@ export function InsightOverlay({
     }
   }
 
-  // ── 切换 AI / 自定义 ──
+  // ── 切换 AI / 自定义（管理员） ──
   async function handleTogglePrefer(p: 'ai' | 'custom') {
     if (p === prefer) return;
     try {
@@ -84,6 +95,8 @@ export function InsightOverlay({
   }
 
   const showCustom = prefer === 'custom' && !!customText;
+  // 空状态的生成触发器：优先 onGenerate，其次 onRegenerate
+  const handleGenerate = onGenerate ?? onRegenerate;
 
   return (
     <div className="glass-card p-5">
@@ -93,7 +106,7 @@ export function InsightOverlay({
           <Sparkles size={14} className="text-[#AF52DE]" />
           <span className="text-[14px] font-600 text-black/70">数据洞察</span>
           {label && <span className="text-[12px] text-black/35">{label}</span>}
-          {loaded && !editing && (
+          {loaded && !editing && (showCustom || hasAiContent) && (
             <span className={cn(
               'text-[10px] px-1.5 py-0.5 rounded-full font-500',
               showCustom
@@ -105,8 +118,8 @@ export function InsightOverlay({
           )}
         </div>
 
-        {/* 仅管理员可见的控制按钮 */}
-        {isAdmin && !editing && (
+        {/* 仅管理员可见的控制按钮（编辑 / AI切换 / 重新生成） */}
+        {isAdmin && !editing && (showCustom || hasAiContent) && (
           <div className="flex items-center gap-2">
             {/* AI / 自定义切换 */}
             {customText && (
@@ -128,8 +141,7 @@ export function InsightOverlay({
               onClick={() => { setDraft(customText); setEditing(true); }}
               className="flex items-center gap-1 text-[12px] text-black/35 hover:text-[#007AFF] transition-colors"
             >
-              <Edit3 size={11} />
-              编辑
+              <Edit3 size={11} />编辑
             </button>
             {onRegenerate && (
               <button onClick={onRegenerate} disabled={loading}
@@ -140,12 +152,23 @@ export function InsightOverlay({
             )}
           </div>
         )}
+
+        {/* 管理员在有内容时也保留编辑入口（即使在空状态以外） */}
+        {isAdmin && !editing && !showCustom && !hasAiContent && (
+          <button
+            onClick={() => { setDraft(''); setEditing(true); }}
+            className="flex items-center gap-1 text-[12px] text-black/35 hover:text-[#007AFF] transition-colors"
+          >
+            <Edit3 size={11} />编辑自定义
+          </button>
+        )}
       </div>
 
       {/* 主体内容 */}
       {loading ? (
-        <div className="flex items-center gap-2 text-[13px] text-black/40 py-3">
-          <Loader2 size={13} className="animate-spin" />正在分析…
+        <div className="flex flex-col items-center gap-2 py-6">
+          <Loader2 size={20} className="animate-spin text-[#5856D6]" />
+          <span className="text-[13px] text-black/40">AI 正在生成洞察，首次约需 5-10 秒…</span>
         </div>
       ) : editing ? (
         /* 编辑模式（仅管理员） */
@@ -175,12 +198,19 @@ export function InsightOverlay({
         /* AI 内容显示（传入的 ReactNode） */
         aiContent
       ) : (
-        /* 空状态 */
-        <div className="text-center py-4">
-          <p className="text-[13px] text-black/35 mb-2">暂无洞察内容</p>
-          <p className="text-[11px] text-black/25">
-            {isAdmin ? '点击「重新生成」获取 AI 分析，或点击「编辑」填写自定义内容' : '管理员尚未配置此洞察内容'}
-          </p>
+        /* 空状态 —— 所有用户均可触发首次生成 */
+        <div className="flex flex-col items-center gap-3 py-6">
+          <p className="text-[13px] text-black/35">暂无 AI 洞察内容</p>
+          {handleGenerate ? (
+            <button onClick={handleGenerate} disabled={loading}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-ios text-[13px] bg-[#5856D6] text-white font-500 hover:bg-[#4846C0] transition-colors disabled:opacity-50 no-tap">
+              <Sparkles size={13} />生成洞察
+            </button>
+          ) : (
+            <p className="text-[11px] text-black/25">
+              {isAdmin ? '点击「编辑自定义」填写洞察内容' : '暂无洞察内容'}
+            </p>
+          )}
         </div>
       )}
     </div>

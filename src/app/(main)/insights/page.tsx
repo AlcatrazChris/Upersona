@@ -121,6 +121,7 @@ export default function InsightsPage() {
           label={`${profileData.regionName} · 核心用户画像`}
           aiContent={<AiUserCard data={profileData} refreshing={refreshing} />}
           hasAiContent={!!profileData.aiCard}
+          onGenerate={() => fetchProfile()}
           onRegenerate={() => fetchProfile(true)}
           loading={refreshing}
         />

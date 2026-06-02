@@ -240,29 +240,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(buildResponse(stored));
   }
 
-  // 读缓存
+  // ── 读缓存（非强制重新生成时） ──
   if (!forceRegenerate) {
     const { data: cached } = await db.from('insights_cache')
       .select('content').eq('cache_key', cacheKey).single();
     if (cached) {
       return NextResponse.json(buildResponse(parseContent(cached.content), { cached: true }));
     }
+    // cache miss → 任何用户均可触发首次生成（不需要管理员权限）
   }
 
-  // forceRegenerate=true 时：需要管理员权限
-  if (!requireAdmin()) return NextResponse.json({ error: '需要管理员权限' }, { status: 401 });
-  // 先检查 DB 中 prefer 配置，custom 模式下不调用 DeepSeek
+  // ── 强制重新生成（已有缓存时）：仅管理员可操作 ──
+  if (forceRegenerate && !requireAdmin()) {
+    return NextResponse.json({ error: '需要管理员权限' }, { status: 401 });
+  }
+
+  // ── 先检查 prefer 配置：自定义模式下不调用 DeepSeek ──
   const existingStored = await getExisting();
   if (existingStored.prefer === 'custom' && existingStored.custom) {
     return NextResponse.json(buildResponse(existingStored, { cached: true, skipped: 'custom_mode' }));
   }
 
-  // 生成 AI 洞察
+  // ── 生成 AI 洞察 ──
   try {
     const insight = await generateStatusInsight(body);
     const stored  = await getExisting();
     stored.ai     = insight;
-    // 仅在 prefer 未设置时默认为 ai，不覆盖已有的 prefer 配置
     if (!stored.prefer) stored.prefer = 'ai';
     await upsert(stored);
     return NextResponse.json(buildResponse(stored, { cached: false }));

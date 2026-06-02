@@ -479,6 +479,7 @@ export default function AreaPortraitPage() {
               </>
             }
             hasAiContent={!!aiResult}
+            onGenerate={() => generateAI(false)}
             onRegenerate={() => generateAI(true)}
             loading={aiLoading}
           />

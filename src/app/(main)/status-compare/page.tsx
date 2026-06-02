@@ -301,12 +301,18 @@ interface DimsData {
 // ── AI 洞察面板（可编辑）────────────────────────────────────────
 function InsightPanel({
   insight, customText, prefer = 'ai', editing, editDraft, savingCustom, insightLoading,
-  onEdit, onDraftChange, onSave, onCancelEdit, onRegenerate, label, noAI = false,
+  onEdit, onDraftChange, onSave, onCancelEdit,
+  onGenerate,   // 首次生成（所有用户可触发）
+  onRegenerate, // 强制重新生成（管理员专用）
+  label, noAI = false,
 }: {
   insight: string; customText: string; prefer?: 'ai' | 'custom'; editing: boolean;
   editDraft: string; savingCustom: boolean; insightLoading: boolean;
   onEdit: () => void; onDraftChange: (v: string) => void;
-  onSave: () => void; onCancelEdit: () => void; onRegenerate: () => void; label: string;
+  onSave: () => void; onCancelEdit: () => void;
+  onGenerate: () => void;
+  onRegenerate: () => void;
+  label: string;
   noAI?: boolean;
 }) {
   const role = useRole();
@@ -314,6 +320,7 @@ function InsightPanel({
 
   // noAI 模式：只显示 customText；普通模式：prefer 决定显示哪个
   const displayText = noAI ? customText : (prefer === 'custom' && customText ? customText : insight);
+  const hasContent  = !!displayText;
 
   return (
     <div className="glass-card p-5">
@@ -322,8 +329,8 @@ function InsightPanel({
           <Sparkles size={14} className="text-[#AF52DE]" />
           <span className="text-[14px] font-600 text-black/70">数据洞察</span>
           <span className="text-[12px] text-black/35">{label}</span>
-          {/* 普通 AI 模式才显示徽章 */}
-          {!noAI && !editing && (insight || customText) && (
+          {/* 普通 AI 模式才显示徽章（有内容时） */}
+          {!noAI && !editing && hasContent && (
             <span className={cn(
               'text-[10px] px-1.5 py-0.5 rounded-full font-500',
               prefer === 'custom' && customText
@@ -334,41 +341,35 @@ function InsightPanel({
             </span>
           )}
         </div>
-        {/* 仅管理员可见的控制按钮 */}
-        {isAdmin && (
+        {/* 管理员专用控制：编辑 + 强制重新生成（仅在有内容时显示） */}
+        {isAdmin && hasContent && !editing && (
           <div className="flex items-center gap-2">
-            {!editing && (
-              <>
-                <button onClick={onEdit}
-                  className="flex items-center gap-1 text-[12px] text-black/35 hover:text-[#007AFF] transition-colors">
-                  <Edit3 size={11} />
-                  编辑
-                </button>
-                {/* noAI 模式不显示重新生成按钮 */}
-                {!noAI && (
-                  <button
-                    onClick={onRegenerate}
-                    disabled={insightLoading || (prefer === 'custom' && !!customText)}
-                    title={prefer === 'custom' && !!customText ? '已有手动编辑内容，如需重新生成请先在编辑框中清空内容并保存' : ''}
-                    className={cn(
-                      'flex items-center gap-1 text-[12px] transition-colors',
-                      prefer === 'custom' && !!customText
-                        ? 'text-black/20 cursor-not-allowed'
-                        : 'text-black/35 hover:text-[#007AFF]'
-                    )}>
-                    <RefreshCw size={11} className={insightLoading ? 'animate-spin' : ''} />
-                    {(insight || customText) ? '重新生成' : '生成洞察'}
-                  </button>
-                )}
-              </>
+            <button onClick={onEdit}
+              className="flex items-center gap-1 text-[12px] text-black/35 hover:text-[#007AFF] transition-colors">
+              <Edit3 size={11} />编辑
+            </button>
+            {!noAI && (
+              <button
+                onClick={onRegenerate}
+                disabled={insightLoading || (prefer === 'custom' && !!customText)}
+                title={prefer === 'custom' && !!customText ? '当前为自定义模式，如需重新生成请先切换回 AI 模式' : ''}
+                className={cn(
+                  'flex items-center gap-1 text-[12px] transition-colors',
+                  prefer === 'custom' && !!customText
+                    ? 'text-black/20 cursor-not-allowed'
+                    : 'text-black/35 hover:text-[#007AFF]'
+                )}>
+                <RefreshCw size={11} className={insightLoading ? 'animate-spin' : ''} />重新生成
+              </button>
             )}
           </div>
         )}
       </div>
 
       {insightLoading ? (
-        <div className="flex items-center gap-2 text-[13px] text-black/40 py-2">
-          <Loader2 size={13} className="animate-spin" />正在分析…
+        <div className="flex flex-col items-center gap-2 py-6">
+          <Loader2 size={20} className="animate-spin text-[#5856D6]" />
+          <span className="text-[13px] text-black/40">AI 正在生成洞察，首次约需 5-10 秒…</span>
         </div>
       ) : editing && isAdmin ? (
         <div className="space-y-3">
@@ -386,20 +387,37 @@ function InsightPanel({
             </div>
           </div>
         </div>
-      ) : displayText ? (
+      ) : hasContent ? (
         <div>
           {displayText.split('\n\n').filter(Boolean).map((p, i) => (
             <p key={i} className="text-[13px] text-black/65 leading-relaxed mb-2">{p.trim()}</p>
           ))}
         </div>
-      ) : (
+      ) : noAI ? (
+        /* noAI 模式（概览）：仅管理员可设置，客户看提示 */
         <div className="text-center py-4">
           <p className="text-[13px] text-black/35 mb-2">暂无洞察内容</p>
-          <p className="text-[11px] text-black/25">
-            {isAdmin
-              ? (noAI ? '点击「编辑」填写洞察内容' : '点击「生成洞察」获取 AI 分析，或点击「编辑」直接填写')
-              : '管理员尚未配置此洞察内容'}
-          </p>
+          {isAdmin && (
+            <button onClick={onEdit}
+              className="flex items-center gap-1.5 mx-auto text-[12px] text-black/40 hover:text-[#007AFF] transition-colors">
+              <Edit3 size={12} />点击编辑内容
+            </button>
+          )}
+        </div>
+      ) : (
+        /* 普通 AI 模式空状态：所有用户均可触发首次生成 */
+        <div className="flex flex-col items-center gap-3 py-6">
+          <p className="text-[13px] text-black/35">暂无 AI 洞察内容</p>
+          <button onClick={onGenerate} disabled={insightLoading}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-ios text-[13px] bg-[#5856D6] text-white font-500 hover:bg-[#4846C0] transition-colors disabled:opacity-50 no-tap">
+            <Sparkles size={13} />生成洞察
+          </button>
+          {isAdmin && (
+            <button onClick={onEdit}
+              className="text-[11px] text-black/30 hover:text-[#007AFF] transition-colors">
+              或编辑自定义内容
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -509,9 +527,9 @@ export default function StatusComparePage() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   // ── 维度 AI 生成 ──
-  // prefer='custom' 且有自定义内容时：不调用 DeepSeek，直接返回（自定义内容已经在页面显示）
-  // 其余情况：强制重新生成 AI，服务端会保留已有的 prefer 配置
-  async function generateInsight() {
+  // force=false（默认）→ 首次生成，所有用户可触发；命中缓存直接返回
+  // force=true  → 强制重新生成，管理员专用（API 端校验权限）
+  async function generateInsight(force = false) {
     if (!data) return;
     if (prefer === 'custom' && customText) return; // 自定义模式下不触发 AI
     setInsightLoading(true);
@@ -523,16 +541,19 @@ export default function StatusComparePage() {
         body: JSON.stringify({
           dimensionLabel: data.dimensionLabel, filter: filterLabel,
           rows: data.rows, globalStatus: data.globalStatus,
-          forceRegenerate: true,
+          forceRegenerate: force,
         }),
       });
       const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
       setInsight(json.insight ?? '');
       setCustomText(json.custom ?? '');
       setPrefer(json.prefer ?? 'ai');
       if (!cacheKey) {
         setCacheKey(`status_insight:${data.dimensionLabel}:${filterLabel}:${data.rows.map((r: { label: string }) => r.label).join(',')}`);
       }
+    } catch (e) {
+      console.error('生成洞察失败:', e);
     } finally { setInsightLoading(false); }
   }
 
@@ -635,6 +656,7 @@ export default function StatusComparePage() {
             onDraftChange={setOvDraft}
             onSave={saveOverviewCustom}
             onCancelEdit={() => setOvEditing(false)}
+            onGenerate={() => {}}
             onRegenerate={() => {}}
           />
           {/* 各维度簇状图 */}
@@ -717,7 +739,8 @@ export default function StatusComparePage() {
                 onDraftChange={setEditDraft}
                 onSave={saveCustom}
                 onCancelEdit={() => setEditing(false)}
-                onRegenerate={generateInsight}
+                onGenerate={() => generateInsight(false)}
+                onRegenerate={() => generateInsight(true)}
               />
             </>
           )}
