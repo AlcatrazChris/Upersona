@@ -5,9 +5,14 @@ import { requireAdmin } from '@/lib/auth-server';
 import * as XLSX from 'xlsx';
 import { classifyOccupations } from '@/lib/deepseek';
 import { parseMultiSelect } from '@/lib/utils';
+import { getCityTier } from '@/lib/city-tiers';
+import {
+  cleanRow, batchCleanUnresolved,
+  STD_AGE_GROUP, STD_EDUCATION, STD_FAMILY, STD_INCOME, STD_IS_UPGRADE, STD_ORDER_STATUS,
+} from '@/lib/data-cleaner';
 
-export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const dynamic  = 'force-dynamic';
+export const maxDuration = 120;   // 增加到 120 秒，为数据清洗留出时间
 
 const INSERT_BATCH = 100;
 
@@ -40,9 +45,9 @@ export async function POST(req: NextRequest) {
     const rows = XLSX.utils.sheet_to_json(sheet) as Record<string, string>[];
     if (rows.length === 0) return NextResponse.json({ error: '数据为空' }, { status: 400 });
 
+    // ── Phase 1：职业分类 ─────────────────────────────────────────
     const allOccupations = [...new Set(rows.map(r => String(r['职业'] || '').trim()))].filter(Boolean);
 
-    // 清理旧口径缓存
     await db.from('occupation_mapping').delete()
       .not('category', 'in', `(${VALID_OCC.map(c => `"${c}"`).join(',')})`);
 
@@ -58,7 +63,6 @@ export async function POST(req: NextRequest) {
 
     const uncached = allOccupations.filter(o => !cachedMap[o]);
     let newMappings: Record<string, string> = {};
-
     if (uncached.length > 0) {
       const BATCH = 30;
       for (let i = 0; i < uncached.length; i += BATCH) {
@@ -69,45 +73,112 @@ export async function POST(req: NextRequest) {
         } catch {
           for (const t of batch) newMappings[t] = '其他';
         }
-        if (i + BATCH < uncached.length) {
-          await new Promise(r => setTimeout(r, 500));
-        }
+        if (i + BATCH < uncached.length) await new Promise(r => setTimeout(r, 300));
       }
-
       const toUpsert = Object.entries(newMappings).map(([raw_text, category]) => ({
         raw_text, category, mapped_at: new Date().toISOString(),
       }));
       await db.from('occupation_mapping').upsert(toUpsert, { onConflict: 'raw_text', ignoreDuplicates: false });
     }
-
     const fullOccMap = { ...cachedMap, ...newMappings };
 
+    // ── Phase 2：结构化字段规则清洗 ───────────────────────────────
+    type FieldName = 'age_group' | 'education' | 'family_structure' | 'annual_income' | 'is_upgrade' | 'order_status';
+    const FIELD_OPTIONS: Record<FieldName, readonly string[]> = {
+      age_group:        STD_AGE_GROUP,
+      education:        STD_EDUCATION,
+      family_structure: STD_FAMILY,
+      annual_income:    STD_INCOME,
+      is_upgrade:       STD_IS_UPGRADE,
+      order_status:     STD_ORDER_STATUS,
+    };
+
+    let ruleCleanedCount = 0;
+    const aiPending: { field: FieldName; raw: string; options: string[] }[] = [];
+    const aiPendingSet = new Set<string>(); // field::raw → avoid duplicate AI requests
+
+    // 预扫所有行，收集规则无法处理的值
+    const rowCleans = rows.map(r => {
+      const raw = {
+        age_group:        String(r['年龄段'] || ''),
+        education:        String(r['学历'] || ''),
+        family_structure: String(r['家庭结构'] || ''),
+        annual_income:    String(r['家庭年收入'] || ''),
+        is_upgrade:       String(r['是否增换购'] || ''),
+        order_status:     String(r['订单状态'] || ''),
+      };
+      const result = cleanRow(raw);
+      for (const [field, res] of Object.entries(result) as [FieldName, { value: string; changed: boolean }][]) {
+        if (res.changed) ruleCleanedCount++;
+        // 如果清洗后仍不是标准值 → 标记给 AI
+        if (res.value && !(FIELD_OPTIONS[field] as readonly string[]).includes(res.value)) {
+          const key = `${field}::${res.value}`;
+          if (!aiPendingSet.has(key)) {
+            aiPendingSet.add(key);
+            aiPending.push({ field, raw: res.value, options: Array.from(FIELD_OPTIONS[field]) });
+          }
+        }
+      }
+      return { raw, result };
+    });
+
+    // ── Phase 3：AI 批量兜底清洗（仅处理规则识别不了的值）──────────
+    let aiCleanMap: Record<string, string> = {};
+    let aiCleanedCount = 0;
+    if (aiPending.length > 0) {
+      // 分批，每批最多 50 条
+      const AI_BATCH = 50;
+      for (let i = 0; i < aiPending.length; i += AI_BATCH) {
+        const batch = aiPending.slice(i, i + AI_BATCH);
+        try {
+          const partialMap = await batchCleanUnresolved(batch);
+          Object.assign(aiCleanMap, partialMap);
+        } catch { /* AI 失败时保留原值 */ }
+      }
+      aiCleanedCount = Object.keys(aiCleanMap).length;
+    }
+
+    // ── Phase 4：检测 city_tier 列是否已在数据库中创建 ──────────
+    const { error: cityTierColErr } = await db.from('users').select('city_tier').limit(0);
+    const hasCityTierCol = !cityTierColErr; // 无报错 = 列存在
+
+    // ── Phase 5：创建版本并插入数据 ──────────────────────────────
     const { data: versionRow, error: vErr } = await db
       .from('data_versions')
       .insert({ record_count: rows.length, is_active: false })
       .select()
       .single();
-
     if (vErr) throw new Error(`创建版本失败: ${vErr.message}`);
     const versionId = versionRow.version_id;
 
+    // 最终清洗：规则结果 + AI 兜底
+    function resolveField(field: FieldName, ruleValue: string): string {
+      if ((FIELD_OPTIONS[field] as readonly string[]).includes(ruleValue)) return ruleValue;
+      const key = `${field}::${ruleValue}`;
+      return aiCleanMap[key] ?? ruleValue; // AI 有结果用AI，否则保留原值
+    }
+
     for (let i = 0; i < rows.length; i += INSERT_BATCH) {
       const batch = rows.slice(i, i + INSERT_BATCH);
-      const records = batch.map(r => {
-        const occRaw = String(r['职业'] || '').trim();
-        return {
+      const records = batch.map((r, idx) => {
+        const occRaw  = String(r['职业'] || '').trim();
+        const city    = String(r['城市'] || '');
+        const { result } = rowCleans[i + idx];
+
+        const base = {
           data_version:          versionId,
           name:                  String(r['姓名'] || ''),
           region_area:           String(r['大区'] || ''),
           region_province:       String(r['省份'] || ''),
-          region_city:           String(r['城市'] || ''),
-          age_group:             String(r['年龄段'] || ''),
-          education:             String(r['学历'] || ''),
+          region_city:           city,
+          age_group:             resolveField('age_group',        result.age_group.value),
+          education:             resolveField('education',        result.education.value),
           occupation_raw:        occRaw,
-          occupation_category:   fullOccMap[occRaw] || '其他',
-          family_structure:      String(r['家庭结构'] || ''),
-          annual_income:         String(r['家庭年收入'] || ''),
-          is_upgrade:            String(r['是否增换购'] || ''),
+          // 空白职业保持空白，非空才分类
+          occupation_category:   occRaw ? (fullOccMap[occRaw] || '其他') : '',
+          family_structure:      resolveField('family_structure', result.family_structure.value),
+          annual_income:         resolveField('annual_income',    result.annual_income.value),
+          is_upgrade:            resolveField('is_upgrade',       result.is_upgrade.value),
           consumption_views:     parseMultiSelect(r['消费观念']),
           competing_models:      parseMultiSelect(r['对比车型']),
           use_scenarios:         parseMultiSelect(r['用车场景']),
@@ -116,9 +187,11 @@ export async function POST(req: NextRequest) {
           car_interests:         parseMultiSelect(r['关注的汽车内容']),
           hobbies:               parseMultiSelect(r['日常爱好']),
           finance_term:          parseInt(String(r['金融期数'] || '0'), 10) || 0,
-          order_status:          String(r['订单状态'] || ''),
-          intent_label:          mapIntentLabel(String(r['订单状态'] || '')),
+          order_status:  resolveField('order_status', result.order_status.value),
+          intent_label:  mapIntentLabel(resolveField('order_status', result.order_status.value)),
         };
+        // 仅当 city_tier 列已存在时才写入（列不存在时 PostgREST 会默默丢弃该字段）
+        return hasCityTierCol ? { ...base, city_tier: getCityTier(city) } : base;
       });
 
       const { error: iErr } = await db.from('users').insert(records);
@@ -128,20 +201,26 @@ export async function POST(req: NextRequest) {
     // 激活新版本
     await db.rpc('set_active_version', { v_id: versionId });
 
-    // 清除旧版本 AI 洞察缓存（新数据入库后旧缓存失效）
-    // data_version=0 是自定义内容的哨兵值，必须保留；只删除有版本号的旧 AI 缓存
+    // 清除旧版本 AI 洞察缓存
     await db.from('insights_cache').delete()
       .gt('data_version', 0)
       .lt('data_version', versionId);
 
-    // ── 关键：触发 Next.js revalidate，清除 Server Component 缓存 ──
-    revalidatePath('/', 'layout');   // 清除所有路由缓存
+    revalidatePath('/', 'layout');
 
     return NextResponse.json({
       success: true,
       versionId,
       recordCount: rows.length,
-      newOccMappings: Object.keys(newMappings).length,
+      hasCityTier: hasCityTierCol,
+      cleaning: {
+        ruleCleanedCount,
+        aiCleanedCount,
+        message: ruleCleanedCount + aiCleanedCount > 0
+          ? `自动清洗 ${ruleCleanedCount} 处（规则）+ ${aiCleanedCount} 处（AI 兜底）`
+          : '数据规范，无需清洗',
+      },
+      newOccMappings:    Object.keys(newMappings).length,
       cachedOccMappings: Object.keys(cachedMap).length,
       message: `数据版本 v${versionId} 已激活，页面缓存已刷新`,
     });

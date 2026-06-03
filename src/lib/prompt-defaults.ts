@@ -176,7 +176,8 @@ export const DEFAULT_INSIGHTS_FIELDS =
   {"key":"info_channels","label":"了解渠道","enabled":true,"type":"multi"},
   {"key":"car_interests","label":"关注内容","enabled":true,"type":"multi"},
   {"key":"hobbies","label":"日常爱好","enabled":true,"type":"multi"},
-  {"key":"finance_term","label":"贷款期数","enabled":true,"type":"category"}
+  {"key":"finance_term","label":"贷款期数","enabled":true,"type":"category"},
+  {"key":"city_tier","label":"城市级别","enabled":true,"type":"category","orderedValues":["一线城市","新一线城市","二线城市","三线城市","四线及以下城市"]}
 ]`;
 
 // ── 全量种子数据（GET /api/prompts 自动补全缺失行）─────────────

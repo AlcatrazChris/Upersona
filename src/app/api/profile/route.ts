@@ -19,17 +19,26 @@ export async function GET(req: NextRequest) {
     .eq('is_active', true).order('version_id', { ascending: false }).limit(1).single();
   if (!versionData) return NextResponse.json({ dimensions: [], totalSamples: 0 });
 
-  const COLS = 'age_group, education, occupation_category, family_structure, annual_income, is_upgrade, consumption_views, competing_models, use_scenarios, family_trip_frequency, info_channels, car_interests, hobbies, order_status';
+  const BASE_COLS = 'age_group, education, occupation_category, family_structure, annual_income, is_upgrade, consumption_views, competing_models, use_scenarios, family_trip_frequency, info_channels, car_interests, hobbies, order_status';
+
+  // 检测 city_tier 列是否存在（首次部署前可能未执行迁移 SQL）
+  const { error: cityTierErr } = await db.from('users').select('city_tier').limit(0);
+  const hasCityTier = !cityTierErr;
+  const COLS = hasCityTier ? BASE_COLS + ', city_tier' : BASE_COLS;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const applyFilter = (q: any): any => {
+    let r = q.eq('data_version', versionData.version_id);
+    if (city)          r = r.eq('region_city', city);
+    else if (province) r = r.eq('region_province', province);
+    else if (area)     r = r.eq('region_area', area);
+    if (orderStatus && orderStatus !== 'all') r = orderStatus === '锁单/提车' ? r.in('order_status', ['已锁单', '订单完成']) : r.eq('order_status', orderStatus);
+    return r;
+  };
+
   let users;
   try {
-    users = await fetchUsers(db, COLS, q => {
-      let r = q.eq('data_version', versionData.version_id);
-      if (city)          r = r.eq('region_city', city);
-      else if (province) r = r.eq('region_province', province);
-      else if (area)     r = r.eq('region_area', area);
-      if (orderStatus && orderStatus !== 'all') r = orderStatus === '锁单/提车' ? r.in('order_status', ['已锁单', '订单完成']) : r.eq('order_status', orderStatus);
-      return r;
-    });
+    users = await fetchUsers(db, COLS, applyFilter);
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

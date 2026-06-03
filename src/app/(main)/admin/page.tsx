@@ -679,11 +679,150 @@ function AccountManager() {
   );
 }
 
+// ── 版本历史（含删除）────────────────────────────────────────
+function VersionHistory({ versions, onDeleted }: { versions: DataVersion[]; onDeleted: () => void }) {
+  const [deleting, setDeleting] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [nameDraft, setNameDraft] = useState('');
+  const [savingName, setSavingName] = useState<number | null>(null);
+  const [msg, setMsg]           = useState('');
+  const [msgOk, setMsgOk]       = useState(true);
+
+  function versionName(v: DataVersion) {
+    return v.version_name || v.notes || '';
+  }
+
+  async function handleSaveName(v: DataVersion) {
+    setSavingName(v.version_id);
+    try {
+      const res = await fetch('/api/versions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ versionId: v.version_id, versionName: nameDraft }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || '保存失败');
+      setMsgOk(true); setMsg(`v${v.version_id} 名称已保存`);
+      setEditingId(null);
+      onDeleted();
+    } catch (e) {
+      setMsgOk(false); setMsg(e instanceof Error ? e.message : '保存失败');
+    } finally {
+      setSavingName(null);
+      setTimeout(() => setMsg(''), 3000);
+    }
+  }
+
+  async function handleDelete(v: DataVersion) {
+    if (!confirm(`确定要删除 v${v.version_id}（${v.record_count.toLocaleString()} 条数据）？\n该操作不可逆，相关用户数据和 AI 缓存将一并清除。`)) return;
+    setDeleting(v.version_id);
+    try {
+      const res = await fetch('/api/versions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ versionId: v.version_id }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || '删除失败');
+      setMsgOk(true); setMsg(`v${v.version_id} 已删除`);
+      onDeleted();
+    } catch (e) {
+      setMsgOk(false); setMsg(e instanceof Error ? e.message : '删除失败');
+    } finally {
+      setDeleting(null);
+      setTimeout(() => setMsg(''), 4000);
+    }
+  }
+
+  return (
+    <div className="glass-card p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <History size={15} className="text-black/40" />
+          <h2 className="text-[15px] font-600 text-black/70">版本历史</h2>
+          <span className="text-[11px] text-black/30">可修改名称，非活跃版本可删除</span>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {versions.map(v => {
+          const displayName = versionName(v);
+          const isEditing = editingId === v.version_id;
+          return (
+          <div key={v.version_id}
+            className={cn('flex items-center justify-between px-3 py-2.5 rounded-ios transition-all',
+              v.is_active ? 'bg-[#007AFF]/06 border border-[#007AFF]/15' : 'hover:bg-black/03')}>
+            <div className="flex items-center gap-2.5">
+              <div className={cn('w-2 h-2 rounded-full', v.is_active ? 'bg-[#34C759]' : 'bg-black/15')} />
+              <div>
+                {isEditing ? (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      value={nameDraft}
+                      onChange={e => setNameDraft(e.target.value)}
+                      maxLength={60}
+                      placeholder={`v${v.version_id}`}
+                      className="input-ios text-[12px] py-1 w-[180px]"
+                    />
+                    <button onClick={() => handleSaveName(v)} disabled={savingName === v.version_id}
+                      className="flex items-center gap-1 text-[11px] text-[#007AFF] font-500 disabled:opacity-50">
+                      {savingName === v.version_id ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />}
+                      保存
+                    </button>
+                    <button onClick={() => setEditingId(null)} className="text-[11px] text-black/35">取消</button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-[13px] font-500 text-black/70">{displayName || `v${v.version_id}`}</span>
+                    <span className="text-[11px] text-black/30 ml-2">v{v.version_id}</span>
+                    <span className="text-[12px] text-black/40 ml-2">{v.record_count.toLocaleString()} 条</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {v.is_active && <span className="badge-ios badge-green">当前</span>}
+              <span className="text-[11px] text-black/35">
+                {new Date(v.uploaded_at).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </span>
+              {!isEditing && (
+                <button onClick={() => { setEditingId(v.version_id); setNameDraft(displayName); }}
+                  className="flex items-center gap-1 text-[11px] text-black/25 hover:text-[#007AFF] transition-colors no-tap">
+                  <Edit3 size={10} />改名
+                </button>
+              )}
+              {!v.is_active && (
+                <button onClick={() => handleDelete(v)} disabled={deleting === v.version_id}
+                  className="flex items-center gap-1 text-[11px] text-black/25 hover:text-[#FF3B30] transition-colors no-tap disabled:opacity-40">
+                  {deleting === v.version_id
+                    ? <Loader2 size={10} className="animate-spin" />
+                    : <Trash2 size={10} />}
+                  删除
+                </button>
+              )}
+            </div>
+          </div>
+        );})}
+      </div>
+      {msg && (
+        <div className={cn('mt-3 text-[12px] flex items-center gap-1.5',
+          msgOk ? 'text-[#34C759]' : 'text-[#FF3B30]')}>
+          {msgOk ? <CheckCircle size={12} /> : <AlertCircle size={12} />}{msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── 主页面 ────────────────────────────────────────────────────
 export default function AdminPage() {
   const [file, setFile]           = useState<File | null>(null);
   const [status, setStatus]       = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
-  const [uploadResult, setUploadResult] = useState<{ versionId: number; recordCount: number } | null>(null);
+  const [uploadResult, setUploadResult] = useState<{
+    versionId: number; recordCount: number;
+    hasCityTier?: boolean; cleaning?: { message: string };
+  } | null>(null);
+  const [backfilling, setBackfilling]  = useState(false);
+  const [backfillMsg, setBackfillMsg]  = useState('');
   const [errMsg, setErrMsg]       = useState('');
   const [versions, setVersions]   = useState<DataVersion[]>([]);
   const [prompts, setPrompts]     = useState<AiPrompt[]>([]);
@@ -716,7 +855,8 @@ export default function AdminPage() {
       const res = await fetch('/api/upload', { method: 'POST', body: form });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || '上传失败');
-      setUploadResult({ versionId: json.versionId, recordCount: json.recordCount });
+      setUploadResult({ versionId: json.versionId, recordCount: json.recordCount, hasCityTier: json.hasCityTier, cleaning: json.cleaning });
+      setBackfillMsg(''); // 重置回填状态
       setStatus('success');
       setFile(null);
       loadVersions();
@@ -769,7 +909,8 @@ export default function AdminPage() {
         <div className="glass-card-subtle p-3 mt-3 text-[12px] text-black/45 space-y-0.5">
           <div>• 文件格式：Excel (.xlsx)，Sheet1 为数据表</div>
           <div>• 上传成功后页面数据将自动刷新，无需手动清除缓存</div>
-          <div>• 职业清洗将自动调用 DeepSeek API（同一职业不重复计费）</div>
+          <div>• 自动清洗：年龄段/学历/家庭结构/收入/增换购等字段规范化（含AI兜底）</div>
+          <div>• 自动计算城市级别（需先在 Supabase 执行 <code className="text-[11px] bg-black/06 px-1 rounded">add_city_tier.sql</code>）</div>
         </div>
 
         <div className="flex items-center justify-between mt-4">
@@ -781,9 +922,36 @@ export default function AdminPage() {
         </div>
 
         {status === 'success' && uploadResult && (
-          <div className="mt-3 glass-card-subtle p-3 flex items-center gap-2 border border-[#34C759]/20">
-            <CheckCircle size={16} className="text-[#34C759] flex-shrink-0" />
-            <span className="text-[13px] text-black/65">v{uploadResult.versionId} 已激活，共 {uploadResult.recordCount.toLocaleString()} 条 · AI缓存已清除</span>
+          <div className="mt-3 glass-card-subtle p-3 space-y-2 border border-[#34C759]/20">
+            <div className="flex items-center gap-2">
+              <CheckCircle size={16} className="text-[#34C759] flex-shrink-0" />
+              <span className="text-[13px] text-black/65">v{uploadResult.versionId} 已激活，共 {uploadResult.recordCount.toLocaleString()} 条 · AI缓存已清除</span>
+            </div>
+            {uploadResult.cleaning && (
+              <div className="text-[12px] text-black/40 pl-6">🧹 {uploadResult.cleaning.message}</div>
+            )}
+            {/* 城市级别状态 */}
+            {uploadResult.hasCityTier === false ? (
+              <div className="pl-6 space-y-1.5">
+                <div className="text-[12px] text-[#FF9500] flex items-center gap-1">
+                  <AlertCircle size={11} />城市级别列未就绪，需先在 Supabase SQL Editor 执行 <code className="bg-black/06 px-1 rounded">supabase/add_city_tier.sql</code>
+                </div>
+                <button onClick={async () => {
+                  setBackfilling(true); setBackfillMsg('');
+                  const res = await fetch('/api/admin/backfill-city-tier', { method: 'POST' });
+                  const json = await res.json();
+                  setBackfillMsg(res.ok ? `✓ ${json.message}` : `✗ ${json.error}`);
+                  setBackfilling(false);
+                }} disabled={backfilling}
+                  className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-ios bg-[#FF9500]/10 text-[#FF9500] hover:bg-[#FF9500]/18 transition-colors disabled:opacity-50 no-tap">
+                  {backfilling ? <Loader2 size={10} className="animate-spin" /> : null}
+                  {backfilling ? '补充中…' : '补充城市级别（执行 SQL 后点击）'}
+                </button>
+                {backfillMsg && <div className="text-[11px] text-black/50">{backfillMsg}</div>}
+              </div>
+            ) : uploadResult.hasCityTier === true ? (
+              <div className="text-[12px] text-[#34C759] pl-6">🏙 城市级别已自动计算并写入</div>
+            ) : null}
           </div>
         )}
         {status === 'error' && (
@@ -816,35 +984,37 @@ export default function AdminPage() {
         </div>
       </div>
 
+      {/* 城市级别回填工具 */}
+      <div className="glass-card p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-[13px] font-500 text-black/70">补充城市级别</div>
+            <div className="text-[11px] text-black/35 mt-0.5">
+              为当前版本中 city_tier 为空的记录自动计算城市级别。需先在 Supabase SQL Editor 执行 add_city_tier.sql。
+            </div>
+          </div>
+          <button onClick={async () => {
+            setBackfilling(true); setBackfillMsg('');
+            const res = await fetch('/api/admin/backfill-city-tier', { method: 'POST' });
+            const json = await res.json();
+            setBackfillMsg(res.ok ? `✓ ${json.message}` : `✗ ${json.error}`);
+            setBackfilling(false);
+          }} disabled={backfilling}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-ios text-[12px] bg-[#5856D6]/10 text-[#5856D6] hover:bg-[#5856D6]/18 transition-colors disabled:opacity-50 no-tap flex-shrink-0">
+            {backfilling ? <Loader2 size={11} className="animate-spin" /> : null}
+            {backfilling ? '处理中…' : '立即补充'}
+          </button>
+        </div>
+        {backfillMsg && (
+          <div className={cn('mt-2 text-[12px]', backfillMsg.startsWith('✓') ? 'text-[#34C759]' : 'text-[#FF3B30]')}>
+            {backfillMsg}
+          </div>
+        )}
+      </div>
+
       {/* 版本历史 */}
       {versions.length > 0 && (
-        <div className="glass-card p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <History size={15} className="text-black/40" />
-            <h2 className="text-[15px] font-600 text-black/70">版本历史</h2>
-          </div>
-          <div className="space-y-2">
-            {versions.map(v => (
-              <div key={v.version_id}
-                className={cn('flex items-center justify-between px-3 py-2.5 rounded-ios transition-all',
-                  v.is_active ? 'bg-[#007AFF]/06 border border-[#007AFF]/15' : 'hover:bg-black/03')}>
-                <div className="flex items-center gap-2.5">
-                  <div className={cn('w-2 h-2 rounded-full', v.is_active ? 'bg-[#34C759]' : 'bg-black/15')} />
-                  <div>
-                    <span className="text-[13px] font-500 text-black/70">v{v.version_id}</span>
-                    <span className="text-[12px] text-black/40 ml-2">{v.record_count.toLocaleString()} 条</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {v.is_active && <span className="badge-ios badge-green">当前</span>}
-                  <span className="text-[11px] text-black/35">
-                    {new Date(v.uploaded_at).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <VersionHistory versions={versions} onDeleted={loadVersions} />
       )}
     </div>
   );

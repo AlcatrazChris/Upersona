@@ -3,17 +3,32 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Loader2, AlertCircle, Sparkles, RefreshCw,
-  ChevronDown, Filter, Edit3, Save, Eye, LayoutGrid, BarChart2,
+  ChevronDown, Filter, Edit3, Save, LayoutGrid, BarChart2, GitCompare,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend,
 } from 'recharts';
 import { RegionCascade } from '@/components/RegionCascade';
+import { ChartConfigPanel } from '@/components/charts/ChartConfigPanel';
 import { useRole } from '@/components/RoleProvider';
 import { PROFILE_DIMENSIONS } from '@/types';
 import { cn } from '@/lib/utils';
 import { createPortal } from 'react-dom';
+import { ChartConfig, DEFAULT_CHART_CONFIG, loadChartConfig, saveChartConfig } from '@/lib/chartConfig';
+
+interface DataVersion {
+  version_id: number;
+  uploaded_at: string;
+  record_count: number;
+  is_active: boolean;
+  notes?: string | null;
+  version_name?: string | null;
+}
+
+function getVersionName(v: DataVersion) {
+  return v.version_name || v.notes || `v${v.version_id}`;
+}
 
 const DIMS = PROFILE_DIMENSIONS.filter(d => !['competing_models'].includes(d.key as string));
 const ALL_STATUSES = ['锁单/提车', '未锁单', '退单'];
@@ -42,18 +57,19 @@ function ScrollTick({ x, y, payload, width = 86 }: {
   );
 }
 
-// ── 维度下拉 ──────────────────────────────────────────────────
-function DimSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+// ── 多维度选择器 ──────────────────────────────────────────────
+const MAX_DIMS = 4;
+
+function DimMultiSelect({ selected, onChange }: { selected: string[]; onChange: (v: string[]) => void }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLButtonElement>(null);
+  const ref    = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<React.CSSProperties>({});
-  const current = DIMS.find(d => d.key === value);
 
   const updatePos = useCallback(() => {
     if (!ref.current) return;
     const r = ref.current.getBoundingClientRect();
-    setStyle({ position: 'fixed', left: r.left, top: r.bottom + 4, minWidth: r.width, maxHeight: 300, zIndex: 99999 });
+    setStyle({ position: 'fixed', left: r.left, top: r.bottom + 4, minWidth: Math.max(r.width, 220), maxHeight: 360, zIndex: 99999 });
   }, []);
 
   useEffect(() => { if (open) updatePos(); }, [open, updatePos]);
@@ -66,36 +82,58 @@ function DimSelect({ value, onChange }: { value: string; onChange: (v: string) =
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
 
+  function toggle(key: string) {
+    if (selected.includes(key)) {
+      if (selected.length > 1) onChange(selected.filter(k => k !== key));
+    } else {
+      if (selected.length < MAX_DIMS) onChange([...selected, key]);
+    }
+  }
+
+  const labels = selected.map(k => DIMS.find(d => d.key === k)?.label ?? k).join('、');
+
   return (
     <>
       <button ref={ref} onClick={() => setOpen(p => !p)}
         className={cn('flex items-center gap-2 px-3 py-2 rounded-ios text-[13px] transition-all no-tap',
           open ? 'bg-[#007AFF]/12 text-[#007AFF] border border-[#007AFF]/20' : 'glass-card-subtle text-black/65')}>
-        <span className="font-500">{current?.label ?? '选择维度'}</span>
-        {current?.isMultiSelect && <span className="badge-ios badge-blue text-[9px]">多选</span>}
-        <ChevronDown size={11} className={cn('transition-transform', open && 'rotate-180')} />
+        <span className="font-500 truncate max-w-[200px]">{labels || '选择维度'}</span>
+        <span className="text-[10px] text-black/35 flex-shrink-0">{selected.length}/{MAX_DIMS}</span>
+        <ChevronDown size={11} className={cn('flex-shrink-0 transition-transform', open && 'rotate-180')} />
       </button>
       {open && typeof window !== 'undefined' && createPortal(
         <div ref={menuRef} style={style}
           className="glass-card-elevated py-1.5 animate-scale-in shadow-ios-xl overflow-y-auto">
-          {DIMS.map(d => (
-            <button key={d.key as string}
-              onMouseDown={e => { e.preventDefault(); onChange(d.key as string); setOpen(false); }}
-              className={cn('w-full flex items-center justify-between px-3 py-2 text-[13px] transition-colors no-tap',
-                value === d.key ? 'text-[#007AFF] font-500 bg-[#007AFF]/06' : 'text-black/65 hover:bg-black/04')}>
-              {d.label}
-              {d.isMultiSelect && <span className="badge-ios badge-blue text-[9px] ml-2">多选</span>}
-            </button>
-          ))}
+          <div className="px-3 py-1.5 border-b border-black/06">
+            <span className="text-[11px] text-black/35">最多选 {MAX_DIMS} 个维度同时展示</span>
+          </div>
+          {DIMS.map(d => {
+            const isSelected = selected.includes(d.key as string);
+            const disabled   = !isSelected && selected.length >= MAX_DIMS;
+            return (
+              <button key={d.key as string}
+                onMouseDown={e => { e.preventDefault(); toggle(d.key as string); }}
+                disabled={disabled}
+                className={cn('w-full flex items-center gap-2 px-3 py-2 text-[13px] transition-colors no-tap',
+                  isSelected ? 'text-[#007AFF] bg-[#007AFF]/06' : disabled ? 'text-black/25 cursor-not-allowed' : 'text-black/65 hover:bg-black/04')}>
+                <div className={cn('w-4 h-4 rounded flex items-center justify-center border transition-all flex-shrink-0',
+                  isSelected ? 'bg-[#007AFF] border-[#007AFF]' : 'border-black/20')}>
+                  {isSelected && <svg width="9" height="7" viewBox="0 0 9 7"><path d="M1 3l2.5 2.5L8 1" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                </div>
+                <span>{d.label}</span>
+                {d.isMultiSelect && <span className="badge-ios badge-blue text-[9px] ml-auto">多选</span>}
+              </button>
+            );
+          })}
         </div>, document.body
       )}
     </>
   );
 }
 
-// ── 簇状图（自适应高度，每张图独立 domain）────────────────────
-function ClusteredChart({ data, activeStatuses }: {
-  data: StatusCompareData; activeStatuses: string[];
+// ── 簇状图（自适应高度，支持图表配置 + 样本数显示）────────────
+function ClusteredChart({ data, activeStatuses, cfg = DEFAULT_CHART_CONFIG }: {
+  data: StatusCompareData; activeStatuses: string[]; cfg?: ChartConfig;
 }) {
   const { rows, allLabels } = data;
   const n = allLabels.length;
@@ -104,12 +142,37 @@ function ClusteredChart({ data, activeStatuses }: {
   const groupH       = barsPerGroup * (barSize + 3) + 8;
   const chartH       = Math.max(200, n * groupH + 60);
 
-  // 把 statusCounts 数组转成 Recharts 需要的平铺格式
+  // 样本数查找表（label → total）
+  const sampleMap = Object.fromEntries(rows.map(r => [r.label, r.total]));
+
   const chartData = rows.map(row => {
     const entry: Record<string, string | number> = { label: row.label };
     for (const s of row.statusCounts) entry[s.status] = s.pct;
     return entry;
   });
+
+  // Y 轴宽度：显示样本数时加宽
+  const yW = cfg.showSampleCount ? 118 : 92;
+
+  // 自定义 Y 轴 Tick（支持样本数附注）
+  const SampleTick = ({ x, y, payload }: { x?: number; y?: number; payload?: { value: string } }) => {
+    const text  = payload?.value ?? '';
+    const count = sampleMap[text];
+    const avgW  = /[一-龥]/.test(text) ? 11 : 7;
+    const maxCh = Math.floor((yW - (cfg.showSampleCount ? 36 : 4)) / avgW);
+    const display = text.length > maxCh ? text.slice(0, maxCh - 1) + '…' : text;
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <title>{text}</title>
+        <text x={-4} y={0} dy={4} textAnchor="end" fill="rgba(0,0,0,0.60)" fontSize={cfg.axisFontSize ?? 11}>
+          {display}
+          {cfg.showSampleCount && count !== undefined && (
+            <tspan fill="rgba(0,0,0,0.30)" fontSize={9}>{` ${count}`}</tspan>
+          )}
+        </text>
+      </g>
+    );
+  };
 
   return (
     <div style={{ height: chartH }}>
@@ -117,43 +180,55 @@ function ClusteredChart({ data, activeStatuses }: {
         <BarChart data={chartData} layout="vertical"
           margin={{ left: 0, right: 46, top: 8, bottom: 8 }}
           barCategoryGap="18%" barGap={2}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.04)" horizontal={false} />
-          <XAxis type="number" domain={[0, 100]}
-            tick={{ fontSize: 10, fill: 'rgba(0,0,0,0.28)' }}
-            axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
-          <YAxis type="category" dataKey="label" width={92}
-            tick={<ScrollTick width={88} />}
-            axisLine={false} tickLine={false} interval={0} />
-          <Tooltip
-            content={({ active, payload, label }) => {
-              if (!active || !payload?.length) return null;
-              return (
-                <div className="glass-card-elevated px-3 py-2 text-[11px] min-w-[140px]">
-                  <div className="font-600 text-black/75 mb-1.5">{label}</div>
-                  {payload.map((p, i) => (
-                    <div key={i} className="flex items-center justify-between gap-3 mb-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-sm" style={{ background: STATUS_COLORS[String(p.name ?? '')] }} />
-                        <span className="text-black/55">{p.name}</span>
-                      </div>
-                      <span className="font-600 tabular-nums">{Number(p.value ?? 0).toFixed(1)}%</span>
+          {cfg.showGrid && <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.04)" horizontal={false} />}
+          {cfg.showXAxis && (
+            <XAxis type="number" domain={[0, 100]}
+              tick={{ fontSize: cfg.axisFontSize, fill: 'rgba(0,0,0,0.28)' }}
+              axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
+          )}
+          {cfg.showYAxis && (
+            <YAxis type="category" dataKey="label" width={yW}
+              tick={<SampleTick />}
+              axisLine={false} tickLine={false} interval={0} />
+          )}
+          {cfg.showTooltip && (
+            <Tooltip
+              content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null;
+                const total = sampleMap[label as string];
+                return (
+                  <div className="glass-card-elevated px-3 py-2 text-[11px] min-w-[140px]">
+                    <div className="font-600 text-black/75 mb-1.5">
+                      {label}
+                      {total !== undefined && <span className="text-black/35 font-400 ml-1">n={total}</span>}
                     </div>
-                  ))}
-                </div>
-              );
-            }}
-            cursor={{ fill: 'rgba(0,0,0,0.03)' }}
-          />
-          <Legend formatter={v => <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.50)' }}>{v}</span>} />
+                    {payload.map((p, i) => (
+                      <div key={i} className="flex items-center justify-between gap-3 mb-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-sm" style={{ background: STATUS_COLORS[String(p.name ?? '')] }} />
+                          <span className="text-black/55">{p.name}</span>
+                        </div>
+                        <span className="font-600 tabular-nums">{Number(p.value ?? 0).toFixed(1)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              }}
+              cursor={{ fill: 'rgba(0,0,0,0.03)' }}
+            />
+          )}
+          {cfg.showLegend && (
+            <Legend formatter={v => <span style={{ fontSize: cfg.legendFontSize, color: 'rgba(0,0,0,0.50)' }}>{v}</span>} />
+          )}
           {ALL_STATUSES.filter(s => activeStatuses.includes(s)).map(status => (
             <Bar key={status} dataKey={status} name={status}
-              fill={STATUS_COLORS[status]} fillOpacity={0.82}
-              barSize={barSize} radius={[0, 3, 3, 0]}
-              label={{
+              fill={STATUS_COLORS[status]} fillOpacity={cfg.barOpacity}
+              barSize={barSize} radius={[0, cfg.barRadius, cfg.barRadius, 0]}
+              label={cfg.showLabel ? {
                 position: 'right',
                 formatter: (v: number) => v >= 3 ? `${Math.round(v)}%` : '',
-                style: { fontSize: 10, fill: 'rgba(0,0,0,0.38)' },
-              }}
+                style: { fontSize: cfg.labelFontSize, fill: 'rgba(0,0,0,0.38)' },
+              } : false}
             />
           ))}
         </BarChart>
@@ -164,7 +239,13 @@ function ClusteredChart({ data, activeStatuses }: {
 
 // ── 概览卡片（每张图独立 domain = 自身最大值）────────────────
 function OverviewDimCard({ dimData, activeStatuses }: {
-  dimData: { dimKey: string; dimLabel: string; rows: Record<string, string|number>[]; allLabels: string[] };
+  dimData: {
+    dimKey: string;
+    dimLabel: string;
+    rows: Record<string, string|number>[];
+    allLabels: string[];
+    statusSampleCounts?: Record<string, number>;
+  };
   activeStatuses: string[];
 }) {
   const { rows, allLabels, dimLabel } = dimData;
@@ -172,6 +253,9 @@ function OverviewDimCard({ dimData, activeStatuses }: {
   const barSize  = 12;
   const groupH   = activeStatuses.length * (barSize + 3) + 8;
   const chartH   = Math.max(160, n * groupH + 48);
+  const sampleCount = activeStatuses.reduce((sum, status) => (
+    sum + Number(dimData.statusSampleCounts?.[status] ?? 0)
+  ), 0);
 
   // 该图自身最大值
   const maxVal = Math.max(
@@ -184,7 +268,12 @@ function OverviewDimCard({ dimData, activeStatuses }: {
 
   return (
     <div className="glass-card p-4">
-      <div className="text-[13px] font-600 text-black/65 mb-2">{dimLabel}</div>
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <div className="text-[13px] font-600 text-black/65">{dimLabel}</div>
+        <div className="text-[11px] text-black/35 whitespace-nowrap">
+          样本数 <span className="font-600 text-black/55 tabular-nums">{sampleCount.toLocaleString()}</span>
+        </div>
+      </div>
       <div style={{ height: chartH }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={rows} layout="vertical"
@@ -284,18 +373,26 @@ function DataTable({ rows, statusGroups, activeStatuses }: {
 interface StatusCompareData {
   dimension: string; dimensionLabel: string; isMultiSelect: boolean;
   allLabels: string[];
-  rows: { label: string; total: number; statusCounts: { status: string; count: number; pct: number }[] }[];
-  totalSamples: number;
-  globalStatus: { status: string; count: number; pct: number }[];
+  rows: { label: string; total: number; statusCounts: { status: string; count: number; groupTotal: number; pct: number }[] }[];
+  totalSamples: number;   // 有效样本数（排除空白）
+  rawSamples?:  number;   // 原始总数（含空白）
+  globalStatus: { status: string; count: number; totalCount?: number; pct: number }[];
   statusGroups: { key: string; color: string }[];
   filter: { area?: string; province?: string; city?: string };
   pctNote: string;
 }
 
 interface DimsData {
-  dims: { dimKey: string; dimLabel: string; rows: Record<string, string|number>[]; allLabels: string[] }[];
+  dims: {
+    dimKey: string;
+    dimLabel: string;
+    rows: Record<string, string|number>[];
+    allLabels: string[];
+    statusSampleCounts?: Record<string, number>;
+  }[];
   statusGroups: { key: string; color: string }[];
   totalSamples: number;
+  versionId?: number;
 }
 
 // ── AI 洞察面板（可编辑）────────────────────────────────────────
@@ -424,6 +521,226 @@ function InsightPanel({
   );
 }
 
+// ── 工具：旧格式城市级别标签 → 新格式 ────────────────────────
+const CITY_TIER_LEGACY: Record<string, string> = {
+  '一线': '一线城市', '新一线': '新一线城市',
+  '二线': '二线城市', '三线': '三线城市', '四线及以下': '四线及以下城市',
+};
+
+function normalizeCmpLabels(data: StatusCompareData, dimKey: string): StatusCompareData {
+  if (dimKey !== 'city_tier') return data;
+  return {
+    ...data,
+    rows: data.rows.map(r => ({
+      ...r,
+      label: CITY_TIER_LEGACY[r.label] ?? r.label,
+    })),
+  };
+}
+
+// ── 工具：将 compareData 的行顺序对齐到 refLabels（当前版本的排序）──
+// 对有序维度（如城市级别、年龄段）保证两个版本 Y 轴完全一致，便于视觉比对
+function alignDataToLabels(compareData: StatusCompareData, refLabels: string[]): StatusCompareData {
+  const rowMap = new Map(compareData.rows.map(r => [r.label, r]));
+  // 按 refLabels 顺序重排，缺失的补零行
+  const aligned = refLabels.map(label =>
+    rowMap.get(label) ?? {
+      label,
+      total: 0,
+      statusCounts: compareData.statusGroups.map(sg => ({ status: sg.key, count: 0, groupTotal: 0, pct: 0 })),
+    }
+  );
+  // 同时把 compareData 中有但 refLabels 没有的标签追加到末尾（避免数据丢失）
+  const refSet = new Set(refLabels);
+  for (const row of compareData.rows) {
+    if (!refSet.has(row.label)) aligned.push(row);
+  }
+  return { ...compareData, rows: aligned, allLabels: aligned.map(r => r.label) };
+}
+
+// ── 单维度对比卡片（自包含状态，支持多实例并列）─────────────────
+function DimCard({ dimKey, filter, activeStatuses, compareVersionId, chartConfig }: {
+  dimKey:            string;
+  filter:            { area?: string; province?: string; city?: string };
+  activeStatuses:    string[];
+  compareVersionId?: number | null;
+  chartConfig:       ChartConfig;
+}) {
+  const [data, setData]               = useState<StatusCompareData | null>(null);
+  const [compareData, setCompareData] = useState<StatusCompareData | null>(null);
+  const [loading, setLoading]         = useState(false);
+  const [cmpLoading, setCmpLoading]   = useState(false);
+  const [error, setError]             = useState('');
+  const [insight, setInsight]         = useState('');
+  const [customText, setCustomText]   = useState('');
+  const [prefer, setPrefer]           = useState<'ai'|'custom'>('ai');
+  const [editing, setEditing]         = useState(false);
+  const [editDraft, setEditDraft]     = useState('');
+  const [savingCustom, setSavingCustom] = useState(false);
+  const [insightLoading, setInsightLoading] = useState(false);
+  const prevKey    = useRef('');
+  const prevCmpKey = useRef('');
+
+  // 主数据
+  const fetchData = useCallback(async () => {
+    const key = [dimKey, filter.area, filter.province, filter.city].join('|');
+    if (key === prevKey.current) return;
+    prevKey.current = key;
+    setLoading(true); setError(''); setData(null);
+    setInsight(''); setCustomText(''); setPrefer('ai');
+    try {
+      const params = new URLSearchParams({ dim: dimKey });
+      if (filter.city)          params.set('city', filter.city);
+      else if (filter.province) params.set('province', filter.province);
+      else if (filter.area)     params.set('area', filter.area);
+      const res = await fetch(`/api/status-compare?${params}`, { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      setData(json);
+      const fl = filter.city || filter.province || filter.area || '全国';
+      const ck = `status_insight:${json.dimensionLabel}:${fl}:${(json.rows as { label: string }[]).map(r => r.label).join(',')}`;
+      try {
+        const ir = await fetch(`/api/status-compare-insight?cacheKey=${encodeURIComponent(ck)}`, { cache: 'no-store' });
+        const id = await ir.json();
+        setInsight(id.insight ?? ''); setCustomText(id.custom ?? ''); setPrefer(id.prefer ?? 'ai');
+      } catch {}
+    } catch (e) { setError(e instanceof Error ? e.message : '请求失败'); }
+    finally { setLoading(false); }
+  }, [dimKey, filter]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // 历史对比数据
+  useEffect(() => {
+    if (!compareVersionId) { setCompareData(null); prevCmpKey.current = ''; return; }
+    const key = [dimKey, compareVersionId, filter.area, filter.province, filter.city].join('|');
+    if (key === prevCmpKey.current) return;
+    prevCmpKey.current = key;
+    setCmpLoading(true); setCompareData(null);
+    const params = new URLSearchParams({ dim: dimKey, versionId: String(compareVersionId) });
+    if (filter.city)          params.set('city', filter.city);
+    else if (filter.province) params.set('province', filter.province);
+    else if (filter.area)     params.set('area', filter.area);
+    fetch(`/api/status-compare?${params}`, { cache: 'no-store' })
+      .then(r => r.json())
+      .then(json => { if (!json.error) setCompareData(json); })
+      .catch(() => {})
+      .finally(() => setCmpLoading(false));
+  }, [compareVersionId, dimKey, filter]);
+
+  async function generateInsight(force = false) {
+    if (!data || (prefer === 'custom' && customText)) return;
+    setInsightLoading(true);
+    const filterLabel = filter.city || filter.province || filter.area || '全国';
+    try {
+      const res = await fetch('/api/status-compare-insight', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dimensionLabel: data.dimensionLabel, filter: filterLabel,
+          rows: data.rows, globalStatus: data.globalStatus, forceRegenerate: force }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      setInsight(json.insight ?? ''); setCustomText(json.custom ?? ''); setPrefer(json.prefer ?? 'ai');
+    } catch (e) { console.error('生成洞察失败:', e); }
+    finally { setInsightLoading(false); }
+  }
+
+  async function saveCustom() {
+    if (!data) return;
+    setSavingCustom(true);
+    const filterLabel = filter.city || filter.province || filter.area || '全国';
+    const res = await fetch('/api/status-compare-insight', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimensionLabel: data.dimensionLabel, filter: filterLabel,
+        rows: data.rows, globalStatus: data.globalStatus, saveCustom: true, customText: editDraft }),
+    });
+    const json = await res.json();
+    setCustomText(json.custom ?? editDraft); setPrefer(json.prefer ?? 'custom');
+    setEditing(false); setSavingCustom(false);
+  }
+
+  if (error) return (
+    <div className="glass-card p-4 flex items-center gap-2 border border-[#FF3B30]/20">
+      <AlertCircle size={14} className="text-[#FF3B30]" />
+      <span className="text-[13px] text-black/65">{error}</span>
+    </div>
+  );
+
+  if (loading) return (
+    <div className="glass-card p-12 flex flex-col items-center gap-3">
+      <Loader2 size={22} className="animate-spin text-[#007AFF]" />
+      <span className="text-[13px] text-black/45">加载中…</span>
+    </div>
+  );
+
+  if (!data) return null;
+
+  // 仅显示当前激活的订单状态的 globalStatus
+  const activeGlobalStatus = data.globalStatus.filter(s => activeStatuses.includes(s.status));
+
+  return (
+    <div className="space-y-4">
+      {/* 当前版本图表 */}
+      <div className="glass-card p-5">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h2 className="text-[15px] font-600 text-black/75">{data.dimensionLabel} — 各订单状态内部分布</h2>
+            <p className="text-[12px] text-black/35 mt-0.5">
+              {data.isMultiSelect ? '多选题·各项之和=100%' : '同一订单状态列内各取值之和≈100%'}
+            </p>
+          </div>
+          <ChartConfigPanel
+            config={chartConfig}
+            onChange={c => saveChartConfig('status-compare', c)}
+          />
+        </div>
+        <ClusteredChart data={data} activeStatuses={activeStatuses} cfg={chartConfig} />
+      </div>
+
+      {/* 历史版本对比图表 */}
+      {compareVersionId && (
+        <div className="glass-card p-5 border border-[#5856D6]/15">
+          <div className="flex items-center gap-2 mb-3">
+            <GitCompare size={13} className="text-[#5856D6]" />
+            <span className="text-[13px] font-600 text-black/65">v{compareVersionId} 历史对比</span>
+            <span className="text-[11px] text-black/30">{data.dimensionLabel}</span>
+          </div>
+          {cmpLoading ? (
+            <div className="flex items-center gap-2 text-[12px] text-black/35 py-4">
+              <Loader2 size={12} className="animate-spin" />历史数据加载中…
+            </div>
+          ) : compareData ? (
+            /* 旧格式标签标准化（如"三线"→"三线城市"）+ 对齐 Y 轴顺序 */
+            <ClusteredChart
+              data={alignDataToLabels(normalizeCmpLabels(compareData, dimKey), data.allLabels)}
+              activeStatuses={activeStatuses}
+              cfg={chartConfig}
+            />
+          ) : (
+            <p className="text-[12px] text-black/30 py-3">该版本无此维度数据</p>
+          )}
+        </div>
+      )}
+
+      <div className="glass-card p-5">
+        <h3 className="text-[14px] font-600 text-black/65 mb-3">数据明细</h3>
+        <DataTable rows={data.rows} statusGroups={data.statusGroups} activeStatuses={activeStatuses} />
+      </div>
+      <InsightPanel
+        insight={insight} customText={customText} prefer={prefer}
+        editing={editing} editDraft={editDraft} savingCustom={savingCustom} insightLoading={insightLoading}
+        label={`「${data.dimensionLabel}」锁单与退单差异`}
+        onEdit={() => { setEditDraft(customText || insight); setEditing(true); }}
+        onDraftChange={setEditDraft}
+        onSave={saveCustom}
+        onCancelEdit={() => setEditing(false)}
+        onGenerate={() => generateInsight(false)}
+        onRegenerate={() => generateInsight(true)}
+      />
+    </div>
+  );
+}
+
 // ── 主页面 ────────────────────────────────────────────────────
 export default function StatusComparePage() {
   const [activeTab, setActiveTab]         = useState<'overview' | 'detail'>('overview');
@@ -432,6 +749,7 @@ export default function StatusComparePage() {
   const [dimsData, setDimsData]           = useState<DimsData | null>(null);
   const [dimsLoading, setDimsLoading]     = useState(false);
   const [overviewActive, setOverviewActive] = useState<string[]>(ALL_STATUSES);
+  const [overviewVersionId, setOverviewVersionId] = useState<number | null>(null);
   // 概览洞察（仅自定义内容，无 AI 生成）
   const [ovCustom, setOvCustom]           = useState('');
   const [ovEditing, setOvEditing]         = useState(false);
@@ -439,32 +757,33 @@ export default function StatusComparePage() {
   const [ovSaving, setOvSaving]           = useState(false);
 
   // 维度对比 Tab
-  const [dim, setDim]                     = useState(DIMS[0].key as string);
-  const [filter, setFilter]               = useState<{ area?: string; province?: string; city?: string }>({});
-  const [activeStatuses, setActiveStatuses] = useState<string[]>(ALL_STATUSES);
-  const [data, setData]                   = useState<StatusCompareData | null>(null);
-  const [loading, setLoading]             = useState(false);
-  const [error, setError]                 = useState('');
-  // 维度 AI
-  const [insight, setInsight]             = useState('');
-  const [customText, setCustomText]       = useState('');
-  const [prefer, setPrefer]               = useState<'ai'|'custom'>('ai');
-  const [editing, setEditing]             = useState(false);
-  const [editDraft, setEditDraft]         = useState('');
-  const [savingCustom, setSavingCustom]   = useState(false);
-  const [insightLoading, setInsightLoading] = useState(false);
-  const [cacheKey, setCacheKey]           = useState('');
-  const prevKey = useRef('');
+  const [selectedDims, setSelectedDims]      = useState<string[]>([DIMS[0].key as string]);
+  const [filter, setFilter]                  = useState<{ area?: string; province?: string; city?: string }>({});
+  const [activeStatuses, setActiveStatuses]  = useState<string[]>(ALL_STATUSES);
+  const [compareVersionId, setCompareVersionId] = useState<number | null>(null);
+  const [versions, setVersions]              = useState<DataVersion[]>([]);
+  const [chartConfig, setChartConfig]        = useState<ChartConfig>(() => loadChartConfig('status-compare'));
+  // 概览 Tab 维度过滤
+  const [visibleDimKeys, setVisibleDimKeys]  = useState<string[] | null>(null); // null = 全部显示
 
-  // ── 概览数据 ──
+  // ── 概览数据 + 版本列表 ──
   useEffect(() => {
     setDimsLoading(true);
-    fetch('/api/overview-dimensions', { cache: 'no-store' })
+    const params = new URLSearchParams();
+    if (overviewVersionId) params.set('versionId', String(overviewVersionId));
+    const query = params.toString();
+    fetch(`/api/overview-dimensions${query ? `?${query}` : ''}`, { cache: 'no-store' })
       .then(r => r.json()).then(setDimsData).finally(() => setDimsLoading(false));
-    // 自动读取概览自定义洞察内容
+  }, [overviewVersionId]);
+
+  useEffect(() => {
     fetch('/api/status-compare-insight?isOverview=1', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { setOvCustom(d.custom ?? ''); })
+      .catch(() => {});
+    fetch('/api/versions')
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { if (Array.isArray(d)) setVersions(d); })
       .catch(() => {});
   }, []);
 
@@ -485,103 +804,20 @@ export default function StatusComparePage() {
     setOvSaving(false);
   }
 
-  // ── 维度对比数据 ──
-  const fetchData = useCallback(async () => {
-    const key = [dim, filter.area, filter.province, filter.city].join('|');
-    if (key === prevKey.current) return;
-    prevKey.current = key;
-    setLoading(true); setError(''); setData(null);
-    // 切换维度时先清空洞察，防止显示上一个维度的旧内容
-    setInsight(''); setCustomText(''); setPrefer('ai'); setCacheKey('');
-    try {
-      const params = new URLSearchParams({ dim });
-      if (filter.city)          params.set('city', filter.city);
-      else if (filter.province) params.set('province', filter.province);
-      else if (filter.area)     params.set('area', filter.area);
-      const res = await fetch(`/api/status-compare?${params}`, { cache: 'no-store' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      setData(json);
-
-      // ── 图表数据就绪后，立即自动加载该维度已有的洞察缓存 ──
-      // 不需要用户点按钮，自定义内容也会直接显示
-      const fl = filter.city || filter.province || filter.area || '全国';
-      const ck = `status_insight:${json.dimensionLabel}:${fl}:${(json.rows as { label: string }[]).map(r => r.label).join(',')}`;
-      setCacheKey(ck);
-      try {
-        const ir = await fetch(
-          `/api/status-compare-insight?cacheKey=${encodeURIComponent(ck)}`,
-          { cache: 'no-store' }
-        );
-        const id = await ir.json();
-        // 不管是 AI 内容还是自定义内容，都直接填充，InsightPanel 按 prefer 决定显示哪个
-        setInsight(id.insight ?? '');
-        setCustomText(id.custom ?? '');
-        setPrefer(id.prefer ?? 'ai');
-      } catch { /* 缓存读取失败不影响主流程，保持空白等待用户点击生成 */ }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '请求失败');
-    } finally { setLoading(false); }
-  }, [dim, filter]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  // ── 维度 AI 生成 ──
-  // force=false（默认）→ 首次生成，所有用户可触发；命中缓存直接返回
-  // force=true  → 强制重新生成，管理员专用（API 端校验权限）
-  async function generateInsight(force = false) {
-    if (!data) return;
-    if (prefer === 'custom' && customText) return; // 自定义模式下不触发 AI
-    setInsightLoading(true);
-    const filterLabel = filter.city || filter.province || filter.area || '全国';
-    try {
-      const res = await fetch('/api/status-compare-insight', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dimensionLabel: data.dimensionLabel, filter: filterLabel,
-          rows: data.rows, globalStatus: data.globalStatus,
-          forceRegenerate: force,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      setInsight(json.insight ?? '');
-      setCustomText(json.custom ?? '');
-      setPrefer(json.prefer ?? 'ai');
-      if (!cacheKey) {
-        setCacheKey(`status_insight:${data.dimensionLabel}:${filterLabel}:${data.rows.map((r: { label: string }) => r.label).join(',')}`);
-      }
-    } catch (e) {
-      console.error('生成洞察失败:', e);
-    } finally { setInsightLoading(false); }
-  }
-
-  async function saveCustom() {
-    if (!data) return; // cacheKey 由服务端自行从请求体构建，无需客户端传递
-    setSavingCustom(true);
-    const filterLabel = filter.city || filter.province || filter.area || '全国';
-    const res = await fetch('/api/status-compare-insight', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        dimensionLabel: data.dimensionLabel, filter: filterLabel,
-        rows: data.rows, globalStatus: data.globalStatus,
-        saveCustom: true, customText: editDraft,
-      }),
-    });
-    const json = await res.json();
-    setCustomText(json.custom ?? editDraft);
-    setPrefer(json.prefer ?? 'custom'); // 服务端已自动切为 custom，同步到前端
-    setEditing(false);
-    setSavingCustom(false);
-  }
-
   function toggleStatus(s: string) {
     setActiveStatuses(prev => prev.includes(s) ? prev.length > 1 ? prev.filter(x => x !== s) : prev : [...prev, s]);
   }
 
   const filterLabel = filter.city || filter.province || filter.area || '全国';
+  const activeVersion = versions.find(v => v.is_active);
+  const selectedOverviewVersion = overviewVersionId
+    ? versions.find(v => v.version_id === overviewVersionId)
+    : activeVersion;
+  const overviewSampleCount = dimsData?.dims
+    .filter(d => visibleDimKeys === null || visibleDimKeys.includes(d.dimKey))
+    .reduce((sum, dim) => sum + overviewActive.reduce((inner, status) => (
+      inner + Number(dim.statusSampleCounts?.[status] ?? 0)
+    ), 0), 0) ?? 0;
 
   return (
     <div className="space-y-5">
@@ -623,22 +859,100 @@ export default function StatusComparePage() {
             <>
               <div className="flex items-center gap-2">
                 <span className="text-[13px] text-black/40">维度</span>
-                <DimSelect value={dim} onChange={v => { setDim(v); prevKey.current = ''; }} />
+                <DimMultiSelect selected={selectedDims} onChange={setSelectedDims} />
               </div>
               <div className="flex items-center gap-2">
                 <Filter size={13} className="text-black/35" />
                 <RegionCascade value={filter} onChange={setFilter} />
                 {(filter.area || filter.province || filter.city) && (
-                  <button onClick={() => { setFilter({}); prevKey.current = ''; }}
-                    className="text-[12px] text-[#007AFF]">清除</button>
+                  <button onClick={() => setFilter({})} className="text-[12px] text-[#007AFF]">清除</button>
                 )}
               </div>
-              {data && (
-                <span className="ml-auto text-[12px] text-black/35 tabular-nums">
-                  {filterLabel} · <span className="font-600 text-black/55">{data.totalSamples.toLocaleString()}</span> 人
-                </span>
+              {/* 历史版本对比选择器 */}
+              {versions.filter(v => !v.is_active).length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <GitCompare size={12} className="text-[#5856D6]" />
+                  <select
+                    value={compareVersionId ?? ''}
+                    onChange={e => setCompareVersionId(e.target.value ? parseInt(e.target.value, 10) : null)}
+                    className="input-ios text-[12px] py-1 pr-6 pl-2 rounded-ios">
+                    <option value="">对比历史版本</option>
+                    {versions.filter(v => !v.is_active).map(v => (
+                      <option key={v.version_id} value={v.version_id}>
+                        {getVersionName(v)}（v{v.version_id} · {new Date(v.uploaded_at).toLocaleDateString('zh-CN')}）
+                      </option>
+                    ))}
+                  </select>
+                  {compareVersionId && (
+                    <button onClick={() => setCompareVersionId(null)} className="text-[11px] text-[#007AFF]">清除</button>
+                  )}
+                </div>
               )}
+              {/* 图表设置 */}
+              <ChartConfigPanel
+                config={chartConfig}
+                onChange={c => {
+                  setChartConfig(c);
+                  saveChartConfig('status-compare', c);
+                }}
+              />
+              <span className="ml-auto text-[12px] text-black/35">{filterLabel}</span>
             </>
+          )}
+
+          {/* 概览 Tab 历史版本选择 */}
+          {activeTab === 'overview' && versions.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <GitCompare size={12} className="text-[#5856D6]" />
+              <select
+                value={overviewVersionId ?? ''}
+                onChange={e => setOverviewVersionId(e.target.value ? parseInt(e.target.value, 10) : null)}
+                className="input-ios text-[12px] py-1 pr-6 pl-2 rounded-ios">
+                <option value="">
+                  当前概览{activeVersion ? ` · ${getVersionName(activeVersion)}` : ''}
+                </option>
+                {versions.filter(v => !v.is_active).map(v => (
+                  <option key={v.version_id} value={v.version_id}>
+                    历史概览 · {getVersionName(v)}（v{v.version_id}）
+                  </option>
+                ))}
+              </select>
+              {overviewVersionId && (
+                <button onClick={() => setOverviewVersionId(null)} className="text-[11px] text-[#007AFF]">当前</button>
+              )}
+            </div>
+          )}
+
+          {/* 概览 Tab 维度过滤 */}
+          {activeTab === 'overview' && dimsData && dimsData.dims.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[12px] text-black/35">显示维度</span>
+              {dimsData.dims.map(d => {
+                const active = visibleDimKeys === null || visibleDimKeys.includes(d.dimKey);
+                return (
+                  <button key={d.dimKey}
+                    onClick={() => {
+                      if (visibleDimKeys === null) {
+                        // 全显示 → 仅显示点击的
+                        setVisibleDimKeys(dimsData.dims.filter(x => x.dimKey !== d.dimKey).map(x => x.dimKey));
+                      } else if (visibleDimKeys.includes(d.dimKey)) {
+                        const next = visibleDimKeys.filter(k => k !== d.dimKey);
+                        setVisibleDimKeys(next.length === 0 ? null : next);
+                      } else {
+                        const next = [...visibleDimKeys, d.dimKey];
+                        setVisibleDimKeys(next.length === dimsData.dims.length ? null : next);
+                      }
+                    }}
+                    className={cn('px-2 py-0.5 rounded-full text-[11px] transition-all no-tap border',
+                      active ? 'bg-[#007AFF] text-white border-transparent' : 'bg-white/60 border-black/10 text-black/40')}>
+                    {d.dimLabel}
+                  </button>
+                );
+              })}
+              {visibleDimKeys !== null && (
+                <button onClick={() => setVisibleDimKeys(null)} className="text-[11px] text-[#007AFF] ml-1">全部</button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -669,14 +983,32 @@ export default function StatusComparePage() {
             <div className="glass-card p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-[15px] font-600 text-black/75">各维度订单状态对比</h3>
-                  <p className="text-[12px] text-black/35 mt-0.5">各订单状态组内维度分布占比，X 轴以各图自身最大值为基准</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-[15px] font-600 text-black/75">各维度订单状态对比</h3>
+                    <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-500',
+                      overviewVersionId ? 'bg-[#5856D6]/10 text-[#5856D6]' : 'bg-[#34C759]/10 text-[#34C759]')}>
+                      {overviewVersionId ? '历史概览' : '当前概览'}
+                    </span>
+                    {selectedOverviewVersion && (
+                      <span className="text-[11px] text-black/35">
+                        {getVersionName(selectedOverviewVersion)} · v{selectedOverviewVersion.version_id}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[12px] text-black/35 mt-0.5">
+                    各订单状态组内维度分布占比，X 轴以各图自身最大值为基准
+                    <span className="ml-2">
+                      当前显示样本数 <span className="font-600 text-black/55 tabular-nums">{overviewSampleCount.toLocaleString()}</span>
+                    </span>
+                  </p>
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {dimsData.dims.map(dim => (
-                  <OverviewDimCard key={dim.dimKey} dimData={dim} activeStatuses={overviewActive} />
-                ))}
+                {dimsData.dims
+                  .filter(d => visibleDimKeys === null || visibleDimKeys.includes(d.dimKey))
+                  .map(dim => (
+                    <OverviewDimCard key={dim.dimKey} dimData={dim} activeStatuses={overviewActive} />
+                  ))}
               </div>
             </div>
           ) : null}
@@ -686,64 +1018,13 @@ export default function StatusComparePage() {
       {/* ── 维度对比 Tab ── */}
       {activeTab === 'detail' && (
         <div className="space-y-5 animate-slide-up">
-          {error && (
-            <div className="glass-card p-4 flex items-center gap-2 border border-[#FF3B30]/20">
-              <AlertCircle size={15} className="text-[#FF3B30]" />
-              <span className="text-[13px] text-black/65">{error}</span>
-            </div>
-          )}
-          {loading && (
-            <div className="glass-card p-12 flex flex-col items-center gap-3">
-              <Loader2 size={24} className="animate-spin text-[#007AFF]" />
-              <span className="text-[13px] text-black/45">加载中…</span>
-            </div>
-          )}
-          {!loading && data && (
-            <>
-              <div className="glass-card p-4 flex items-center gap-6 flex-wrap">
-                <span className="text-[12px] text-black/40">三组样本量</span>
-                {data.globalStatus.map(s => (
-                  <div key={s.status} className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: STATUS_COLORS[s.status] }} />
-                    <span className={cn('text-[13px]', activeStatuses.includes(s.status) ? 'text-black/60' : 'text-black/25')}>
-                      {s.status}</span>
-                    <span className="text-[13px] font-600 tabular-nums"
-                      style={{ color: activeStatuses.includes(s.status) ? STATUS_COLORS[s.status] : 'rgba(0,0,0,0.2)' }}>
-                      {s.pct}%
-                    </span>
-                    <span className="text-[11px] text-black/30">({s.count}人)</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="glass-card p-5">
-                <div className="mb-3">
-                  <h2 className="text-[15px] font-600 text-black/75">{data.dimensionLabel} — 各订单状态内部分布</h2>
-                  <p className="text-[12px] text-black/35 mt-0.5">
-                    {data.isMultiSelect ? '多选题·各项之和=100%' : '同一订单状态列内各取值之和≈100%'}
-                  </p>
-                </div>
-                <ClusteredChart data={data} activeStatuses={activeStatuses} />
-              </div>
-
-              <div className="glass-card p-5">
-                <h3 className="text-[14px] font-600 text-black/65 mb-3">数据明细</h3>
-                <DataTable rows={data.rows} statusGroups={data.statusGroups} activeStatuses={activeStatuses} />
-              </div>
-
-              <InsightPanel
-                insight={insight} customText={customText} prefer={prefer}
-                editing={editing} editDraft={editDraft} savingCustom={savingCustom} insightLoading={insightLoading}
-                label={`「${data.dimensionLabel}」锁单与退单差异`}
-                onEdit={() => { setEditDraft(customText || insight); setEditing(true); }}
-                onDraftChange={setEditDraft}
-                onSave={saveCustom}
-                onCancelEdit={() => setEditing(false)}
-                onGenerate={() => generateInsight(false)}
-                onRegenerate={() => generateInsight(true)}
-              />
-            </>
-          )}
+          {selectedDims.map(dimKey => (
+            <DimCard key={`${dimKey}-${filter.city}-${filter.province}-${filter.area}`}
+              dimKey={dimKey} filter={filter} activeStatuses={activeStatuses}
+              compareVersionId={compareVersionId}
+              chartConfig={chartConfig}
+            />
+          ))}
         </div>
       )}
     </div>

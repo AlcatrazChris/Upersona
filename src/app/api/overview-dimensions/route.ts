@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient, fetchUsers } from '@/lib/supabase';
 import { PROFILE_DIMENSIONS } from '@/types';
 
@@ -20,10 +20,14 @@ const OVERVIEW_DIMS = [
 // ── 进程内缓存：版本不变时跳过重复计算（overview-dimensions 是最重的路由）──
 let _cache: { versionId: number; data: unknown } | null = null;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const requestedVersionId = searchParams.get('versionId');
   const db = createServiceClient();
-  const { data: vd } = await db.from('data_versions').select('version_id')
-    .eq('is_active', true).order('version_id', { ascending: false }).limit(1).single();
+  const versionQuery = db.from('data_versions').select('version_id');
+  const { data: vd } = requestedVersionId
+    ? await versionQuery.eq('version_id', parseInt(requestedVersionId, 10)).single()
+    : await versionQuery.eq('is_active', true).order('version_id', { ascending: false }).limit(1).single();
   if (!vd) return NextResponse.json({ dims: [] });
 
   // 命中缓存：直接返回，跳过全表扫描
@@ -82,27 +86,40 @@ export async function GET() {
     interface GroupMap {
       map: Record<string, number>;
       multiSelectDenom: number;
+      validCount: number;
       total: number;
     }
     const groupMaps: GroupMap[] = statusGroups.map(sg => {
       const map: Record<string, number> = {};
       let multiSelectDenom = 0;
+      let validCount = 0;
       for (const u of sg.users) {
         const raw = (u as Record<string, unknown>)[dimKey];
         if (dimConfig.isMultiSelect && Array.isArray(raw)) {
+          let hasValid = false;
           for (const v of raw as string[]) {
             if (v && v !== '(跳过)') {
               map[v] = (map[v] || 0) + 1;
               multiSelectDenom++;
+              hasValid = true;
             }
           }
+          if (hasValid) validCount++;
         } else {
           const v = String(raw || '').trim();
-          if (v && v !== '(跳过)') map[v] = (map[v] || 0) + 1;
+          if (v && v !== '(跳过)') {
+            map[v] = (map[v] || 0) + 1;
+            validCount++;
+          }
         }
       }
-      return { map, multiSelectDenom, total: sg.total };
+      return { map, multiSelectDenom, validCount, total: sg.total };
     });
+
+    const statusSampleCounts = Object.fromEntries(statusGroups.map((sg, gi) => {
+      const gm = groupMaps[gi];
+      return [sg.key, dimConfig.isMultiSelect ? gm.multiSelectDenom : gm.validCount];
+    }));
 
     // 生成行数据（O(labels × groups)，无 filter）
     const rows = allLabels.map(label => {
@@ -111,16 +128,16 @@ export async function GET() {
         const sg = statusGroups[gi];
         const gm = groupMaps[gi];
         const count = gm.map[label] || 0;
-        const denom = dimConfig.isMultiSelect ? gm.multiSelectDenom : gm.total;
+        const denom = dimConfig.isMultiSelect ? gm.multiSelectDenom : gm.validCount;
         entry[sg.key] = denom > 0 ? parseFloat((count / denom * 100).toFixed(1)) : 0;
       }
       return entry;
     });
 
-    return { dimKey, dimLabel: dimConfig.label, rows, allLabels };
+    return { dimKey, dimLabel: dimConfig.label, rows, allLabels, statusSampleCounts };
   }).filter(Boolean);
 
-  const data = { dims: result, statusGroups: STATUS_GROUPS, totalSamples: users.length };
+  const data = { dims: result, statusGroups: STATUS_GROUPS, totalSamples: users.length, versionId: vd.version_id };
 
   // 写入进程缓存
   _cache = { versionId: vd.version_id, data };

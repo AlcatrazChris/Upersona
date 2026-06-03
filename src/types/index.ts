@@ -16,6 +16,7 @@ export interface User {
   use_scenarios: string[]; family_trip_frequency: string[];
   info_channels: string[]; car_interests: string[]; hobbies: string[];
   order_status: string; intent_label: IntentLabel; data_version: number;
+  city_tier?: string;
 }
 
 export interface ChartDataItem { label: string; count: number; percentage: number; }
@@ -74,6 +75,8 @@ export interface RadarData {
 export interface DataVersion {
   version_id: number; uploaded_at: string;
   record_count: number; is_active: boolean;
+  notes?: string | null;
+  version_name?: string | null;
 }
 
 export const ORDERED_DIMENSIONS: Record<string, string[]> = {
@@ -82,6 +85,7 @@ export const ORDERED_DIMENSIONS: Record<string, string[]> = {
   family_structure:      ['六口及以上','五口之家','四口之家','三口之家','两口之家','单身'],
   annual_income:         ['50万以上','40-49万','30-39万','24-29万','20-24万','15-19万','15万以下'],
   family_trip_frequency: ['频繁，平均一周一次','较频繁，平均每月一次','较少，平均半年一次','很少，平均一年一次'],
+  city_tier:             ['一线城市','新一线城市','二线城市','三线城市','四线及以下城市'],
 };
 
 export const PROFILE_DIMENSIONS: DimensionConfig[] = [
@@ -98,6 +102,7 @@ export const PROFILE_DIMENSIONS: DimensionConfig[] = [
   { key: 'car_interests',         label: '关注的汽车内容',  isOrdered: false, isMultiSelect: true,  note: '多选题，总和 > 100%' },
   { key: 'hobbies',               label: '日常爱好',        isOrdered: false, isMultiSelect: true,  note: '多选题，总和 > 100%' },
   { key: 'competing_models',      label: '对比车型',        isOrdered: false, isMultiSelect: true,  note: '多选题，总和 > 100%' },
+  { key: 'city_tier',             label: '城市级别',        isOrdered: true,  isMultiSelect: false, orderedValues: ORDERED_DIMENSIONS.city_tier },
 ];
 
 export const AREA_LIST = ['东北','中南','中原','华东','华北','华南','西北','西南','其他'];
