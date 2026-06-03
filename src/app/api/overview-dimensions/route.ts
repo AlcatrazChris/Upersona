@@ -14,7 +14,7 @@ const STATUS_GROUPS = [
 const OVERVIEW_DIMS = [
   'age_group', 'education', 'occupation_category', 'family_structure',
   'annual_income', 'is_upgrade', 'consumption_views', 'use_scenarios',
-  'info_channels', 'car_interests', 'hobbies', 'competing_models',
+  'info_channels', 'car_interests', 'hobbies', 'competing_models', 'city_tier',
 ];
 
 // ── 进程内缓存：版本不变时跳过重复计算（overview-dimensions 是最重的路由）──
