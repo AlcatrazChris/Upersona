@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient, fetchUsers } from '@/lib/supabase';
 import { PROFILE_DIMENSIONS } from '@/types';
+import { getValidSampleValues } from '@/lib/sample-values';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +45,6 @@ export async function GET(req: NextRequest) {
   }
   if (!users || users.length === 0) return NextResponse.json({ dimensions: [], totalSamples: 0 });
 
-  const totalSamples = users.length;
   const dims = dim ? PROFILE_DIMENSIONS.filter(d => d.key === dim) : PROFILE_DIMENSIONS;
 
   const results = dims.map(config => {
@@ -52,11 +52,11 @@ export async function GET(req: NextRequest) {
     const counter: Record<string, number> = {};
 
     if (isMultiSelect) {
+      let validUserSamples = 0;
       for (const user of users) {
-        const arr = (user as Record<string, string[]>)[key as string] as string[] | undefined;
-        if (!arr) continue;
-        for (const val of arr) {
-          if (!val || val === '(跳过)') continue;
+        const values = getValidSampleValues((user as Record<string, unknown>)[key as string], true);
+        if (values.length > 0) validUserSamples++;
+        for (const val of values) {
           counter[val] = (counter[val] || 0) + 1;
         }
       }
@@ -77,18 +77,18 @@ export async function GET(req: NextRequest) {
 
       return {
         dimension: key, dimensionLabel: label, items,
-        totalSamples, validSamples: multiTotal,
+        totalSamples: validUserSamples, validSamples: validUserSamples,
         isMultiSelect: true,
         note: note ? note.replace('总和 > 100%', '各项之和 = 100%') : '各项之和 = 100%',
       };
     } else {
-      let skipped = 0;
+      let validSamples = 0;
       for (const user of users) {
-        const val = String((user as Record<string, string>)[key as string] || '').trim();
-        if (!val || val === '(跳过)') { skipped++; continue; }
+        const [val] = getValidSampleValues((user as Record<string, unknown>)[key as string], false);
+        if (!val) continue;
         counter[val] = (counter[val] || 0) + 1;
+        validSamples++;
       }
-      const validSamples = totalSamples - skipped;
 
       let items = Object.entries(counter).map(([lbl, count]) => ({
         label: lbl, count,
@@ -102,9 +102,13 @@ export async function GET(req: NextRequest) {
         items.sort((a, b) => b.count - a.count);
       }
 
-      return { dimension: key, dimensionLabel: label, items, totalSamples, validSamples, isMultiSelect: false, note };
+      return { dimension: key, dimensionLabel: label, items, totalSamples: validSamples, validSamples, isMultiSelect: false, note };
     }
   });
+
+  const totalSamples = users.filter(user =>
+    dims.some(config => getValidSampleValues((user as Record<string, unknown>)[config.key as string], config.isMultiSelect).length > 0)
+  ).length;
 
   return NextResponse.json({ dimensions: results, totalSamples, filter: { area, province, city, orderStatus } });
 }
