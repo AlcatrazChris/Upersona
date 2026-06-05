@@ -138,9 +138,11 @@ export async function POST(req: NextRequest) {
       aiCleanedCount = Object.keys(aiCleanMap).length;
     }
 
-    // ── Phase 4：检测 city_tier 列是否已在数据库中创建 ──────────
-    const { error: cityTierColErr } = await db.from('users').select('city_tier').limit(0);
-    const hasCityTierCol = !cityTierColErr; // 无报错 = 列存在
+    // ── Phase 4：检测可选列是否已在数据库中创建 ──────────────────
+    const { error: cityTierColErr }     = await db.from('users').select('city_tier').limit(0);
+    const hasCityTierCol                = !cityTierColErr;
+    const { error: qiankunColErr }      = await db.from('users').select('is_qiankun_owner').limit(0);
+    const hasQiankunCol                 = !qiankunColErr; // 需先执行 supabase/add_qiankun_owner.sql
 
     // ── Phase 5：创建版本并插入数据 ──────────────────────────────
     const { data: versionRow, error: vErr } = await db
@@ -190,8 +192,12 @@ export async function POST(req: NextRequest) {
           order_status:  resolveField('order_status', result.order_status.value),
           intent_label:  mapIntentLabel(resolveField('order_status', result.order_status.value)),
         };
-        // 仅当 city_tier 列已存在时才写入（列不存在时 PostgREST 会默默丢弃该字段）
-        return hasCityTierCol ? { ...base, city_tier: getCityTier(city) } : base;
+        // 仅当可选列存在时才写入（列不存在时 PostgREST 会报错）
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const record: Record<string, any> = { ...base };
+        if (hasCityTierCol)  record.city_tier        = getCityTier(city);
+        if (hasQiankunCol)   record.is_qiankun_owner = String(r['是否乾坤注册车主'] || '');
+        return record;
       });
 
       const { error: iErr } = await db.from('users').insert(records);

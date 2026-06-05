@@ -23,30 +23,16 @@ export async function GET(req: NextRequest) {
   const regionField = type === 'city' ? 'region_city'
     : type === 'province' ? 'region_province' : 'region_area';
 
-  // 从 DB 读取字段配置（管理员可控制哪些字段参与分析）
-  interface FieldConfig { key: string; label: string; enabled: boolean; type: string; }
-  let fieldConfigs: FieldConfig[] = [];
-  try {
-    const { data: promptRow } = await db.from('ai_prompts')
-      .select('user_prompt').eq('prompt_key', 'insights_fields').single();
-    if (promptRow?.user_prompt) {
-      fieldConfigs = JSON.parse(promptRow.user_prompt) as FieldConfig[];
-    }
-  } catch {}
+  // 从 dimensions_config 动态加载参与 AI 分析的字段
+  const { getInsightDimensions } = await import('@/lib/dimensions');
+  const insightDims = await getInsightDimensions(db);
+  const enabledKeys = insightDims.map(d => d.key as string);
 
-  // 默认字段（DB 读取失败时的兜底）
-  const DEFAULT_FIELDS = [
-    'occupation_raw','occupation_category','age_group','education','annual_income',
-    'family_structure','is_upgrade','consumption_views','use_scenarios',
-    'competing_models','info_channels','car_interests','hobbies',
-  ];
-  const enabledKeys = fieldConfigs.length > 0
-    ? fieldConfigs.filter(f => f.enabled).map(f => f.key)
-    : DEFAULT_FIELDS;
-
+  // 确保核心字段始终包含（不受 dimensions_config 控制）
+  const ALWAYS_COLS = ['intent_label', 'order_status', 'finance_term', 'occupation_raw'];
   const SELECT_COLS = [
-    'intent_label', 'order_status', 'finance_term',
-    ...enabledKeys.filter(k => !['intent_label','order_status','finance_term'].includes(k)),
+    ...ALWAYS_COLS,
+    ...enabledKeys.filter(k => !ALWAYS_COLS.includes(k)),
   ].join(',');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

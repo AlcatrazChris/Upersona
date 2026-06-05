@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Loader2, AlertCircle, Sparkles, RefreshCw,
-  ChevronDown, Filter, Edit3, Save, LayoutGrid, BarChart2, GitCompare, EyeOff,
+  ChevronDown, Filter, Edit3, Save, LayoutGrid, BarChart2, GitCompare,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -12,7 +12,7 @@ import {
 import { RegionCascade } from '@/components/RegionCascade';
 import { ChartConfigPanel } from '@/components/charts/ChartConfigPanel';
 import { useRole } from '@/components/RoleProvider';
-import { PROFILE_DIMENSIONS, type DimensionConfig } from '@/types';
+import { PROFILE_DIMENSIONS } from '@/types';
 import { cn } from '@/lib/utils';
 import { createPortal } from 'react-dom';
 import { ChartConfig, DEFAULT_CHART_CONFIG, loadChartConfig, saveChartConfig } from '@/lib/chartConfig';
@@ -30,6 +30,7 @@ function getVersionName(v: DataVersion) {
   return v.version_name || v.notes || `v${v.version_id}`;
 }
 
+const DIMS = PROFILE_DIMENSIONS.filter(d => !['competing_models'].includes(d.key as string));
 const ALL_STATUSES = ['锁单/提车', '未锁单', '退单'];
 const STATUS_COLORS: Record<string, string> = {
   '锁单/提车': '#34C759', '未锁单': '#FF9500', '退单': '#FF3B30',
@@ -59,13 +60,7 @@ function ScrollTick({ x, y, payload, width = 86 }: {
 // ── 多维度选择器 ──────────────────────────────────────────────
 const MAX_DIMS = 4;
 
-function DimMultiSelect({
-  selected, onChange, dims,
-}: {
-  selected: string[];
-  onChange: (v: string[]) => void;
-  dims: DimensionConfig[];
-}) {
+function DimMultiSelect({ selected, onChange }: { selected: string[]; onChange: (v: string[]) => void }) {
   const [open, setOpen] = useState(false);
   const ref    = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -95,7 +90,7 @@ function DimMultiSelect({
     }
   }
 
-  const labels = selected.map(k => dims.find(d => d.key === k)?.label ?? k).join('、');
+  const labels = selected.map(k => DIMS.find(d => d.key === k)?.label ?? k).join('、');
 
   return (
     <>
@@ -112,7 +107,7 @@ function DimMultiSelect({
           <div className="px-3 py-1.5 border-b border-black/06">
             <span className="text-[11px] text-black/35">最多选 {MAX_DIMS} 个维度同时展示</span>
           </div>
-          {dims.map(d => {
+          {DIMS.map(d => {
             const isSelected = selected.includes(d.key as string);
             const disabled   = !isSelected && selected.length >= MAX_DIMS;
             return (
@@ -242,8 +237,8 @@ function ClusteredChart({ data, activeStatuses, cfg = DEFAULT_CHART_CONFIG }: {
   );
 }
 
-// ── 概览卡片（每张图独立 domain = 自身最大值，支持图表配置 + 管理员隐藏）──
-function OverviewDimCard({ dimData, activeStatuses, cfg = DEFAULT_CHART_CONFIG, onHide }: {
+// ── 概览卡片（每张图独立 domain = 自身最大值）────────────────
+function OverviewDimCard({ dimData, activeStatuses }: {
   dimData: {
     dimKey: string;
     dimLabel: string;
@@ -252,13 +247,7 @@ function OverviewDimCard({ dimData, activeStatuses, cfg = DEFAULT_CHART_CONFIG, 
     statusSampleCounts?: Record<string, number>;
   };
   activeStatuses: string[];
-  cfg?: ChartConfig;
-  onHide?: (dimKey: string) => void;
 }) {
-  const role    = useRole();
-  const isAdmin = role === 'admin';
-  const [hiding, setHiding] = useState(false);
-
   const { rows, allLabels, dimLabel } = dimData;
   const n = allLabels.length;
   const barSize  = 12;
@@ -268,89 +257,63 @@ function OverviewDimCard({ dimData, activeStatuses, cfg = DEFAULT_CHART_CONFIG, 
     sum + Number(dimData.statusSampleCounts?.[status] ?? 0)
   ), 0);
 
-  const maxVal = Math.max(1, ...rows.flatMap(r => activeStatuses.map(s => Number(r[s] ?? 0))));
+  // 该图自身最大值
+  const maxVal = Math.max(
+    1,
+    ...rows.flatMap(r =>
+      activeStatuses.map(s => Number(r[s] ?? 0))
+    )
+  );
   const domainMax = Math.min(100, Math.ceil(maxVal / 10) * 10 + 5);
 
-  async function handleHide() {
-    if (!onHide) return;
-    setHiding(true);
-    await onHide(dimData.dimKey);
-    setHiding(false);
-  }
-
   return (
-    <div className="glass-card p-4 relative group">
+    <div className="glass-card p-4">
       <div className="flex items-center justify-between gap-3 mb-2">
         <div className="text-[13px] font-600 text-black/65">{dimLabel}</div>
-        <div className="flex items-center gap-2">
-          <div className="text-[11px] text-black/35 whitespace-nowrap">
-            样本数 <span className="font-600 text-black/55 tabular-nums">{sampleCount.toLocaleString()}</span>
-          </div>
-          {/* 管理员隐藏按钮 */}
-          {isAdmin && onHide && (
-            <button
-              onClick={handleHide}
-              disabled={hiding}
-              title="从状态对比中隐藏此字段（可在数据管理中重新开启）"
-              className={cn(
-                'p-1.5 rounded-lg transition-all no-tap opacity-0 group-hover:opacity-100',
-                'bg-black/05 hover:bg-[#FF3B30]/12 text-black/30 hover:text-[#FF3B30]',
-              )}
-            >
-              {hiding ? <Loader2 size={11} className="animate-spin" /> : <EyeOff size={11} />}
-            </button>
-          )}
+        <div className="text-[11px] text-black/35 whitespace-nowrap">
+          样本数 <span className="font-600 text-black/55 tabular-nums">{sampleCount.toLocaleString()}</span>
         </div>
       </div>
       <div style={{ height: chartH }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={rows} layout="vertical"
-            margin={{ left: 0, right: cfg.showLabel ? 40 : 8, top: 2, bottom: 2 }}
+            margin={{ left: 0, right: 40, top: 2, bottom: 2 }}
             barCategoryGap="18%" barGap={2}>
-            {cfg.showGrid && (
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.04)" horizontal={false} />
-            )}
-            {cfg.showXAxis && (
-              <XAxis type="number" domain={[0, domainMax]}
-                tick={{ fontSize: cfg.axisFontSize - 2, fill: 'rgba(0,0,0,0.25)' }}
-                axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
-            )}
-            {cfg.showYAxis && (
-              <YAxis type="category" dataKey="label" width={88}
-                tick={<ScrollTick width={84} />}
-                axisLine={false} tickLine={false} interval={0} />
-            )}
-            {cfg.showTooltip && (
-              <Tooltip
-                content={({ active, payload, label }) => {
-                  if (!active || !payload?.length) return null;
-                  return (
-                    <div className="glass-card-elevated px-2.5 py-2 text-[11px] min-w-[130px]">
-                      <div className="font-600 text-black/70 mb-1">{label}</div>
-                      {payload.map((p, i) => (
-                        <div key={i} className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-2 h-2 rounded-sm" style={{ background: STATUS_COLORS[String(p.name ?? '')] }} />
-                            <span className="text-black/50">{p.name}</span>
-                          </div>
-                          <span className="font-600 tabular-nums">{Number(p.value ?? 0).toFixed(1)}%</span>
+            <XAxis type="number" domain={[0, domainMax]}
+              tick={{ fontSize: 9, fill: 'rgba(0,0,0,0.25)' }}
+              axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
+            <YAxis type="category" dataKey="label" width={88}
+              tick={<ScrollTick width={84} />}
+              axisLine={false} tickLine={false} interval={0} />
+            <Tooltip
+              content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null;
+                return (
+                  <div className="glass-card-elevated px-2.5 py-2 text-[11px] min-w-[130px]">
+                    <div className="font-600 text-black/70 mb-1">{label}</div>
+                    {payload.map((p, i) => (
+                      <div key={i} className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-sm" style={{ background: STATUS_COLORS[String(p.name ?? '')] }} />
+                          <span className="text-black/50">{p.name}</span>
                         </div>
-                      ))}
-                    </div>
-                  );
-                }}
-                cursor={{ fill: 'rgba(0,0,0,0.03)' }}
-              />
-            )}
+                        <span className="font-600 tabular-nums">{Number(p.value ?? 0).toFixed(1)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              }}
+              cursor={{ fill: 'rgba(0,0,0,0.03)' }}
+            />
             {ALL_STATUSES.filter(s => activeStatuses.includes(s)).map(status => (
               <Bar key={status} dataKey={status} name={status}
-                fill={STATUS_COLORS[status]} fillOpacity={cfg.barOpacity}
-                barSize={barSize} radius={[0, cfg.barRadius, cfg.barRadius, 0]}
-                label={cfg.showLabel ? {
+                fill={STATUS_COLORS[status]} fillOpacity={0.82}
+                barSize={barSize} radius={[0, 3, 3, 0]}
+                label={{
                   position: 'right',
                   formatter: (v: number) => v >= 3 ? `${Math.round(v)}%` : '',
-                  style: { fontSize: cfg.labelFontSize - 2, fill: 'rgba(0,0,0,0.35)' },
-                } : false}
+                  style: { fontSize: 9, fill: 'rgba(0,0,0,0.35)' },
+                }}
               />
             ))}
           </BarChart>
@@ -794,22 +757,13 @@ export default function StatusComparePage() {
   const [ovSaving, setOvSaving]           = useState(false);
 
   // 维度对比 Tab
-  const [selectedDims, setSelectedDims] = useState<string[]>([]);
+  const [selectedDims, setSelectedDims]      = useState<string[]>([DIMS[0].key as string]);
   const [filter, setFilter]                  = useState<{ area?: string; province?: string; city?: string }>({});
   const [activeStatuses, setActiveStatuses]  = useState<string[]>(ALL_STATUSES);
   const [compareVersionId, setCompareVersionId] = useState<number | null>(null);
   const [versions, setVersions]              = useState<DataVersion[]>([]);
   const [chartConfig, setChartConfig]        = useState<ChartConfig>(() => loadChartConfig('status-compare'));
   // 概览 Tab 维度过滤
-  const [profileDims, setProfileDims] = useState<DimensionConfig[]>(PROFILE_DIMENSIONS.filter(d => d.key !== "competing_models"));
-  const [dimsLoaded, setDimsLoaded] = useState(false);
-  useEffect(() => {
-    fetch("/api/dimensions")
-      .then(r => r.json()).then((data: DimensionConfig[]) => {
-        if (Array.isArray(data) && data.length > 0) setProfileDims(data.filter(d => d.key !== "competing_models" && d.enabledProfile !== false));
-      }).catch(() => {}).finally(() => setDimsLoaded(true));
-  }, []);
-
   const [visibleDimKeys, setVisibleDimKeys]  = useState<string[] | null>(null); // null = 全部显示
 
   // ── 概览数据 + 版本列表 ──
@@ -833,20 +787,6 @@ export default function StatusComparePage() {
       .catch(() => {});
   }, []);
 
-  // 管理员：从概览/画像中隐藏字段（设置 enabled_profile = false）
-  async function handleHideOverviewDim(dimKey: string) {
-    try {
-      await fetch('/api/dimensions', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dimensions: [{ dim_key: dimKey, enabled_profile: false }] }),
-      });
-      setDimsData(prev => prev ? { ...prev, dims: prev.dims.filter(d => d.dimKey !== dimKey) } : prev);
-    } catch (e) {
-      console.error('hide dim failed', e);
-    }
-  }
-
   async function saveOverviewCustom() {
     setOvSaving(true);
     const res = await fetch('/api/status-compare-insight', {
@@ -863,8 +803,6 @@ export default function StatusComparePage() {
     setOvEditing(false);
     setOvSaving(false);
   }
-
-  useEffect(() => { if (dimsLoaded && profileDims.length > 0 && selectedDims.length === 0) setSelectedDims([profileDims[0].key as string]); }, [dimsLoaded, profileDims, selectedDims]);
 
   function toggleStatus(s: string) {
     setActiveStatuses(prev => prev.includes(s) ? prev.length > 1 ? prev.filter(x => x !== s) : prev : [...prev, s]);
@@ -921,7 +859,7 @@ export default function StatusComparePage() {
             <>
               <div className="flex items-center gap-2">
                 <span className="text-[13px] text-black/40">维度</span>
-                <DimMultiSelect selected={selectedDims} onChange={setSelectedDims} dims={profileDims} />
+                <DimMultiSelect selected={selectedDims} onChange={setSelectedDims} />
               </div>
               <div className="flex items-center gap-2">
                 <Filter size={13} className="text-black/35" />
@@ -1043,7 +981,7 @@ export default function StatusComparePage() {
             </div>
           ) : dimsData && dimsData.dims.length > 0 ? (
             <div className="glass-card p-5">
-              <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
+              <div className="flex items-center justify-between mb-4">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-[15px] font-600 text-black/75">各维度订单状态对比</h3>
@@ -1064,24 +1002,12 @@ export default function StatusComparePage() {
                     </span>
                   </p>
                 </div>
-                {/* 图表设置 */}
-                <ChartConfigPanel
-                  config={chartConfig}
-                  onChange={c => { setChartConfig(c); saveChartConfig('status-compare', c); }}
-                  showLegendOption={false}
-                />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {dimsData.dims
                   .filter(d => visibleDimKeys === null || visibleDimKeys.includes(d.dimKey))
                   .map(dim => (
-                    <OverviewDimCard
-                      key={dim.dimKey}
-                      dimData={dim}
-                      activeStatuses={overviewActive}
-                      cfg={chartConfig}
-                      onHide={handleHideOverviewDim}
-                    />
+                    <OverviewDimCard key={dim.dimKey} dimData={dim} activeStatuses={overviewActive} />
                   ))}
               </div>
             </div>

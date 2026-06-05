@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Settings2, RotateCcw } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
-import { ChartConfig, ColorScheme, LegendPosition, COLOR_SCHEMES, DEFAULT_CHART_CONFIG } from '@/lib/chartConfig';
+import { ChartConfig, ColorScheme, LegendPosition, LabelType, COLOR_SCHEMES, DEFAULT_CHART_CONFIG } from '@/lib/chartConfig';
 
 interface Props {
   config: ChartConfig;
@@ -108,6 +108,13 @@ export function ChartConfigPanel({ config, onChange, showLegendOption = false }:
                 <Toggle label="图例" value={config.showLegend} onChange={v => update('showLegend', v)} />
               )}
             </div>
+            {/* 数值标签内容选择，仅在标签开启时显示 */}
+            {config.showLabel && (
+              <div className="mt-3">
+                <div className="text-[11px] text-black/40 mb-1.5">数值标签内容</div>
+                <LabelTypeSelector value={config.labelType} onChange={v => update('labelType', v)} />
+              </div>
+            )}
           </Section>
 
           {/* 图例位置（仅堆积图显示） */}
@@ -182,6 +189,31 @@ function Slider({ label, value, min, max, onChange, unit = '' }: {
         onChange={e => onChange(Number(e.target.value))}
         className="flex-1 h-1 rounded-full cursor-pointer" style={{ accentColor: '#007AFF' }} />
       <span className="text-[11px] text-black/40 w-10 text-right tabular-nums">{value}{unit}</span>
+    </div>
+  );
+}
+
+const LABEL_TYPES: { value: LabelType; label: string; desc: string }[] = [
+  { value: 'pct',   label: '比例',   desc: '42.5%' },
+  { value: 'count', label: '样本数', desc: '123 人' },
+  { value: 'both',  label: '两者',   desc: '42.5% / 123' },
+];
+
+function LabelTypeSelector({ value, onChange }: { value: LabelType; onChange: (v: LabelType) => void }) {
+  return (
+    <div className="flex gap-1.5">
+      {LABEL_TYPES.map(opt => (
+        <button key={opt.value} onClick={() => onChange(opt.value)}
+          className={cn(
+            'flex-1 flex flex-col items-center gap-0.5 py-2 rounded-ios border text-center transition-all no-tap',
+            value === opt.value
+              ? 'border-[#007AFF]/40 bg-[#007AFF]/08 text-[#007AFF]'
+              : 'border-black/08 text-black/45 hover:bg-black/03',
+          )}>
+          <span className="text-[12px] font-500">{opt.label}</span>
+          <span className="text-[10px] opacity-60">{opt.desc}</span>
+        </button>
+      ))}
     </div>
   );
 }

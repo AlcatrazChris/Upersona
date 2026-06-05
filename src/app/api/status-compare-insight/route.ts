@@ -143,68 +143,49 @@ export async function POST(req: NextRequest) {
     if (existingOverview.prefer === 'custom' && existingOverview.custom) {
       return NextResponse.json(buildResponse(existingOverview, { cached: true, skipped: 'custom_mode' }));
     }
-    // 生成概览 AI 洞察：直接从 DB 查询各维度数据
+    // 生成概览 AI 洞察：用动态维度配置
     try {
       const { fetchUsers } = await import('@/lib/supabase');
-      const { PROFILE_DIMENSIONS } = await import('@/types');
+      const { getProfileDimensions, getDimensionColumns } = await import('@/lib/dimensions');
+      const { countDimension, sortLabels } = await import('@/lib/sample-counter');
+
+      const profileDims = await getProfileDimensions(db);
 
       const { data: vd } = await db.from('data_versions').select('version_id')
         .eq('is_active', true).order('version_id', { ascending: false }).limit(1).single();
       if (!vd) throw new Error('无活跃数据版本');
 
-      const OVERVIEW_DIMS = [
-        'age_group','education','occupation_category','family_structure',
-        'annual_income','is_upgrade','consumption_views','use_scenarios',
-        'info_channels','car_interests','hobbies','competing_models',
-      ];
       const STATUS_GROUPS = [
         { key: '锁单/提车', values: ['已锁单','订单完成'] },
         { key: '未锁单',    values: ['未锁单'] },
         { key: '退单',      values: ['退单'] },
       ];
 
-      const cols = OVERVIEW_DIMS.join(', ') + ', order_status';
-      const users = await fetchUsers(db, cols, q => q.eq('data_version', vd.version_id));
+      const cols  = getDimensionColumns(profileDims, ['order_status']);
+      let users;
+      try {
+        users = await fetchUsers(db, cols, q => q.eq('data_version', vd.version_id));
+      } catch {
+        const safeCols = 'age_group,education,occupation_category,family_structure,annual_income,is_upgrade,order_status';
+        users = await fetchUsers(db, safeCols, q => q.eq('data_version', vd.version_id));
+      }
 
       const sgUsers = STATUS_GROUPS.map(sg => ({
         key: sg.key,
         users: users.filter((u: Record<string,unknown>) => sg.values.includes(String(u.order_status))),
       }));
 
-      const dimsData = OVERVIEW_DIMS.map(dimKey => {
-        const dimConfig = PROFILE_DIMENSIONS.find(d => d.key === dimKey);
-        if (!dimConfig) return null;
-        const labelSet = new Set<string>();
-        for (const u of users) {
-          const raw = (u as Record<string,unknown>)[dimKey];
-          if (dimConfig.isMultiSelect && Array.isArray(raw)) {
-            (raw as string[]).forEach(v => { if (v && v !== '(跳过)') labelSet.add(v); });
-          } else {
-            const v = String(raw || '').trim();
-            if (v && v !== '(跳过)') labelSet.add(v);
-          }
-        }
-        let allLabels = Array.from(labelSet);
-        if (dimConfig.isOrdered && dimConfig.orderedValues) {
-          const om = Object.fromEntries(dimConfig.orderedValues.map((v, i) => [v, i]));
-          allLabels.sort((a, b) => (om[a] ?? 999) - (om[b] ?? 999));
-        } else {
-          const cnt: Record<string,number> = {};
-          for (const u of users) {
-            const v = String((u as Record<string,unknown>)[dimKey] || '').trim();
-            if (v) cnt[v] = (cnt[v]||0)+1;
-          }
-          allLabels.sort((a,b) => (cnt[b]||0)-(cnt[a]||0));
-        }
-        const rows = allLabels.slice(0, 5).map(label => {
+      const dimsData = profileDims.map(dimConfig => {
+        const dimKey = dimConfig.key as string;
+        const cr = countDimension(users as Record<string,unknown>[], dimKey, dimConfig.isMultiSelect);
+        if (Object.keys(cr.counter).length === 0) return null;
+        const allLabels = sortLabels(Object.keys(cr.counter), cr.counter, dimConfig.isOrdered, dimConfig.orderedValues).slice(0, 5);
+        const rows = allLabels.map(label => {
           const entry: Record<string,string|number> = { label };
           for (const sg of sgUsers) {
-            const count = sg.users.filter((u: Record<string,unknown>) => {
-              const raw = (u as Record<string,unknown>)[dimKey];
-              if (dimConfig.isMultiSelect && Array.isArray(raw)) return (raw as string[]).includes(label);
-              return String(raw||'').trim() === label;
-            }).length;
-            const denom = sg.users.length;
+            const sgCr  = countDimension(sg.users, dimKey, dimConfig.isMultiSelect);
+            const count = sgCr.counter[label] || 0;
+            const denom = dimConfig.isMultiSelect ? sgCr.multiSelectDenom : sgCr.validUserCount;
             entry[sg.key] = denom > 0 ? parseFloat((count/denom*100).toFixed(1)) : 0;
           }
           return entry;

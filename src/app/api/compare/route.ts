@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient, fetchUsers } from '@/lib/supabase';
 import { generateCompareInsight } from '@/lib/deepseek';
-import { PROFILE_DIMENSIONS } from '@/types';
+import { getProfileDimensions } from '@/lib/dimensions';
 import { makeCacheKey } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -30,7 +30,8 @@ export async function GET(req: NextRequest) {
     .eq('is_active', true).order('version_id', { ascending: false }).limit(1).single();
   if (!versionData) return NextResponse.json({ error: '无活跃数据版本' }, { status: 404 });
 
-  const dimConfig = PROFILE_DIMENSIONS.find(d => d.key === dimension);
+  const allDims   = await getProfileDimensions(db);
+  const dimConfig = allDims.find(d => d.key === dimension);
   if (!dimConfig) return NextResponse.json({ error: '无效维度' }, { status: 400 });
 
   const { isOrdered, isMultiSelect, orderedValues, label: dimLabel } = dimConfig;

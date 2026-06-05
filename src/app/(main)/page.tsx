@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { OverviewStats } from '@/components/OverviewStats';
+import { OverviewCompare } from '@/components/OverviewCompare';
+import type { DimensionConfig, DataVersion } from '@/types';
 
 interface OverviewData {
   total: number; locked: number; pending: number; cancelled: number;
@@ -12,10 +14,24 @@ interface OverviewData {
 
 export default function HomePage() {
   const [data, setData] = useState<OverviewData | null>(null);
+  const [profileDims, setProfileDims] = useState<DimensionConfig[]>([]);
+  const [versions, setVersions] = useState<DataVersion[]>([]);
+  const [dimsLoaded, setDimsLoaded] = useState(false);
 
   useEffect(() => {
     fetch('/api/overview', { cache: 'no-store' })
       .then(r => r.json()).then(setData).catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/dimensions').then(r => r.json()),
+      fetch('/api/versions').then(r => r.ok ? r.json() : []),
+    ]).then(([dims, vers]) => {
+      if (Array.isArray(dims)) setProfileDims(dims.filter((d: DimensionConfig) => d.enabledProfile !== false));
+      if (Array.isArray(vers)) setVersions(vers);
+      setDimsLoaded(true);
+    }).catch(() => setDimsLoaded(true));
   }, []);
 
   if (!data) {
@@ -34,5 +50,14 @@ export default function HomePage() {
     );
   }
 
-  return <div className="animate-slide-up"><OverviewStats data={data} /></div>;
+  return (
+    <div className="animate-slide-up space-y-6">
+      <OverviewStats data={data} />
+
+      {/* Overview Compare */}
+      {dimsLoaded && profileDims.length > 0 && versions.length > 0 && (
+        <OverviewCompare versions={versions} profileDims={profileDims} />
+      )}
+    </div>
+  );
 }

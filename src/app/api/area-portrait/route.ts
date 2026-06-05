@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient, fetchUsers } from '@/lib/supabase';
-import { PROFILE_DIMENSIONS } from '@/types';
+import { getProfileDimensions } from '@/lib/dimensions';
+import type { DimensionConfig } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,7 @@ export async function GET(req: NextRequest) {
   const listOnly     = searchParams.get('listOnly') === '1'; // 只返回可选列表
 
   const db = createServiceClient();
+  const profileDims = await getProfileDimensions(db);
   const { data: vd } = await db.from('data_versions').select('version_id')
     .eq('is_active', true).order('version_id', { ascending: false }).limit(1).single();
   if (!vd) return NextResponse.json({ error: '无活跃数据版本' }, { status: 404 });
@@ -72,7 +74,7 @@ export async function GET(req: NextRequest) {
     : [...new Set(users.map((u: Record<string, unknown>) => String(u[regionField])))].sort();
 
   function getTopN(group: Record<string, unknown>[], dimKey: string, n = 3) {
-    const dimConf = PROFILE_DIMENSIONS.find(d => d.key === dimKey);
+    const dimConf = profileDims.find((d: DimensionConfig) => d.key === dimKey);
     const counter: Record<string, number> = {};
     const total = group.length;
     for (const u of group) {

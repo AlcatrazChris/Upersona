@@ -1,4 +1,5 @@
 export type LegendPosition = 'bottom' | 'top' | 'right' | 'left';
+export type LabelType     = 'pct' | 'count' | 'both'; // 数值标签显示内容
 
 export interface ChartConfig {
   colorScheme:    ColorScheme;
@@ -6,9 +7,10 @@ export interface ChartConfig {
   showYAxis:      boolean;
   showGrid:       boolean;
   showLabel:      boolean;
+  labelType:      LabelType;   // 数值标签：比例 | 样本数 | 两者
   showLegend:     boolean;
-  legendPosition: LegendPosition;  // 新增：图例位置
-  showSampleCount:boolean;          // 新增：是否显示样本数
+  legendPosition: LegendPosition;
+  showSampleCount:boolean;
   showTooltip:    boolean;
   axisFontSize:   number;
   labelFontSize:  number;
@@ -36,6 +38,7 @@ export const DEFAULT_CHART_CONFIG: ChartConfig = {
   showYAxis:       true,
   showGrid:        false,
   showLabel:       true,
+  labelType:       'pct',
   showLegend:      true,
   legendPosition:  'bottom',
   showSampleCount: true,

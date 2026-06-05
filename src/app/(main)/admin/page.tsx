@@ -5,7 +5,8 @@ import {
   Upload, CheckCircle, AlertCircle, Loader2,
   Database, History, Sparkles, ChevronDown, ChevronUp,
   Save, RotateCcw, Info, RefreshCw, Edit3,
-  Users, Trash2, UserPlus, Key, Activity, Shield, ShieldOff,
+  Users, Trash2, UserPlus, Key, Activity, Shield, ShieldOff, LayoutGrid,
+  ArrowUp, ArrowDown, Settings2,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -814,6 +815,502 @@ function VersionHistory({ versions, onDeleted }: { versions: DataVersion[]; onDe
 }
 
 // ── 主页面 ────────────────────────────────────────────────────
+
+// ── 数据字段配置 ──────────────────────────────────────────────
+interface DimConfigRow {
+  dim_key: string; label: string; is_ordered: boolean; is_multi_select: boolean;
+  ordered_values?: string[] | null; note?: string | null; field_type: string;
+  enabled_profile: boolean; enabled_insight: boolean; sort_order: number;
+  chart_type?: string;  // 'bar' | 'pie'
+  group_name?: string;  // 分组标签
+}
+
+function DimensionsConfigPanel() {
+  const [dims, setDims]           = useState<DimConfigRow[]>([]);
+  const [expanded, setExpanded]   = useState(false);
+  const [loaded, setLoaded]       = useState(false);
+  const [saving, setSaving]       = useState<string | null>(null);
+  const [msg, setMsg]             = useState('');
+  const [msgOk, setMsgOk]         = useState(true);
+  const [editingLabel, setEditingLabel] = useState<string | null>(null);
+  const [labelDraft, setLabelDraft]     = useState('');
+  const [showAdd, setShowAdd]     = useState(false);
+  const [newField, setNewField]   = useState({ dim_key: '', label: '', is_ordered: false, is_multi_select: false, field_type: 'category' });
+  const [adding, setAdding]       = useState(false);
+  // 字段高级设置（备注/分组/图表类型/有序值）
+  const [expandedSettings, setExpandedSettings] = useState<string | null>(null);
+  const [settingsDraft, setSettingsDraft] = useState<{
+    note: string; groupName: string; chartType: string; orderedValues: string; isDirty: boolean;
+  }>({ note: '', groupName: '', chartType: 'bar', orderedValues: '', isDirty: false });
+
+  // 从 API 加载（兼容 camelCase DimensionConfig 和 snake_case DB 格式）
+  const load = () => {
+    fetch('/api/dimensions').then(r => r.json()).then((raw: unknown) => {
+      if (!Array.isArray(raw)) return;
+      const rows: DimConfigRow[] = (raw as Record<string, unknown>[]).map(x => ({
+        dim_key:         String(x.dim_key         ?? x.key          ?? ''),
+        label:           String(x.label           ?? ''),
+        is_ordered:      Boolean(x.is_ordered     ?? x.isOrdered    ?? false),
+        is_multi_select: Boolean(x.is_multi_select ?? x.isMultiSelect ?? false),
+        ordered_values:  (x.ordered_values        ?? x.orderedValues ?? null) as string[] | null,
+        note:            (x.note                  ?? null)           as string | null,
+        field_type:      String(x.field_type      ?? x.fieldType    ?? 'category'),
+        enabled_profile: x.enabled_profile !== undefined ? Boolean(x.enabled_profile)
+                       : x.enabledProfile  !== undefined ? Boolean(x.enabledProfile) : true,
+        enabled_insight: x.enabled_insight !== undefined ? Boolean(x.enabled_insight)
+                       : x.enabledInsight  !== undefined ? Boolean(x.enabledInsight) : true,
+        sort_order:      Number(x.sort_order      ?? x.sortOrder    ?? 0),
+        chart_type:      String(x.chart_type      ?? x.chartType    ?? 'bar'),
+        group_name:      String(x.group_name      ?? x.groupName    ?? ''),
+      }));
+      setDims(rows);
+    }).catch(() => {});
+  };
+  useEffect(() => { if (expanded && !loaded) { load(); setLoaded(true); } }, [expanded, loaded]);
+
+  async function toggle(dimKey: string, field: string) {
+    const prev = dims;
+    const updated = dims.map(d => d.dim_key === dimKey
+      ? { ...d, [field]: !(d as unknown as Record<string, unknown>)[field] } : d);
+    setDims(updated);
+    setSaving(dimKey + ':' + field);
+    try {
+      const item = updated.find(d => d.dim_key === dimKey)!;
+      const res = await fetch('/api/dimensions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dimensions: [{ dim_key: dimKey, enabled_profile: item.enabled_profile, enabled_insight: item.enabled_insight }] }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      setMsgOk(true); setMsg('已保存');
+    } catch {
+      setDims(prev); setMsgOk(false); setMsg('保存失败');
+    }
+    setSaving(null); setTimeout(() => setMsg(''), 2500);
+  }
+
+  async function saveLabel(dimKey: string) {
+    if (!labelDraft.trim()) { setEditingLabel(null); return; }
+    const updated = dims.map(d => d.dim_key === dimKey ? { ...d, label: labelDraft.trim() } : d);
+    setDims(updated); setEditingLabel(null); setSaving(dimKey + ':label');
+    try {
+      const res = await fetch('/api/dimensions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dimensions: [{ dim_key: dimKey, label: labelDraft.trim() }] }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      setMsgOk(true); setMsg('名称已保存');
+    } catch {
+      setMsgOk(false); setMsg('保存失败');
+    }
+    setSaving(null); setTimeout(() => setMsg(''), 2500);
+  }
+
+  // 打开 / 关闭高级设置面板
+  function openSettings(d: DimConfigRow) {
+    if (expandedSettings === d.dim_key) {
+      setExpandedSettings(null);
+    } else {
+      setExpandedSettings(d.dim_key);
+      setSettingsDraft({
+        note:          d.note || '',
+        groupName:     d.group_name || '',
+        chartType:     d.is_multi_select ? 'bar' : (d.chart_type || 'bar'),
+        orderedValues: (d.ordered_values || []).join('\n'),
+        isDirty:       false,
+      });
+    }
+  }
+
+  async function saveSettings(dimKey: string) {
+    const dim = dims.find(d => d.dim_key === dimKey);
+    if (!dim) return;
+    setSaving(dimKey + ':settings');
+    try {
+      const payload: Record<string, unknown> = {
+        dim_key:    dimKey,
+        note:       settingsDraft.note.trim() || null,
+        group_name: settingsDraft.groupName.trim(),
+        chart_type: settingsDraft.chartType,
+      };
+      if (dim.is_ordered) {
+        const vals = settingsDraft.orderedValues.split('\n').map(s => s.trim()).filter(Boolean);
+        payload.ordered_values = vals.length > 0 ? vals : null;
+      }
+      const res = await fetch('/api/dimensions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dimensions: [payload] }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      setDims(prev => prev.map(d => {
+        if (d.dim_key !== dimKey) return d;
+        const next: DimConfigRow = {
+          ...d,
+          note:       settingsDraft.note.trim() || null,
+          group_name: settingsDraft.groupName.trim(),
+          chart_type: settingsDraft.chartType,
+        };
+        if (dim.is_ordered) {
+          const vals = settingsDraft.orderedValues.split('\n').map(s => s.trim()).filter(Boolean);
+          next.ordered_values = vals.length > 0 ? vals : null;
+        }
+        return next;
+      }));
+      setSettingsDraft(prev => ({ ...prev, isDirty: false }));
+      setMsgOk(true); setMsg('设置已保存');
+    } catch {
+      setMsgOk(false); setMsg('保存失败，请确认已执行 add_dim_extra_fields.sql');
+    }
+    setSaving(null); setTimeout(() => setMsg(''), 3000);
+  }
+
+  async function handleAdd() {
+    if (!newField.dim_key.trim() || !newField.label.trim()) return;
+    setAdding(true);
+    try {
+      const fieldType = newField.is_multi_select ? 'multi' : newField.field_type;
+      const res = await fetch('/api/dimensions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dimensions: [{
+            dim_key: newField.dim_key.trim(),
+            label: newField.label.trim(),
+            is_ordered: newField.is_ordered,
+            is_multi_select: newField.is_multi_select,
+            field_type: fieldType,
+            enabled_profile: true,
+            enabled_insight: true,
+            sort_order: (dims.length + 1) * 10,
+          }],
+        }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      setMsgOk(true); setMsg('字段已添加');
+      setShowAdd(false);
+      setNewField({ dim_key: '', label: '', is_ordered: false, is_multi_select: false, field_type: 'category' });
+      load();
+    } catch {
+      setMsgOk(false); setMsg('添加失败，Key 可能已存在');
+    }
+    setAdding(false); setTimeout(() => setMsg(''), 3000);
+  }
+
+  async function handleReorder(dimKey: string, direction: 'up' | 'down') {
+    setExpandedSettings(null); // 排序时关闭展开的设置面板
+    const idx = dims.findIndex(d => d.dim_key === dimKey);
+    if (idx === -1) return;
+    if (direction === 'up' && idx === 0) return;
+    if (direction === 'down' && idx === dims.length - 1) return;
+
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    const next = [...dims];
+    [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+    const withOrder = next.map((d, i) => ({ ...d, sort_order: (i + 1) * 10 }));
+    setDims(withOrder);
+    setSaving('reorder');
+    try {
+      const res = await fetch('/api/dimensions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dimensions: withOrder.map(d => ({ dim_key: d.dim_key, sort_order: d.sort_order })) }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      setMsgOk(true); setMsg('顺序已保存');
+    } catch {
+      setMsgOk(false); setMsg('保存失败');
+    }
+    setSaving(null); setTimeout(() => setMsg(''), 1800);
+  }
+
+  async function handleDelete(dimKey: string, label: string) {
+    if (!confirm(`确定要删除字段「${label}」？\n此操作不可撤销，字段配置将永久移除，数据本身不受影响。`)) return;
+    setSaving(dimKey + ':delete');
+    try {
+      const res = await fetch('/api/dimensions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dim_key: dimKey }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      setMsgOk(true); setMsg(`「${label}」已删除`);
+      setDims(prev => prev.filter(d => d.dim_key !== dimKey));
+      if (expandedSettings === dimKey) setExpandedSettings(null);
+    } catch {
+      setMsgOk(false); setMsg('操作失败');
+    }
+    setSaving(null); setTimeout(() => setMsg(''), 2500);
+  }
+
+  const activeDims = dims.filter(d => d.enabled_profile !== false || d.enabled_insight !== false);
+
+  return (
+    <div className="glass-card overflow-hidden">
+      <button className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/02 transition-colors no-tap"
+        onClick={() => setExpanded(p => !p)}>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-[#34C759]/10 flex items-center justify-center">
+            <LayoutGrid size={14} className="text-[#34C759]" />
+          </div>
+          <div className="text-left">
+            <div className="text-[14px] font-600 text-black/80">数据字段管理</div>
+            <div className="text-[11px] text-black/35 mt-0.5">画像 / 洞察维度配置 · 共启用 {activeDims.length}/{dims.length} 个</div>
+          </div>
+        </div>
+        {expanded ? <ChevronUp size={14} className="text-black/30" /> : <ChevronDown size={14} className="text-black/30" />}
+      </button>
+
+      {expanded && (
+        <div className="px-5 pb-5 border-t border-black/06">
+          <div className="text-[11px] text-black/40 mt-3 mb-3">
+            点击字段名可改名；<span className="text-[#007AFF]">⚙</span> 设置备注/分组/图表类型/有序值；↑↓ 调整顺序。
+            <span className="text-[#FF9500] ml-1">「删除」将永久移除字段配置（数据不受影响）。</span>
+          </div>
+
+          {/* 新增字段 */}
+          {!showAdd ? (
+            <button onClick={() => setShowAdd(true)}
+              className="flex items-center gap-1.5 text-[12px] text-[#007AFF] hover:text-[#0066DD] transition-colors mb-3 no-tap">
+              + 新增字段
+            </button>
+          ) : (
+            <div className="glass-card-subtle p-3 rounded-ios mb-3 space-y-2.5 border border-[#007AFF]/15">
+              <div className="text-[11px] font-500 text-black/50 mb-1">新增字段</div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-black/40 block mb-1">字段 Key（英文，需与数据列名一致）</label>
+                  <input value={newField.dim_key} onChange={e => setNewField({ ...newField, dim_key: e.target.value })}
+                    placeholder="例: purchase_power" className="input-ios text-[12px] py-1.5 w-full" />
+                </div>
+                <div>
+                  <label className="text-[10px] text-black/40 block mb-1">字段中文名</label>
+                  <input value={newField.label} onChange={e => setNewField({ ...newField, label: e.target.value })}
+                    placeholder="例: 购买力" className="input-ios text-[12px] py-1.5 w-full" />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <label className="text-[10px] text-black/40 block mb-1">字段类型</label>
+                  <select value={newField.field_type}
+                    onChange={e => setNewField({ ...newField, field_type: e.target.value, is_multi_select: e.target.value === 'multi', is_ordered: e.target.value === 'ordered' })}
+                    className="input-ios text-[12px] py-1.5 w-full">
+                    <option value="category">单选（无序）</option>
+                    <option value="ordered">单选（有序）</option>
+                    <option value="multi">多选</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2 pt-4">
+                  <button onClick={() => { setShowAdd(false); setNewField({ dim_key: '', label: '', is_ordered: false, is_multi_select: false, field_type: 'category' }); }}
+                    className="text-[12px] text-black/35 hover:text-black/55 transition-colors">取消</button>
+                  <button onClick={handleAdd} disabled={adding || !newField.dim_key.trim() || !newField.label.trim()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-ios text-[12px] bg-[#007AFF] text-white font-500 disabled:opacity-50 no-tap">
+                    {adding ? <Loader2 size={11} className="animate-spin" /> : null}
+                    {adding ? '添加中…' : '确认添加'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 字段列表 */}
+          <div className="space-y-0.5">
+            {dims.map(d => (
+              <div key={d.dim_key}
+                className={cn('rounded-ios border-b border-black/04 last:border-0 transition-opacity',
+                  d.enabled_profile === false && d.enabled_insight === false && 'opacity-40')}>
+
+                {/* ── 主行 ── */}
+                <div className="flex items-center justify-between py-2.5 px-3 hover:bg-black/02 transition-colors rounded-ios">
+                  {/* 左侧：名称 + 类型 + key */}
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {editingLabel === d.dim_key ? (
+                      <div className="flex items-center gap-1.5">
+                        <input value={labelDraft} onChange={e => setLabelDraft(e.target.value)} maxLength={20}
+                          className="input-ios text-[12px] py-1 w-[140px]"
+                          onKeyDown={e => { if (e.key === 'Enter') saveLabel(d.dim_key); if (e.key === 'Escape') setEditingLabel(null); }} />
+                        <button onClick={() => saveLabel(d.dim_key)} className="text-[11px] text-[#007AFF] font-500">保存</button>
+                        <button onClick={() => setEditingLabel(null)} className="text-[11px] text-black/35">取消</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setEditingLabel(d.dim_key); setLabelDraft(d.label); }}
+                        className={cn('text-[13px] text-left truncate max-w-[130px] hover:text-[#007AFF] transition-colors',
+                          d.enabled_profile === false && d.enabled_insight === false ? 'text-black/25' : 'text-black/70')}>
+                        {d.label}
+                      </button>
+                    )}
+                    <span className="badge-ios badge-gray text-[10px] flex-shrink-0">
+                      {d.is_multi_select ? '多选' : d.is_ordered ? '有序' : '单选'}
+                    </span>
+                    {d.group_name && (
+                      <span className="text-[10px] text-[#5856D6]/70 bg-[#5856D6]/08 rounded px-1.5 py-0.5 flex-shrink-0 hidden sm:inline">
+                        {d.group_name}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-black/20 font-mono truncate hidden sm:block">{d.dim_key}</span>
+                  </div>
+
+                  {/* 右侧：排序 / 开关 / 设置 / 删除 */}
+                  <div className="flex items-center gap-2.5 flex-shrink-0">
+                    {/* 排序箭头 */}
+                    <div className="flex flex-col gap-0.5">
+                      <button onClick={() => handleReorder(d.dim_key, 'up')}
+                        disabled={saving === 'reorder' || dims.indexOf(d) === 0}
+                        className="text-black/20 hover:text-[#007AFF] transition-colors disabled:opacity-20 disabled:cursor-not-allowed">
+                        <ArrowUp size={11} />
+                      </button>
+                      <button onClick={() => handleReorder(d.dim_key, 'down')}
+                        disabled={saving === 'reorder' || dims.indexOf(d) === dims.length - 1}
+                        className="text-black/20 hover:text-[#007AFF] transition-colors disabled:opacity-20 disabled:cursor-not-allowed">
+                        <ArrowDown size={11} />
+                      </button>
+                    </div>
+                    {/* 画像/洞察开关 */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-black/30">画像</span>
+                      <button onClick={() => toggle(d.dim_key, 'enabled_profile')}
+                        disabled={saving === (d.dim_key + ':enabled_profile')}
+                        className={cn('relative rounded-full transition-all duration-200 flex-shrink-0',
+                          d.enabled_profile !== false ? 'bg-[#007AFF]' : 'bg-black/15')}
+                        style={{ width: 28, height: 16 }}>
+                        <div className={cn('absolute top-[1.5px] w-[13px] h-[13px] bg-white rounded-full shadow-sm transition-all duration-200',
+                          d.enabled_profile !== false ? 'left-[13.5px]' : 'left-[1.5px]')} />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-black/30">洞察</span>
+                      <button onClick={() => toggle(d.dim_key, 'enabled_insight')}
+                        disabled={saving === (d.dim_key + ':enabled_insight')}
+                        className={cn('relative rounded-full transition-all duration-200 flex-shrink-0',
+                          d.enabled_insight !== false ? 'bg-[#AF52DE]' : 'bg-black/15')}
+                        style={{ width: 28, height: 16 }}>
+                        <div className={cn('absolute top-[1.5px] w-[13px] h-[13px] bg-white rounded-full shadow-sm transition-all duration-200',
+                          d.enabled_insight !== false ? 'left-[13.5px]' : 'left-[1.5px]')} />
+                      </button>
+                    </div>
+                    {/* ⚙ 高级设置 */}
+                    <button onClick={() => openSettings(d)}
+                      className={cn('p-1 rounded transition-colors no-tap',
+                        expandedSettings === d.dim_key
+                          ? 'text-[#007AFF] bg-[#007AFF]/08'
+                          : 'text-black/20 hover:text-[#007AFF]')}>
+                      <Settings2 size={12} />
+                    </button>
+                    {/* 删除 */}
+                    <button onClick={() => handleDelete(d.dim_key, d.label)}
+                      disabled={saving === (d.dim_key + ':delete')}
+                      className="text-black/20 hover:text-[#FF3B30] transition-colors disabled:opacity-40 no-tap">
+                      {saving === (d.dim_key + ':delete')
+                        ? <Loader2 size={11} className="animate-spin" />
+                        : <Trash2 size={11} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── 高级设置面板（展开） ── */}
+                {expandedSettings === d.dim_key && (
+                  <div className="mx-3 mb-2.5 px-3 pt-3 pb-3 bg-[#007AFF]/03 rounded-ios border border-[#007AFF]/10 space-y-2.5">
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {/* 字段备注 */}
+                      <div>
+                        <label className="text-[10px] text-black/40 font-500 block mb-1">字段备注</label>
+                        <input
+                          value={settingsDraft.note}
+                          onChange={e => setSettingsDraft(p => ({ ...p, note: e.target.value, isDirty: true }))}
+                          placeholder="图表标题下方说明文字"
+                          className="input-ios text-[11px] py-1.5 w-full"
+                        />
+                      </div>
+                      {/* 所属分组 */}
+                      <div>
+                        <label className="text-[10px] text-black/40 font-500 block mb-1">所属分组</label>
+                        <input
+                          value={settingsDraft.groupName}
+                          onChange={e => setSettingsDraft(p => ({ ...p, groupName: e.target.value, isDirty: true }))}
+                          placeholder="如：基本信息、消费行为"
+                          className="input-ios text-[11px] py-1.5 w-full"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 图表类型（仅非多选维度） */}
+                    {!d.is_multi_select && (
+                      <div>
+                        <label className="text-[10px] text-black/40 font-500 block mb-1">图表类型</label>
+                        <div className="flex gap-1.5">
+                          {[{ v: 'bar', l: '条形图' }, { v: 'pie', l: '饼图' }].map(opt => (
+                            <button key={opt.v}
+                              onClick={() => setSettingsDraft(p => ({ ...p, chartType: opt.v, isDirty: true }))}
+                              className={cn(
+                                'flex-1 py-1.5 rounded-ios text-[11px] border transition-all no-tap',
+                                settingsDraft.chartType === opt.v
+                                  ? 'border-[#007AFF]/40 bg-[#007AFF]/08 text-[#007AFF] font-500'
+                                  : 'border-black/08 text-black/45 hover:bg-black/03',
+                              )}>
+                              {opt.l}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 有序值（仅有序维度） */}
+                    {d.is_ordered && (
+                      <div>
+                        <label className="text-[10px] text-black/40 font-500 block mb-1">
+                          有序值排列 <span className="text-black/25">（一行一个，从高到低）</span>
+                        </label>
+                        <textarea
+                          value={settingsDraft.orderedValues}
+                          onChange={e => setSettingsDraft(p => ({ ...p, orderedValues: e.target.value, isDirty: true }))}
+                          rows={4}
+                          placeholder={'50岁以上\n45-49岁\n40-44岁\n…'}
+                          className="w-full rounded-ios border border-black/10 bg-white/60 px-2.5 py-2 text-[11px] text-black/70 resize-y focus:outline-none focus:border-[#007AFF]/40 transition-all"
+                        />
+                      </div>
+                    )}
+
+                    {/* 操作按钮 */}
+                    <div className="flex items-center justify-between pt-0.5">
+                      <button onClick={() => setExpandedSettings(null)}
+                        className="text-[11px] text-black/35 hover:text-black/55 transition-colors">
+                        关闭
+                      </button>
+                      <button
+                        onClick={() => saveSettings(d.dim_key)}
+                        disabled={!settingsDraft.isDirty || saving === (d.dim_key + ':settings')}
+                        className={cn(
+                          'flex items-center gap-1.5 px-3 py-1.5 rounded-ios text-[11px] font-500 transition-all no-tap',
+                          settingsDraft.isDirty && saving !== (d.dim_key + ':settings')
+                            ? 'bg-[#007AFF] text-white'
+                            : 'bg-black/06 text-black/30 cursor-not-allowed',
+                        )}>
+                        {saving === (d.dim_key + ':settings')
+                          ? <Loader2 size={10} className="animate-spin" />
+                          : <Save size={10} />}
+                        保存设置
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {msg && (
+            <div className={cn('mt-3 text-[12px] flex items-center gap-1.5', msgOk ? 'text-[#34C759]' : 'text-[#FF3B30]')}>
+              {msgOk ? <CheckCircle size={12} /> : <AlertCircle size={12} />}{msg}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
 export default function AdminPage() {
   const [file, setFile]           = useState<File | null>(null);
   const [status, setStatus]       = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
@@ -962,6 +1459,7 @@ export default function AdminPage() {
         )}
       </div>
 
+      <div className="mb-3"><DimensionsConfigPanel /></div>
       {/* AI Prompt 管理 */}
       <div>
         <div className="flex items-center gap-2 mb-3 px-1">

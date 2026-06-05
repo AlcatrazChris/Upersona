@@ -17,6 +17,7 @@ export interface User {
   info_channels: string[]; car_interests: string[]; hobbies: string[];
   order_status: string; intent_label: IntentLabel; data_version: number;
   city_tier?: string;
+  is_qiankun_owner?: string; // 是否在华为乾崑 APP 绑定车辆（乾坤注册车主）
 }
 
 export interface ChartDataItem { label: string; count: number; percentage: number; }
@@ -25,12 +26,21 @@ export interface DimensionConfig {
   key: keyof User | string; label: string;
   isOrdered: boolean; isMultiSelect: boolean;
   orderedValues?: string[]; note?: string;
+  // 动态字段（DB 管理，可选）
+  fieldType?:      string;   // 'text' | 'category' | 'multi'
+  enabledProfile?: boolean;  // 是否在用户画像/状态对比/概览中显示
+  enabledInsight?: boolean;  // 是否参与 AI 洞察分析
+  sortOrder?:      number;   // 显示排序
+  chartType?:      string;   // 'bar' | 'pie' — 图表展示类型
+  groupName?:      string;   // 分组标签（如：基本信息/消费行为）
 }
 
 export interface ProfileData {
   dimension: string; dimensionLabel: string;
   items: ChartDataItem[]; totalSamples: number; validSamples: number;
   isMultiSelect: boolean; note?: string;
+  chartType?: string;  // 'bar' | 'pie'
+  groupName?: string;  // 分组标签
 }
 
 export interface CompareDataItem {
@@ -103,6 +113,7 @@ export const PROFILE_DIMENSIONS: DimensionConfig[] = [
   { key: 'hobbies',               label: '日常爱好',        isOrdered: false, isMultiSelect: true,  note: '多选题，总和 > 100%' },
   { key: 'competing_models',      label: '对比车型',        isOrdered: false, isMultiSelect: true,  note: '多选题，总和 > 100%' },
   { key: 'city_tier',             label: '城市级别',        isOrdered: true,  isMultiSelect: false, orderedValues: ORDERED_DIMENSIONS.city_tier },
+  { key: 'region_city',           label: '所在城市',        isOrdered: false, isMultiSelect: false },
 ];
 
 export const AREA_LIST = ['东北','中南','中原','华东','华北','华南','西北','西南','其他'];

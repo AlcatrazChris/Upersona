@@ -1,28 +1,32 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Filter, RefreshCw } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Filter, RefreshCw, EyeOff, Loader2 } from 'lucide-react';
 import { ProfileChart } from '@/components/charts/ProfileChart';
 import { ChartConfigPanel } from '@/components/charts/ChartConfigPanel';
 import { RegionCascade } from '@/components/RegionCascade';
 import { OrderStatusFilter } from '@/components/OrderStatusFilter';
+import { useRole } from '@/components/RoleProvider';
 import { cn } from '@/lib/utils';
 import { loadChartConfig, saveChartConfig } from '@/lib/chartConfig';
 import type { ChartConfig } from '@/lib/chartConfig';
 import type { ProfileData, OrderStatus } from '@/types';
 
 export default function ProfilePage() {
+  const role    = useRole();
+  const isAdmin = role === 'admin';
+
   const [filter, setFilter]       = useState<{ area?: string; province?: string; city?: string }>({});
   const [orderStatus, setOrderStatus] = useState<OrderStatus>('all');
   const [data, setData]           = useState<ProfileData[] | null>(null);
   const [loading, setLoading]     = useState(true);
   const [totalSamples, setTotalSamples] = useState(0);
   const [chartConfig, setChartConfig]   = useState<ChartConfig>(() => loadChartConfig('profile'));
+  const [hidingDim, setHidingDim] = useState<string | null>(null);
 
   function handleConfigChange(c: ChartConfig) { setChartConfig(c); saveChartConfig('profile', c); }
 
   const fetchData = useCallback(async () => {
-    // 切换筛选时立即清空旧数据，避免显示上一次的样本数
     setData(null);
     setTotalSamples(0);
     setLoading(true);
@@ -46,8 +50,72 @@ export default function ProfilePage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // 管理员：从画像中隐藏字段（设置 enabled_profile = false）
+  async function hideDim(dimKey: string) {
+    setHidingDim(dimKey);
+    try {
+      await fetch('/api/dimensions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dimensions: [{ dim_key: dimKey, enabled_profile: false }] }),
+      });
+      // 立即从当前视图移除
+      setData(prev => prev ? prev.filter(d => d.dimension !== dimKey) : prev);
+    } catch (e) {
+      console.error('hide dim failed', e);
+    } finally {
+      setHidingDim(null);
+    }
+  }
+
   const filterLabel = filter.city || filter.province || filter.area || '全国';
   const orderLabel  = orderStatus === 'all' ? '' : ` · ${orderStatus}`;
+
+  // 按 groupName 分组，仅当存在非空分组时启用
+  const groupedData = useMemo(() => {
+    if (!data || data.length === 0) return null;
+    const hasGroups = data.some(d => d.groupName && d.groupName.trim());
+    if (!hasGroups) return null;
+
+    const groupOrder: string[] = [];
+    const groupMap: Record<string, ProfileData[]> = {};
+    for (const dim of data) {
+      const g = (dim.groupName || '').trim();
+      if (!groupOrder.includes(g)) groupOrder.push(g);
+      if (!groupMap[g]) groupMap[g] = [];
+      groupMap[g].push(dim);
+    }
+    const sorted = [
+      ...groupOrder.filter(g => g !== ''),
+      ...groupOrder.filter(g => g === ''),
+    ];
+    return sorted.map(name => ({ name, dims: groupMap[name] || [] }));
+  }, [data]);
+
+  // 单个图表卡片（包含管理员隐藏按钮）
+  function ChartCard({ dim, delay }: { dim: ProfileData; delay: number }) {
+    return (
+      <div className="glass-card animate-slide-up relative group" style={{ animationDelay: `${delay}ms` }}>
+        {isAdmin && (
+          <button
+            onClick={() => hideDim(dim.dimension as string)}
+            disabled={hidingDim === dim.dimension}
+            title="从画像中隐藏此字段（可在数据管理中重新开启）"
+            className={cn(
+              'absolute top-2.5 right-2.5 z-10 p-1.5 rounded-lg transition-all no-tap',
+              'opacity-0 group-hover:opacity-100',
+              'bg-black/05 hover:bg-[#FF3B30]/12 text-black/30 hover:text-[#FF3B30]',
+            )}
+          >
+            {hidingDim === dim.dimension
+              ? <Loader2 size={11} className="animate-spin" />
+              : <EyeOff size={11} />}
+          </button>
+        )}
+        <ProfileChart data={dim} config={chartConfig} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -63,7 +131,6 @@ export default function ProfilePage() {
             <button onClick={() => setFilter({})} className="text-[12px] text-[#007AFF]">清除</button>
           )}
           <div className="ml-auto flex items-center gap-3">
-            {/* 样本统计：始终显示当前筛选结果，loading 时显示占位 */}
             <span className="text-[13px] text-black/40 tabular-nums">
               {filterLabel}{orderLabel} ·{' '}
               {loading
@@ -79,11 +146,10 @@ export default function ProfilePage() {
             </button>
           </div>
         </div>
-        {/* 订单状态筛选 */}
         <OrderStatusFilter value={orderStatus} onChange={v => setOrderStatus(v)} />
       </div>
 
-      {/* 图表网格 */}
+      {/* 图表区域 */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {Array.from({ length: 13 }).map((_, i) => (
@@ -94,13 +160,34 @@ export default function ProfilePage() {
           ))}
         </div>
       ) : data && data.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {data.map((dim, i) => (
-            <div key={dim.dimension} className="glass-card animate-slide-up" style={{ animationDelay: `${i * 40}ms` }}>
-              <ProfileChart data={dim} config={chartConfig} />
-            </div>
-          ))}
-        </div>
+        groupedData ? (
+          // ── 分组模式 ──────────────────────────────────────────
+          <div className="space-y-8">
+            {groupedData.map((group, gi) => (
+              <div key={group.name || '__ungrouped'}>
+                {group.name && (
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="text-[12px] font-600 text-black/45 tracking-wider">{group.name}</span>
+                    <div className="flex-1 h-px bg-black/08" />
+                    <span className="text-[11px] text-black/25 tabular-nums">{group.dims.length} 项</span>
+                  </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {group.dims.map((dim, i) => (
+                    <ChartCard key={dim.dimension} dim={dim} delay={(gi * 3 + i) * 35} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          // ── 平铺模式（无分组）────────────────────────────────
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {data.map((dim, i) => (
+              <ChartCard key={dim.dimension} dim={dim} delay={i * 40} />
+            ))}
+          </div>
+        )
       ) : (
         <div className="glass-card p-12 text-center">
           <div className="text-black/30 text-[15px]">暂无数据</div>
