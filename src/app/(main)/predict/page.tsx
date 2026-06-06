@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Radar, MapPin, Loader2, AlertCircle, ChevronDown, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { RadarChart } from '@/components/charts/RadarChart';
+import { RadarChart }  from '@/components/charts/RadarChart';
+import { ChartShell }  from '@/components/charts/ChartShell';
 import { OrderStatusFilter } from '@/components/OrderStatusFilter';
 import { cn } from '@/lib/utils';
 import type { RadarData, OrderStatus, RegionType } from '@/types';
@@ -105,13 +106,18 @@ export default function PredictPage() {
       {!loading && radarData && (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 animate-slide-up">
           {/* 左：雷达图 */}
-          <div className="glass-card p-5 lg:col-span-3">
+          <ChartShell
+            title="五维用户特征"
+            note={`${radarData.regionName} · 与全国均值对比`}
+            sampleBadge={`n=${radarData.sampleCount.toLocaleString()}`}
+            className="lg:col-span-3"
+          >
             <RadarChart
               dimensions={radarData.dimensions}
               regionName={radarData.regionName}
               sampleCount={radarData.sampleCount}
             />
-          </div>
+          </ChartShell>
 
           {/* 右：数值明细 */}
           <div className="glass-card p-5 lg:col-span-2">

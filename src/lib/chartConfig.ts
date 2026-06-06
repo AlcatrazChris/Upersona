@@ -50,7 +50,7 @@ export const DEFAULT_CHART_CONFIG: ChartConfig = {
   barOpacity:      0.82,
 };
 
-export type PageKey = 'profile' | 'compare' | 'insights' | 'predict' | 'status-compare';
+export type PageKey = 'profile' | 'compare' | 'insights' | 'predict' | 'status-compare' | 'datasets';
 
 function storageKey(page: PageKey) { return `huajing-chart-config-${page}`; }
 

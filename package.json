@@ -10,24 +10,28 @@
     "db:seed": "node scripts/seed.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.43.4",
     "@radix-ui/react-dialog": "^1.1.1",
+    "@radix-ui/react-progress": "^1.1.0",
     "@radix-ui/react-select": "^2.1.1",
     "@radix-ui/react-tabs": "^1.1.0",
     "@radix-ui/react-tooltip": "^1.1.2",
-    "@radix-ui/react-progress": "^1.1.0",
+    "@supabase/supabase-js": "^2.43.4",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.383.0",
     "next": "14.2.35",
+    "papaparse": "^5.5.3",
     "react": "^18",
     "react-dom": "^18",
     "recharts": "^2.12.7",
     "tailwind-merge": "^2.3.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.0.1",

@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Filter, RefreshCw, EyeOff, Loader2 } from 'lucide-react';
-import { ProfileChart } from '@/components/charts/ProfileChart';
+import { Filter, RefreshCw } from 'lucide-react';
+import { ChartCard } from '@/components/charts/ChartCard';
 import { ChartConfigPanel } from '@/components/charts/ChartConfigPanel';
 import { RegionCascade } from '@/components/RegionCascade';
 import { OrderStatusFilter } from '@/components/OrderStatusFilter';
@@ -10,7 +10,37 @@ import { useRole } from '@/components/RoleProvider';
 import { cn } from '@/lib/utils';
 import { loadChartConfig, saveChartConfig } from '@/lib/chartConfig';
 import type { ChartConfig } from '@/lib/chartConfig';
+import type { ChartType } from '@/components/charts/engine/types';
 import type { ProfileData, OrderStatus } from '@/types';
+
+// 提取到组件外部，防止每次渲染创建新函数引用导致 React 强制重挂载
+function DimChartCard({
+  dim, delay, config, onConfigChange, onHide,
+}: {
+  dim: ProfileData;
+  delay: number;
+  config: ChartConfig;
+  onConfigChange: (c: ChartConfig) => void;
+  onHide: () => void;
+}) {
+  const resolvedType: ChartType =
+    dim.chartType === 'pie' ? 'donut' : (dim.chartType as ChartType) ?? 'bar';
+  return (
+    <ChartCard
+      title={dim.dimensionLabel}
+      note={dim.note}
+      data={dim.items}
+      config={config}
+      chartType={resolvedType}
+      isMultiSelect={dim.isMultiSelect}
+      totalSamples={dim.totalSamples}
+      validSamples={dim.validSamples}
+      onConfigChange={onConfigChange}
+      onHide={onHide}
+      animationDelay={delay}
+    />
+  );
+}
 
 export default function ProfilePage() {
   const role    = useRole();
@@ -21,10 +51,12 @@ export default function ProfilePage() {
   const [data, setData]           = useState<ProfileData[] | null>(null);
   const [loading, setLoading]     = useState(true);
   const [totalSamples, setTotalSamples] = useState(0);
-  const [chartConfig, setChartConfig]   = useState<ChartConfig>(() => loadChartConfig('profile'));
-  const [hidingDim, setHidingDim] = useState<string | null>(null);
+  const [chartConfig, setChartConfig] = useState<ChartConfig>(() => loadChartConfig('profile'));
 
-  function handleConfigChange(c: ChartConfig) { setChartConfig(c); saveChartConfig('profile', c); }
+  function handleConfigChange(c: ChartConfig) {
+    setChartConfig(c);
+    saveChartConfig('profile', c);
+  }
 
   const fetchData = useCallback(async () => {
     setData(null);
@@ -50,22 +82,17 @@ export default function ProfilePage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // 管理员：从画像中隐藏字段（设置 enabled_profile = false）
-  async function hideDim(dimKey: string) {
-    setHidingDim(dimKey);
-    try {
-      await fetch('/api/dimensions', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dimensions: [{ dim_key: dimKey, enabled_profile: false }] }),
-      });
-      // 立即从当前视图移除
-      setData(prev => prev ? prev.filter(d => d.dimension !== dimKey) : prev);
-    } catch (e) {
-      console.error('hide dim failed', e);
-    } finally {
-      setHidingDim(null);
-    }
+  // 管理员：从画像中隐藏字段（乐观更新：立即移除，API 后台执行）
+  function hideDim(dimKey: string) {
+    setData(prev => prev ? prev.filter(d => d.dimension !== dimKey) : prev);
+    fetch('/api/dimensions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimensions: [{ dim_key: dimKey, enabled_profile: false }] }),
+    }).catch(() => {
+      // 失败时重新拉取恢复数据
+      fetchData();
+    });
   }
 
   const filterLabel = filter.city || filter.province || filter.area || '全国';
@@ -91,31 +118,6 @@ export default function ProfilePage() {
     ];
     return sorted.map(name => ({ name, dims: groupMap[name] || [] }));
   }, [data]);
-
-  // 单个图表卡片（包含管理员隐藏按钮）
-  function ChartCard({ dim, delay }: { dim: ProfileData; delay: number }) {
-    return (
-      <div className="glass-card animate-slide-up relative group" style={{ animationDelay: `${delay}ms` }}>
-        {isAdmin && (
-          <button
-            onClick={() => hideDim(dim.dimension as string)}
-            disabled={hidingDim === dim.dimension}
-            title="从画像中隐藏此字段（可在数据管理中重新开启）"
-            className={cn(
-              'absolute top-2.5 right-2.5 z-10 p-1.5 rounded-lg transition-all no-tap',
-              'opacity-0 group-hover:opacity-100',
-              'bg-black/05 hover:bg-[#FF3B30]/12 text-black/30 hover:text-[#FF3B30]',
-            )}
-          >
-            {hidingDim === dim.dimension
-              ? <Loader2 size={11} className="animate-spin" />
-              : <EyeOff size={11} />}
-          </button>
-        )}
-        <ProfileChart data={dim} config={chartConfig} />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -174,7 +176,9 @@ export default function ProfilePage() {
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {group.dims.map((dim, i) => (
-                    <ChartCard key={dim.dimension} dim={dim} delay={(gi * 3 + i) * 35} />
+                    <DimChartCard key={dim.dimension} dim={dim} delay={(gi * 3 + i) * 35}
+                      config={chartConfig} onConfigChange={handleConfigChange}
+                      onHide={() => hideDim(dim.dimension as string)} />
                   ))}
                 </div>
               </div>
@@ -184,7 +188,9 @@ export default function ProfilePage() {
           // ── 平铺模式（无分组）────────────────────────────────
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {data.map((dim, i) => (
-              <ChartCard key={dim.dimension} dim={dim} delay={i * 40} />
+              <DimChartCard key={dim.dimension} dim={dim} delay={i * 40}
+              config={chartConfig} onConfigChange={handleConfigChange}
+              onHide={() => hideDim(dim.dimension as string)} />
             ))}
           </div>
         )

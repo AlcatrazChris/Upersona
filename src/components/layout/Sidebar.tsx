@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutGrid, Users, BarChart2, Activity, Sparkles, Settings, GitCompare, Map } from 'lucide-react';
+import { LayoutGrid, Users, BarChart2, Activity, Sparkles, Settings, GitCompare, Map, Database } from 'lucide-react';
 import type { Role } from '@/lib/session';
 
 const NAV_ITEMS = [
@@ -61,9 +61,30 @@ export function Sidebar({ role }: { role: Role }) {
           })}
         </nav>
 
-        {/* 底部：仅 admin 可见「数据管理」 */}
-        {role === 'admin' && (
-          <div className="mt-4 pt-4 border-t border-black/08">
+        {/* 底部工具区 */}
+        <div className="mt-4 pt-4 border-t border-black/08 space-y-1">
+          {/* 数据集 + 数据管理（仅 admin） */}
+          {role === 'admin' && (
+            (() => {
+              const href = '/datasets';
+              const isActive = pathname.startsWith(href);
+              return (
+                <Link href={href}
+                  className={cn('flex items-center gap-3 px-3 py-2.5 rounded-ios transition-all group no-tap',
+                    isActive ? 'bg-white/75 shadow-ios-sm' : 'hover:bg-white/45')}>
+                  <div className={cn(
+                    'w-8 h-8 rounded-[8px] flex items-center justify-center transition-all',
+                    isActive ? 'text-white shadow-md' : 'bg-black/05 text-black/35 group-hover:text-black/55'
+                  )}
+                    style={isActive ? { background: 'linear-gradient(135deg,#5856D6 0%,#007AFF 100%)' } : {}}>
+                    <Database size={15} strokeWidth={1.75} />
+                  </div>
+                  <div className="text-[13px] font-500 text-black/50 group-hover:text-black/70 transition-colors">数据集</div>
+                </Link>
+              );
+            })()
+          )}
+          {role === 'admin' && (
             <Link href="/admin"
               className="flex items-center gap-3 px-3 py-2.5 rounded-ios hover:bg-white/45 transition-all group no-tap">
               <div className="w-8 h-8 rounded-[8px] flex items-center justify-center bg-black/05 text-black/35 group-hover:text-black/55 transition-colors">
@@ -71,8 +92,8 @@ export function Sidebar({ role }: { role: Role }) {
               </div>
               <div className="text-[13px] text-black/45 group-hover:text-black/65 transition-colors">数据管理</div>
             </Link>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </aside>
   );

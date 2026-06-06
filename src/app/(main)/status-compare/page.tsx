@@ -4,7 +4,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Loader2, AlertCircle, Sparkles, RefreshCw,
   ChevronDown, Filter, Edit3, Save, LayoutGrid, BarChart2, GitCompare, EyeOff,
+  Download, ImageDown,
 } from 'lucide-react';
+import { exportSVG, exportPNG } from '@/lib/chartExport';
+// Note: Loader2 still used in DimCard loading state
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend,
@@ -257,7 +260,7 @@ function OverviewDimCard({ dimData, activeStatuses, cfg = DEFAULT_CHART_CONFIG, 
 }) {
   const role    = useRole();
   const isAdmin = role === 'admin';
-  const [hiding, setHiding] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   const { rows, allLabels, dimLabel } = dimData;
   const n = allLabels.length;
@@ -271,34 +274,48 @@ function OverviewDimCard({ dimData, activeStatuses, cfg = DEFAULT_CHART_CONFIG, 
   const maxVal = Math.max(1, ...rows.flatMap(r => activeStatuses.map(s => Number(r[s] ?? 0))));
   const domainMax = Math.min(100, Math.ceil(maxVal / 10) * 10 + 5);
 
-  async function handleHide() {
-    if (!onHide) return;
-    setHiding(true);
-    await onHide(dimData.dimKey);
-    setHiding(false);
+  function handleHide() {
+    onHide?.(dimData.dimKey);
   }
 
   return (
-    <div className="glass-card p-4 relative group">
+    <div ref={cardRef} className="glass-card p-4 relative group">
       <div className="flex items-center justify-between gap-3 mb-2">
         <div className="text-[13px] font-600 text-black/65">{dimLabel}</div>
         <div className="flex items-center gap-2">
           <div className="text-[11px] text-black/35 whitespace-nowrap">
             样本数 <span className="font-600 text-black/55 tabular-nums">{sampleCount.toLocaleString()}</span>
           </div>
-          {/* 管理员隐藏按钮 */}
-          {isAdmin && onHide && (
-            <button
-              onClick={handleHide}
-              disabled={hiding}
-              title="从状态对比中隐藏此字段（可在数据管理中重新开启）"
-              className={cn(
-                'p-1.5 rounded-lg transition-all no-tap opacity-0 group-hover:opacity-100',
-                'bg-black/05 hover:bg-[#FF3B30]/12 text-black/30 hover:text-[#FF3B30]',
+          {/* 管理员导出 + 隐藏按钮 */}
+          {isAdmin && (
+            <>
+              <button
+                onClick={() => exportSVG(cardRef.current, dimLabel)}
+                title="导出 SVG"
+                className="p-1.5 rounded-lg transition-all no-tap opacity-0 group-hover:opacity-100 bg-black/04 hover:bg-black/08 text-black/25 hover:text-black/55"
+              >
+                <Download size={10} />
+              </button>
+              <button
+                onClick={() => exportPNG(cardRef.current, dimLabel)}
+                title="导出 PNG（2× 高清）"
+                className="p-1.5 rounded-lg transition-all no-tap opacity-0 group-hover:opacity-100 bg-black/04 hover:bg-black/08 text-black/25 hover:text-black/55"
+              >
+                <ImageDown size={10} />
+              </button>
+              {onHide && (
+                <button
+                  onClick={handleHide}
+                  title="从状态对比中隐藏此字段（可在数据管理中重新开启）"
+                  className={cn(
+                    'p-1.5 rounded-lg transition-all no-tap opacity-0 group-hover:opacity-100',
+                    'bg-black/05 hover:bg-[#FF3B30]/12 text-black/30 hover:text-[#FF3B30]',
+                  )}
+                >
+                  <EyeOff size={11} />
+                </button>
               )}
-            >
-              {hiding ? <Loader2 size={11} className="animate-spin" /> : <EyeOff size={11} />}
-            </button>
+            </>
           )}
         </div>
       </div>
@@ -603,6 +620,11 @@ function DimCard({ dimKey, filter, activeStatuses, compareVersionId, chartConfig
   compareVersionId?: number | null;
   chartConfig:       ChartConfig;
 }) {
+  const role      = useRole();
+  const isAdmin   = role === 'admin';
+  const chartRef  = useRef<HTMLDivElement>(null);
+  const cmpRef    = useRef<HTMLDivElement>(null);
+
   const [data, setData]               = useState<StatusCompareData | null>(null);
   const [compareData, setCompareData] = useState<StatusCompareData | null>(null);
   const [loading, setLoading]         = useState(false);
@@ -718,7 +740,7 @@ function DimCard({ dimKey, filter, activeStatuses, compareVersionId, chartConfig
   return (
     <div className="space-y-4">
       {/* 当前版本图表 */}
-      <div className="glass-card p-5">
+      <div ref={chartRef} className="glass-card p-5 relative group">
         <div className="flex items-start justify-between mb-3">
           <div>
             <h2 className="text-[15px] font-600 text-black/75">{data.dimensionLabel} — 各订单状态内部分布</h2>
@@ -726,21 +748,61 @@ function DimCard({ dimKey, filter, activeStatuses, compareVersionId, chartConfig
               {data.isMultiSelect ? '多选题·各项之和=100%' : '同一订单状态列内各取值之和≈100%'}
             </p>
           </div>
-          <ChartConfigPanel
-            config={chartConfig}
-            onChange={c => saveChartConfig('status-compare', c)}
-          />
+          <div className="flex items-center gap-1">
+            {isAdmin && (
+              <>
+                <button
+                  onClick={() => exportSVG(chartRef.current, data.dimensionLabel)}
+                  title="导出 SVG"
+                  className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 bg-black/04 hover:bg-black/08 text-black/25 hover:text-black/55 transition-all no-tap"
+                >
+                  <Download size={10} />
+                </button>
+                <button
+                  onClick={() => exportPNG(chartRef.current, data.dimensionLabel)}
+                  title="导出 PNG（2× 高清）"
+                  className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 bg-black/04 hover:bg-black/08 text-black/25 hover:text-black/55 transition-all no-tap"
+                >
+                  <ImageDown size={10} />
+                </button>
+              </>
+            )}
+            <ChartConfigPanel
+              config={chartConfig}
+              onChange={c => saveChartConfig('status-compare', c)}
+            />
+          </div>
         </div>
         <ClusteredChart data={data} activeStatuses={activeStatuses} cfg={chartConfig} />
       </div>
 
       {/* 历史版本对比图表 */}
       {compareVersionId && (
-        <div className="glass-card p-5 border border-[#5856D6]/15">
-          <div className="flex items-center gap-2 mb-3">
-            <GitCompare size={13} className="text-[#5856D6]" />
-            <span className="text-[13px] font-600 text-black/65">v{compareVersionId} 历史对比</span>
-            <span className="text-[11px] text-black/30">{data.dimensionLabel}</span>
+        <div ref={cmpRef} className="glass-card p-5 border border-[#5856D6]/15 relative group">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <GitCompare size={13} className="text-[#5856D6]" />
+              <span className="text-[13px] font-600 text-black/65">v{compareVersionId} 历史对比</span>
+              <span className="text-[11px] text-black/30">{data.dimensionLabel}</span>
+            </div>
+            {isAdmin && (
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => exportSVG(cmpRef.current, `${data.dimensionLabel}-v${compareVersionId}`)}
+                  title="导出 SVG"
+                  className="p-1.5 rounded-lg bg-black/04 hover:bg-black/08 text-black/25 hover:text-black/55 transition-all no-tap"
+                >
+                  <Download size={10} />
+                </button>
+                <button
+                  onClick={() => exportPNG(cmpRef.current, `${data.dimensionLabel}-v${compareVersionId}`)}
+                  title="导出 PNG（2× 高清）"
+                  className="p-1.5 rounded-lg bg-black/04 hover:bg-black/08 text-black/25 hover:text-black/55 transition-all no-tap"
+                >
+                  <ImageDown size={10} />
+                </button>
+              </div>
+            )}
           </div>
           {cmpLoading ? (
             <div className="flex items-center gap-2 text-[12px] text-black/35 py-4">
@@ -833,18 +895,14 @@ export default function StatusComparePage() {
       .catch(() => {});
   }, []);
 
-  // 管理员：从概览/画像中隐藏字段（设置 enabled_profile = false）
-  async function handleHideOverviewDim(dimKey: string) {
-    try {
-      await fetch('/api/dimensions', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dimensions: [{ dim_key: dimKey, enabled_profile: false }] }),
-      });
-      setDimsData(prev => prev ? { ...prev, dims: prev.dims.filter(d => d.dimKey !== dimKey) } : prev);
-    } catch (e) {
-      console.error('hide dim failed', e);
-    }
+  // 管理员：从概览/画像中隐藏字段（乐观更新：立即移除，API 后台执行）
+  function handleHideOverviewDim(dimKey: string) {
+    setDimsData(prev => prev ? { ...prev, dims: prev.dims.filter(d => d.dimKey !== dimKey) } : prev);
+    fetch('/api/dimensions', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dimensions: [{ dim_key: dimKey, enabled_profile: false }] }),
+    }).catch(e => console.error('hide dim failed', e));
   }
 
   async function saveOverviewCustom() {

@@ -5,6 +5,7 @@ import { BarChart2, Loader2, AlertCircle, ChevronDown, RefreshCw } from 'lucide-
 import { InsightOverlay } from '@/components/InsightOverlay';
 import { createPortal } from 'react-dom';
 import { StackedBarChart } from '@/components/charts/StackedBarChart';
+import { ChartShell }      from '@/components/charts/ChartShell';
 import { ChartConfigPanel } from '@/components/charts/ChartConfigPanel';
 import { RegionMultiSelect } from '@/components/RegionMultiSelect';
 import { OrderStatusFilter } from '@/components/OrderStatusFilter';
@@ -287,25 +288,13 @@ export default function ComparePage() {
 
       {!loading && compareData && (
         <div className="space-y-4 animate-slide-up">
-          <div className="glass-card p-5">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h2 className="text-[17px] font-600 text-black/80">{selected.join(' · ')}</h2>
-                <p className="text-[13px] text-black/40 mt-0.5">
-                  {dimConfig?.label} 分布对比
-                  {dimConfig?.isMultiSelect && ' · 多选题，各项之和 = 100%'}
-                </p>
-              </div>
-              <div className="flex gap-2 flex-wrap justify-end">
-                {compareData.regions.map(r => (
-                  <span key={r.region} className="badge-ios badge-gray text-[11px]">
-                    {r.region} n={r.sampleCount}
-                  </span>
-                ))}
-              </div>
-            </div>
+          <ChartShell
+            title={`${dimConfig?.label ?? ''} 分布对比`}
+            note={`${selected.join(' · ')}${dimConfig?.isMultiSelect ? ' · 多选题，各项之和 = 100%' : ''}`}
+            sampleBadge={compareData.regions.map(r => `${r.region} n=${r.sampleCount}`).join(' | ')}
+          >
             <StackedBarChart data={compareData} config={chartConfig} chartHeight={chartSize.height} maxBarWidth={chartSize.maxBarWidth} />
-          </div>
+          </ChartShell>
 
           <InsightOverlay
             cacheKey={compareData.cacheKey || ''}
