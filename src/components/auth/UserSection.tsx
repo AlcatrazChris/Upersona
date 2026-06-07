@@ -3,22 +3,26 @@
 /**
  * UserSection — 侧边栏底部用户信息区
  *
- * - Clerk 已配置：显示头像、姓名、角色标签、AccountButton 下拉菜单（管理账号 / 退出登录）
+ * - Clerk 已配置：显示头像、姓名、角色标签、UserButton 下拉、管理员可打开用户管理面板
  * - 未配置 Clerk：显示「本地模式」提示（开发/自部署场景）
  */
 
+import { useState } from 'react';
+import { Users } from 'lucide-react';
 import { useIsAdmin } from '@/lib/auth';
+import { UserManageModal } from './UserManageModal';
 
 const CLERK_ENABLED = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
-// Separated so useUser() is only called inside ClerkProvider
+// ── Clerk 模式用户信息 ─────────────────────────────────────────
+
 function ClerkUserInfo() {
-  // Dynamic import in component form — avoid top-level import so Clerk hooks
-  // are never invoked when ClerkProvider is absent.
+  // 动态 require 防止在无 ClerkProvider 树中调用 Hook
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { useUser, UserButton } = require('@clerk/nextjs') as typeof import('@clerk/nextjs');
   const { user, isLoaded } = useUser();
   const isAdmin = useIsAdmin();
+  const [showManage, setShowManage] = useState(false);
 
   if (!isLoaded) {
     return (
@@ -32,35 +36,61 @@ function ClerkUserInfo() {
     );
   }
 
+  const displayName =
+    user?.firstName ??
+    user?.emailAddresses[0]?.emailAddress?.split('@')[0] ??
+    '用户';
+
   return (
-    <div className="flex items-center gap-2.5 px-3 py-2.5">
-      <UserButton
-        appearance={{
-          elements: {
-            avatarBox: 'w-8 h-8',
-            userButtonTrigger: 'rounded-xl focus:shadow-none',
-          },
-        }}
-      />
-      <div className="flex-1 min-w-0">
-        <div className="text-[12px] font-medium text-white/90 truncate leading-tight">
-          {user?.firstName ?? user?.emailAddresses[0]?.emailAddress?.split('@')[0] ?? '用户'}
+    <>
+      <div className="px-3 py-2.5 space-y-2">
+        {/* 用户行：头像 + 姓名 + 角色 */}
+        <div className="flex items-center gap-2.5">
+          <UserButton
+            appearance={{
+              elements: {
+                avatarBox:          'w-8 h-8',
+                userButtonTrigger:  'rounded-xl focus:shadow-none',
+              },
+            }}
+          />
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] font-medium text-white/90 truncate leading-tight">
+              {displayName}
+            </div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium leading-none ${
+                  isAdmin
+                    ? 'bg-blue-500/20 text-blue-300'
+                    : 'bg-white/[0.08] text-white/40'
+                }`}
+              >
+                {isAdmin ? '管理员' : '只读'}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 mt-0.5">
-          <span
-            className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium leading-none ${
-              isAdmin
-                ? 'bg-blue-500/20 text-blue-300'
-                : 'bg-white/8 text-white/40'
-            }`}
+
+        {/* 管理员专属：用户管理入口 */}
+        {isAdmin && (
+          <button
+            onClick={() => setShowManage(true)}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-[11px] text-white/40 hover:text-white/70 hover:bg-white/5 transition-all text-left"
           >
-            {isAdmin ? '管理员' : '只读'}
-          </span>
-        </div>
+            <Users size={11} className="flex-shrink-0" />
+            管理用户权限
+          </button>
+        )}
       </div>
-    </div>
+
+      {/* 用户管理 Modal */}
+      {showManage && <UserManageModal onClose={() => setShowManage(false)} />}
+    </>
   );
 }
+
+// ── 本地模式 ───────────────────────────────────────────────────
 
 function LocalModeInfo() {
   return (
@@ -75,6 +105,8 @@ function LocalModeInfo() {
     </div>
   );
 }
+
+// ── 导出 ───────────────────────────────────────────────────────
 
 export function UserSection() {
   return (

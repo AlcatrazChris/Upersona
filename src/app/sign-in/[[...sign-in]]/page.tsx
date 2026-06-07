@@ -1,7 +1,12 @@
+import { redirect } from 'next/navigation';
 import { SignIn } from '@clerk/nextjs';
 import { BarChart2 } from 'lucide-react';
 
+// 未配置 Clerk 时直接回首页（防止 SignIn 组件在无 ClerkProvider 树中崩溃）
+const CLERK_ENABLED = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
 export default function SignInPage() {
+  if (!CLERK_ENABLED) redirect('/');
   return (
     <div className="flex h-screen">
 

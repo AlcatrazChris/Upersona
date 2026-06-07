@@ -1,6 +1,10 @@
+import { redirect } from 'next/navigation';
 import { SignUp } from '@clerk/nextjs';
 
+const CLERK_ENABLED = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
 export default function SignUpPage() {
+  if (!CLERK_ENABLED) redirect('/');
   return (
     <div className="flex h-screen">
 
