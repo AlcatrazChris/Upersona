@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  /* 兼容从旧项目搬运的 engine 组件所用的自定义类 */
+  .glass-card {
+    @apply bg-white rounded-2xl;
+  }
+  .glass-card-elevated {
+    @apply bg-white rounded-xl border border-gray-100 shadow-xl;
+  }
+  .glass-card-subtle {
+    @apply bg-black/[0.04] border border-transparent;
+  }
+  .rounded-ios {
+    @apply rounded-xl;
+  }
+}
+
+@layer utilities {
+  .font-500 { font-weight: 500; }
+  .font-600 { font-weight: 600; }
+  .no-tap { -webkit-tap-highlight-color: transparent; }
+}
