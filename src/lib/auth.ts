@@ -1,30 +1,29 @@
 'use client';
 
 /**
- * 角色系统
+ * 客户端 Auth Context
  *
- * - admin  管理员：上传数据、配置字段、配置画像、查看所有视图
- * - viewer 只读用户：查看所有视图及图表，无法编辑配置
- *
- * Clerk 未配置时（无 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY）：
- *   所有用户默认为 admin（本地/开发模式）。
- *
- * Clerk 配置后，在 Clerk Dashboard → Users → Edit → publicMetadata 中设置：
- *   { "role": "admin" }  ← 管理员
- *   { "role": "viewer" } ← 只读用户（新注册用户默认为 viewer）
+ * AuthProvider（layout.tsx 中注入）从服务端 cookie 读取 initialUser，
+ * 将其存入 Context。组件通过 useAuth() / useIsAdmin() 消费。
  */
 
 import { createContext, useContext } from 'react';
 
 export type AppRole = 'admin' | 'viewer';
 
-// Default value 'admin' ensures the app works without a Provider (local dev, no Clerk)
-export const RoleContext = createContext<AppRole>('admin');
-
-export function useRole(): AppRole {
-  return useContext(RoleContext);
+export interface AuthUser {
+  id:       string;
+  username: string;
+  role:     AppRole;
 }
 
-export function useIsAdmin(): boolean {
-  return useRole() === 'admin';
+export interface AuthState {
+  user:    AuthUser | null;
+  loading: boolean;
 }
+
+export const AuthContext = createContext<AuthState>({ user: null, loading: false });
+
+export function useAuth():    AuthState { return useContext(AuthContext); }
+export function useRole():    AppRole  { return useAuth().user?.role ?? 'viewer'; }
+export function useIsAdmin(): boolean  { return useRole() === 'admin'; }

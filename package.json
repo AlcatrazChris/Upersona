@@ -8,9 +8,11 @@
     "start": "next start"
   },
   "dependencies": {
-    "@clerk/nextjs": "^7.4.3",
+    "@supabase/supabase-js": "^2.107.0",
+    "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "idb-keyval": "^6.2.5",
+    "jose": "^6.2.3",
     "lucide-react": "^0.383.0",
     "next": "14.2.35",
     "papaparse": "^5.5.3",
@@ -23,6 +25,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/papaparse": "^5",
     "@types/react": "^18",

@@ -1,43 +1,60 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest, NextFetchEvent } from 'next/server';
-
 /**
- * Clerk 환경변수가 설정된 경우에만 Clerk 미들웨어를 초기화합니다.
- * 없으면 단순 pass-through로 동작합니다.
+ * Middleware — JWT 会话校验（Edge Runtime 兼容）
  *
- * 이유: clerkMiddleware()로 export default를 감싸면 요청마다 Clerk이
- * 비밀키를 확인하려 하고, 키가 없으면 MIDDLEWARE_INVOCATION_FAILED가
- * 발생합니다. 지연 초기화를 사용해 키가 있을 때만 Clerk을 로드합니다.
+ * 安全逻辑：
+ * 1. 公开路径（/sign-in、/api/auth/*）直接放行
+ * 2. 其余路径必须携带合法 JWT Cookie
+ * 3. Token 过期或伪造 → 清除 cookie + 重定向登录页
  */
 
-const CLERK_ENABLED = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import * as jose from 'jose';
 
-// 최초 요청 시 한 번만 초기화, 이후 캐시해서 재사용
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _handler: ((req: NextRequest, event: NextFetchEvent) => any) | null = null;
+const COOKIE_NAME = 'upersona_session';
 
-export async function middleware(req: NextRequest, event: NextFetchEvent) {
-  // Clerk 미설정 시 → 모든 요청 통과 (로컬/초기 배포 모드)
-  if (!CLERK_ENABLED) return NextResponse.next();
+// 无需鉴权的路径前缀
+const PUBLIC_PREFIXES = [
+  '/sign-in',
+  '/api/auth/',           // login / logout / me / setup
+  '/_next/',
+  '/favicon.ico',
+];
 
-  // Clerk 설정 시 → 최초 1회만 핸들러 생성 후 캐시
-  if (!_handler) {
-    const { clerkMiddleware, createRouteMatcher } = await import('@clerk/nextjs/server');
-    const isPublicRoute = createRouteMatcher(['/sign-in(.*)', '/sign-up(.*)']);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    _handler = clerkMiddleware(async (auth: any, r: NextRequest) => {
-      if (!isPublicRoute(r)) await auth.protect();
-    });
+function isPublic(pathname: string): boolean {
+  return PUBLIC_PREFIXES.some(prefix => pathname.startsWith(prefix));
+}
+
+function getJwtSecret(): Uint8Array {
+  // JWT_SECRET 为空时（构建阶段）使用占位值，不影响实际请求
+  return new TextEncoder().encode(process.env.JWT_SECRET ?? '__build_placeholder__');
+}
+
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  if (isPublic(pathname)) return NextResponse.next();
+
+  const token = req.cookies.get(COOKIE_NAME)?.value;
+
+  if (!token) {
+    return NextResponse.redirect(new URL('/sign-in', req.url));
   }
 
-  return _handler(req, event);
+  try {
+    await jose.jwtVerify(token, getJwtSecret());
+    return NextResponse.next();
+  } catch {
+    // Token 无效或过期：清除旧 cookie，重定向登录页
+    const res = NextResponse.redirect(new URL('/sign-in', req.url));
+    res.cookies.delete(COOKIE_NAME);
+    return res;
+  }
 }
 
 export const config = {
   matcher: [
-    // Next.js 내부 파일·정적 에셋 제외
-    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jiff?|webp|png|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
-    // API 라우트는 항상 미들웨어 통과
-    '/(api|trpc)(.*)',
+    // 排除静态资源，但包含所有页面和 API 路由
+    '/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico|woff2?|ttf|css)).*)',
   ],
 };
