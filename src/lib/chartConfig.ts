@@ -22,7 +22,8 @@ export interface ChartConfig {
 }
 
 export type ColorScheme =
-  | 'ios' | 'ocean' | 'sunset' | 'forest' | 'lavender' | 'mono' | 'brand';
+  | 'ios' | 'ocean' | 'sunset' | 'forest' | 'lavender' | 'mono' | 'brand'
+  | 'warm' | 'earth' | 'pastel' | 'neon' | 'cool';
 
 export const COLOR_SCHEMES: Record<ColorScheme, { name: string; colors: string[]; preview: string[] }> = {
   ios:      { name: 'iOS 系统',  preview: ['#007AFF','#34C759','#FF9500','#5856D6','#FF2D55'], colors: ['#007AFF','#34C759','#FF9500','#5856D6','#FF2D55','#5AC8FA','#AF52DE','#FFCC00','#32ADE6','#FF3B30'] },
@@ -32,6 +33,11 @@ export const COLOR_SCHEMES: Record<ColorScheme, { name: string; colors: string[]
   lavender: { name: '薰衣草紫',  preview: ['#4A148C','#7B1FA2','#AB47BC','#CE93D8','#9C27B0'], colors: ['#4A148C','#6A1B9A','#7B1FA2','#8E24AA','#9C27B0','#AB47BC','#BA68C8','#CE93D8','#5E35B1','#3949AB'] },
   mono:     { name: '单色灰度',  preview: ['#212121','#424242','#616161','#757575','#9E9E9E'], colors: ['#212121','#37474F','#455A64','#546E7A','#607D8B','#78909C','#90A4AE','#B0BEC5','#263238','#1A237E'] },
   brand:    { name: '品牌配色',  preview: ['#0A2463','#3E92CC','#D8315B','#F4A261','#2EC4B6'], colors: ['#0A2463','#1E6091','#3E92CC','#2EC4B6','#F4A261','#D8315B','#E9C46A','#264653','#2A9D8F','#E76F51'] },
+  warm:     { name: '暖色渐变',  preview: ['#FF6B35','#F7C59F','#EFEFD0','#E07A5F','#F2CC8F'], colors: ['#FF6B35','#E07A5F','#F2CC8F','#F7C59F','#EFCFE3','#D4A5A5','#FF8C69','#FFB347','#FFCC80','#F4845F'] },
+  earth:    { name: '大地质感',  preview: ['#6B4226','#A0522D','#CD853F','#DEB887','#8B7355'], colors: ['#6B4226','#8B4513','#A0522D','#CD853F','#D2691E','#DEB887','#8B7355','#A9A9A9','#708090','#556B2F'] },
+  pastel:   { name: '马卡龙',    preview: ['#FFB3BA','#FFDFBA','#FFFFBA','#BAFFC9','#BAE1FF'], colors: ['#FFB3BA','#FFDFBA','#FFFFBA','#BAFFC9','#BAE1FF','#E8BAFF','#FFD9BA','#B9FBC0','#BDE0FE','#FFDDE1'] },
+  neon:     { name: '霓虹活力',  preview: ['#FF073A','#39FF14','#00F5FF','#FF6EC7','#FFFF00'], colors: ['#FF073A','#FF6EC7','#39FF14','#00F5FF','#FFFF00','#BF5FFF','#FF9500','#00FF7F','#FF00FF','#7DF9FF'] },
+  cool:     { name: '冷调极简',  preview: ['#1A1A2E','#16213E','#0F3460','#533483','#E94560'], colors: ['#2D3561','#0F3460','#533483','#E94560','#1B4F72','#154360','#1A5276','#0E6655','#117A65','#1F618D'] },
 };
 
 export const DEFAULT_CHART_CONFIG: ChartConfig = {

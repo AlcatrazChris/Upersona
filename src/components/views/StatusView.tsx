@@ -12,7 +12,7 @@ import { ChartRenderer }            from '@/components/charts/engine/ChartRender
 import { GroupedBarChartEngine }    from '@/components/charts/engine/GroupedBarChartEngine';
 import { ChartSettingsPanel }       from '@/components/charts/ChartSettingsPanel';
 import { AIInsightPanel }           from '@/components/shared/AIInsightPanel';
-import { DEFAULT_CHART_CONFIG, loadChartConfig, saveChartConfig, type ChartConfig } from '@/lib/chartConfig';
+import { DEFAULT_CHART_CONFIG, loadChartConfig, saveChartConfig, getColors, type ChartConfig } from '@/lib/chartConfig';
 import { useDatasetStore }          from '@/store/datasetStore';
 import { useIsAdmin }               from '@/lib/auth';
 import { StatusGroupEditor }        from './StatusGroupEditor';
@@ -162,11 +162,13 @@ function StatusChartCard({
   const chartH    = manualH ?? Math.max(config.chartHeight, dataH);
 
   // ── Colors ──
-  const crossColors = selectedGroups.flatMap(g => [
-    INTENT_HEX_PRIMARY[g.intent],
-    INTENT_HEX_COMPARE[g.intent],
+  // 使用配色方案颜色，同时保留 intent 点状指示（语义化）
+  const schemeColors  = getColors(config.colorScheme);
+  const crossColors   = selectedGroups.flatMap((_, i) => [
+    schemeColors[i * 2 % schemeColors.length],
+    schemeColors[(i * 2 + 1) % schemeColors.length],
   ]);
-  const multiColors = selectedGroups.map(g => INTENT_HEX_PRIMARY[g.intent]);
+  const multiColors   = selectedGroups.map((_, i) => schemeColors[i % schemeColors.length]);
 
   // ── Resize ──
   const handleResizeStart = (e: React.MouseEvent) => {

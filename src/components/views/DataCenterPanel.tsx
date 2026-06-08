@@ -28,7 +28,7 @@ const TABS = [
   { id: 'data',    label: '数据管理', icon: Database,  needsDataset: false },
   { id: 'fields',  label: '字段概览', icon: Table2,    needsDataset: true  },
   { id: 'builder', label: '图表构建', icon: BarChart2, needsDataset: true  },
-  { id: 'saved',   label: '已保存',   icon: Bookmark,  needsDataset: true  },
+  { id: 'saved',   label: '图表浏览', icon: Bookmark,  needsDataset: true  },
   { id: 'ai',      label: 'AI 分析',  icon: Sparkles,  needsDataset: true  },
 ] as const;
 type TabId = typeof TABS[number]['id'];
@@ -93,31 +93,38 @@ function DataManagementTab() {
 
   async function handleEnrichConfirm(selected: EnrichableField[]) {
     if (!pendingEnrich) return;
-    let ds = pendingEnrich.dataset;
-    const ruleItems = selected.filter(e => e.enrichType !== 'occupation');
-    const aiItems   = selected.filter(e => e.enrichType === 'occupation');
-    for (const enrich of ruleItems) {
-      if (enrich.enrichType === 'region')   ds = applyRegionEnrichment(ds, enrich);
-      if (enrich.enrichType === 'cityTier') ds = applyCityTierEnrichment(ds, enrich);
-    }
-    for (const enrich of aiItems) {
-      try {
-        const uniqueVals = [...new Set(
-          ds.records.map(r => String(r[enrich.field.key] ?? '').trim()).filter(Boolean),
-        )];
-        const res = await fetch('/api/enrich', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'occupation', values: uniqueVals }),
-        });
-        if (res.ok) {
-          const { mapping } = await res.json() as { mapping: Record<string, string> };
-          ds = applyOccupationEnrichment(ds, enrich, mapping);
-        }
-      } catch { /* AI enrichment failure is non-fatal */ }
-    }
+    // 先关闭弹窗，再在后台完成 enrichment
+    const snapshot = pendingEnrich;
     setPendingEnrich(null);
-    finalizeDataset(ds);
+    setUploading(true);
+    try {
+      let ds = snapshot.dataset;
+      const ruleItems = selected.filter(e => e.enrichType !== 'occupation');
+      const aiItems   = selected.filter(e => e.enrichType === 'occupation');
+      for (const enrich of ruleItems) {
+        if (enrich.enrichType === 'region')   ds = applyRegionEnrichment(ds, enrich);
+        if (enrich.enrichType === 'cityTier') ds = applyCityTierEnrichment(ds, enrich);
+      }
+      for (const enrich of aiItems) {
+        try {
+          const uniqueVals = [...new Set(
+            ds.records.map(r => String(r[enrich.field.key] ?? '').trim()).filter(Boolean),
+          )];
+          const res = await fetch('/api/enrich', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'occupation', values: uniqueVals }),
+          });
+          if (res.ok) {
+            const { mapping } = await res.json() as { mapping: Record<string, string> };
+            ds = applyOccupationEnrichment(ds, enrich, mapping);
+          }
+        } catch { /* AI enrichment failure is non-fatal */ }
+      }
+      finalizeDataset(ds);
+    } finally {
+      setUploading(false);
+    }
   }
 
   function fmtDate(iso: string) {

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
-import { Filter, MapPin, ChevronDown, Check, Settings2 } from 'lucide-react';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { Filter, MapPin, ChevronDown, Check, Settings2, Pencil } from 'lucide-react';
 import { aggregateField } from '@/lib/dataAggregator';
 import { filterRecords, getGeoOptions, getStatusOptions, type GeoLevel } from '@/lib/filterRecords';
 import { ChartRenderer, type ChartType } from '@/components/charts/engine/ChartRenderer';
@@ -215,13 +215,22 @@ const PERSONA_DEFAULT: ChartConfig = {
 };
 
 export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
-  const { personaConfigs, activePersonaConfigId, setActivePersonaConfigId } = useDatasetStore();
+  const { personaConfigs, activePersonaConfigId, setActivePersonaConfigId, updatePersonaConfig } = useDatasetStore();
   const configs      = personaConfigs[dataset.id] ?? [];
   const activeConfig = configs.find(c => c.id === activePersonaConfigId);
 
   // ── All hooks MUST be declared before any conditional return ──
   const isAdmin         = useIsAdmin();
   const [dashMode,      setDashMode]      = useState(!!activeConfig);
+  // 改名状态
+  const [editingName,   setEditingName]   = useState(false);
+  const [nameInput,     setNameInput]     = useState('');
+
+  // 配置完成后自动进入看板模式
+  useEffect(() => {
+    if (activeConfig) setDashMode(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConfig?.id]);
   const [geoLevel,      setGeoLevel]      = useState<GeoLevel>('all');
   const [selectedGeo,   setSelectedGeo]   = useState<string[]>([]);
   const [selStatus,     setSelStatus]     = useState<string[]>(['__all']);
@@ -247,10 +256,19 @@ export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
     [dataset.records, viewConfig, geoLevel, selectedGeo, selStatus],
   );
   const personaFields = useMemo(
-    () => (viewConfig.personaFieldKeys ?? [])
-      .map(k => dataset.fields.find(f => f.key === k))
-      .filter(Boolean) as Field[],
-    [dataset.fields, viewConfig.personaFieldKeys],
+    () => {
+      // 有活跃画像配置时，图表模式也按配置字段顺序展示
+      if (activeConfig) {
+        return activeConfig.blocks
+          .filter(b => b.visible && b.sourceFieldKey)
+          .map(b => dataset.fields.find(f => f.key === b.sourceFieldKey))
+          .filter(Boolean) as Field[];
+      }
+      return (viewConfig.personaFieldKeys ?? [])
+        .map(k => dataset.fields.find(f => f.key === k))
+        .filter(Boolean) as Field[];
+    },
+    [dataset.fields, viewConfig.personaFieldKeys, activeConfig],
   );
 
   // ── Dashboard mode (safe early-return — all hooks already called) ──
@@ -258,15 +276,48 @@ export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3 px-1">
-          <select
-            value={activeConfig.id}
-            onChange={e => setActivePersonaConfigId(e.target.value || null)}
-            className="text-sm border border-gray-200 rounded-xl px-3 py-1.5 outline-none bg-white"
-          >
-            {configs.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          {/* 画像选择 */}
+          {configs.length > 1 ? (
+            <select
+              value={activeConfig.id}
+              onChange={e => setActivePersonaConfigId(e.target.value || null)}
+              className="text-sm border border-gray-200 rounded-xl px-3 py-1.5 outline-none bg-white"
+            >
+              {configs.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          ) : (
+            /* 单个画像时：点击可改名 */
+            editingName ? (
+              <input
+                value={nameInput}
+                onChange={e => setNameInput(e.target.value)}
+                onBlur={() => {
+                  if (nameInput.trim()) updatePersonaConfig(dataset.id, activeConfig.id, { name: nameInput.trim() });
+                  setEditingName(false);
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    if (nameInput.trim()) updatePersonaConfig(dataset.id, activeConfig.id, { name: nameInput.trim() });
+                    setEditingName(false);
+                  }
+                  if (e.key === 'Escape') setEditingName(false);
+                }}
+                autoFocus
+                className="text-sm border border-blue-300 rounded-xl px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-100 bg-white w-40"
+              />
+            ) : (
+              <button
+                onClick={() => { setNameInput(activeConfig.name); setEditingName(true); }}
+                title="点击改名"
+                className="flex items-center gap-1.5 text-sm font-medium text-gray-700 hover:text-blue-600 group"
+              >
+                {activeConfig.name}
+                <Pencil size={11} className="text-gray-300 group-hover:text-blue-400 transition-colors" />
+              </button>
+            )
+          )}
           <button
             onClick={() => setDashMode(false)}
             className="text-xs px-3 py-1.5 rounded-xl bg-gray-100 text-gray-500 hover:bg-gray-200 transition-all"

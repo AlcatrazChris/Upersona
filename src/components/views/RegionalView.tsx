@@ -68,7 +68,7 @@ function AddRegionDropdown({
               {remaining.map(v => (
                 <button
                   key={v}
-                  onClick={() => { onAdd(v); setSearch(''); setOpen(false); }}
+                  onClick={() => { onAdd(v); setSearch(''); /* 不关闭，支持继续多选 */ }}
                   className="w-full text-left text-xs px-2 py-1.5 rounded-lg hover:bg-blue-50 text-gray-700"
                 >
                   {v}

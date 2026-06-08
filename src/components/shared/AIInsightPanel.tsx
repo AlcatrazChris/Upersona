@@ -3,7 +3,7 @@
 /**
  * AIInsightPanel — 可嵌入任意视图的 AI 洞察折叠面板
  *
- * 默认折叠，展开后可生成洞察、编辑提示词、查看缓存结果。
+ * 默认折叠，展开后可生成洞察、编辑提示词（仅管理员）、查看缓存结果。
  * 结果通过 onCache 回调由父组件持久化。
  */
 
@@ -13,6 +13,7 @@ import {
   RefreshCw, Loader2, Edit2, Check, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useIsAdmin } from '@/lib/auth';
 
 // ── Prompt editor ──────────────────────────────────────────────
 
@@ -138,6 +139,7 @@ export interface AIInsightPanelProps {
 export function AIInsightPanel({
   label, cacheKey, cachedResult, onCache, defaultPrompt, buildContext,
 }: AIInsightPanelProps) {
+  const isAdmin       = useIsAdmin();
   const [expanded,    setExpanded]    = useState(false);
   const [editPrompt,  setEditPrompt]  = useState(false);
   const [prompt,      setPrompt]      = useState(defaultPrompt);
@@ -210,18 +212,20 @@ export function AIInsightPanel({
           {/* Action row */}
           <div className="flex items-center gap-2 pt-3">
             <span className="text-xs text-gray-400 flex-1">{label}</span>
-            <button
-              onClick={() => setEditPrompt(o => !o)}
-              className={cn(
-                'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border transition-all',
-                editPrompt
-                  ? 'bg-blue-50 border-blue-200 text-blue-600'
-                  : 'border-gray-200 text-gray-500 hover:border-gray-300',
-              )}
-            >
-              <Edit2 size={11} />
-              {editPrompt ? '收起提示词' : '编辑提示词'}
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => setEditPrompt(o => !o)}
+                className={cn(
+                  'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border transition-all',
+                  editPrompt
+                    ? 'bg-blue-50 border-blue-200 text-blue-600'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300',
+                )}
+              >
+                <Edit2 size={11} />
+                {editPrompt ? '收起提示词' : '编辑提示词'}
+              </button>
+            )}
             <button
               onClick={() => generate(prompt)}
               disabled={loading}
