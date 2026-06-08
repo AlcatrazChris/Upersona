@@ -1,16 +1,17 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Users, MapPin, GitCompare, Lightbulb, Database, BarChart2, Settings2 } from 'lucide-react';
+import { Users, MapPin, GitCompare, Lightbulb, Database, BarChart2, Settings2, Map } from 'lucide-react';
 import { useDatasetStore, useActiveDataset } from '@/store/datasetStore';
 import { useIsAdmin } from '@/lib/auth';
 import { UserSection } from '@/components/auth/UserSection';
 import { autoDetectViewConfig } from '@/lib/viewConfig';
-import { PersonaView }       from '@/components/views/PersonaView';
-import { RegionalView }      from '@/components/views/RegionalView';
-import { StatusView }        from '@/components/views/StatusView';
-import { InsightView }       from '@/components/views/InsightView';
-import { DataCenterPanel }   from '@/components/views/DataCenterPanel';
+import { PersonaView }          from '@/components/views/PersonaView';
+import { RegionalView }         from '@/components/views/RegionalView';
+import { StatusView }           from '@/components/views/StatusView';
+import { InsightView }          from '@/components/views/InsightView';
+import { RegionalFeatureView }  from '@/components/views/RegionalFeatureView';
+import { DataCenterPanel }      from '@/components/views/DataCenterPanel';
 import { PersonaConfigEditor } from '@/components/persona/PersonaConfigEditor';
 import { cn } from '@/lib/utils';
 
@@ -21,6 +22,7 @@ const VIEWS = [
   { id: 'regional', label: '地域对比', sub: 'Compare',   icon: MapPin      },
   { id: 'status',   label: '状态对比', sub: 'Status',    icon: GitCompare  },
   { id: 'insight',  label: '核心洞察', sub: 'Insights',  icon: Lightbulb   },
+  { id: 'rfeature', label: '区域特征', sub: 'Features',  icon: Map         },
 ] as const;
 type ViewId = typeof VIEWS[number]['id'];
 
@@ -29,6 +31,7 @@ const VIEW_SUBTITLES: Record<ViewId, string> = {
   regional: '按地区对比人群特征差异',
   status:   '不同状态用户的特征对比',
   insight:  '数据驱动的关键洞察',
+  rfeature: '地区 × 画像维度交叉特征表',
 };
 
 // ── Empty state ───────────────────────────────────────────────────
@@ -248,9 +251,10 @@ export default function MainPage() {
                   onConfig={() => setPersonaConfig(true)}
                 />
               )}
-              {view === 'regional' && <RegionalView dataset={dataset} viewConfig={viewConfig} />}
-              {view === 'status'   && <StatusView   dataset={dataset} viewConfig={viewConfig} />}
-              {view === 'insight'  && <InsightView  dataset={dataset} viewConfig={viewConfig} />}
+              {view === 'regional'  && <RegionalView        dataset={dataset} viewConfig={viewConfig} />}
+              {view === 'status'    && <StatusView          dataset={dataset} viewConfig={viewConfig} />}
+              {view === 'insight'   && <InsightView         dataset={dataset} viewConfig={viewConfig} />}
+              {view === 'rfeature'  && <RegionalFeatureView dataset={dataset} viewConfig={viewConfig} />}
             </div>
           )}
         </div>

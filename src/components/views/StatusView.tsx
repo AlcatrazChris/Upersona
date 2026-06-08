@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useMemo, useRef } from 'react';
-import { Plus, X, ChevronDown } from 'lucide-react';
+import { Plus, X, ChevronDown, BarChart2, Layers } from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ResponsiveContainer,
+} from 'recharts';
 import {
   aggregateField,
   aggregateByStatusGroups,
@@ -262,7 +265,7 @@ function StatusChartCard({
         <ChartRenderer
           type={chartType}
           data={singleData.items.slice(0, 10)}
-          config={{ ...singleCfg, colorScheme: 'forest' }}
+          config={singleCfg}
           isMultiSelect={field.type === 'multi_choice'}
           totalSamples={singleData.n}
           height={chartH}
@@ -297,6 +300,149 @@ function StatusChartCard({
   );
 }
 
+// ── ProportionStackedCard ──────────────────────────────────────
+// Horizontal 100% stacked bar: Y = status groups, segments = field value proportions
+
+function ProportionStackedCard({
+  field,
+  dataset,
+  statusFieldKey,
+  selectedGroups,
+  config,
+}: {
+  field:          Field;
+  dataset:        Dataset;
+  statusFieldKey: string;
+  selectedGroups: StatusGroup[];
+  config:         ChartConfig;
+}) {
+  const schemeColors = getColors(config.colorScheme);
+
+  // Collect all unique field values across selected groups
+  const allValues = useMemo(() => {
+    const set = new Set<string>();
+    for (const group of selectedGroups) {
+      const recs = dataset.records.filter(r =>
+        group.values.includes(String(r[statusFieldKey] ?? '')),
+      );
+      for (const rec of recs) {
+        const raw = String(rec[field.key] ?? '');
+        const vals = field.type === 'multi_choice'
+          ? raw.split(field.multiDelimiter ?? '|')
+          : [raw];
+        for (const v of vals) {
+          const t = v.trim();
+          if (t) set.add(t);
+        }
+      }
+    }
+    // Sort by frequency in first group descending
+    return [...set].sort((a, b) => {
+      const g0 = selectedGroups[0];
+      const recs = dataset.records.filter(r =>
+        g0.values.includes(String(r[statusFieldKey] ?? '')),
+      );
+      const freq = (v: string) => recs.filter(r => {
+        const raw = String(r[field.key] ?? '');
+        const vals = field.type === 'multi_choice'
+          ? raw.split(field.multiDelimiter ?? '|')
+          : [raw];
+        return vals.map(x => x.trim()).includes(v);
+      }).length;
+      return freq(b) - freq(a);
+    }).slice(0, 12);
+  }, [dataset.records, field, statusFieldKey, selectedGroups]);
+
+  // Build bar data: one row per status group
+  const barData = useMemo(() =>
+    selectedGroups.map(group => {
+      const recs = dataset.records.filter(r =>
+        group.values.includes(String(r[statusFieldKey] ?? '')),
+      );
+      const total = recs.length || 1;
+      const row: Record<string, string | number> = { group: group.label, n: recs.length };
+      for (const val of allValues) {
+        const cnt = recs.filter(r => {
+          const raw = String(r[field.key] ?? '');
+          const vals = field.type === 'multi_choice'
+            ? raw.split(field.multiDelimiter ?? '|')
+            : [raw];
+          return vals.map(x => x.trim()).includes(val);
+        }).length;
+        row[val] = parseFloat(((cnt / total) * 100).toFixed(1));
+      }
+      return row;
+    }),
+  [dataset.records, field, statusFieldKey, selectedGroups, allValues]);
+
+  const chartH = Math.max(160, selectedGroups.length * 48 + 80);
+
+  const CustomTooltip = ({ active, payload, label }: {
+    active?: boolean;
+    payload?: { name: string; value: number; color: string }[];
+    label?: string;
+  }) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className="bg-white border border-gray-100 rounded-xl shadow-lg px-3 py-2.5 text-xs max-w-[200px]">
+        <p className="font-semibold text-gray-700 mb-1.5">{label}</p>
+        {payload.filter(p => p.value > 0).map((p, i) => (
+          <div key={i} className="flex items-center gap-1.5 leading-tight py-0.5">
+            <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: p.color }} />
+            <span className="text-gray-600 truncate">{p.name}</span>
+            <span className="text-gray-400 ml-auto pl-2 tabular-nums">{p.value}%</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-5 col-span-2">
+      <div className="mb-3">
+        <h3 className="text-sm font-semibold text-gray-800">{field.name}</h3>
+        <p className="text-xs text-gray-400 mt-0.5">各状态群体占比分布</p>
+      </div>
+      <ResponsiveContainer width="100%" height={chartH}>
+        <BarChart layout="vertical" data={barData} margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
+          <XAxis
+            type="number"
+            domain={[0, 100]}
+            tickFormatter={v => `${v}%`}
+            tick={{ fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            dataKey="group"
+            type="category"
+            tick={{ fontSize: 12, fill: '#374151' }}
+            width={80}
+            axisLine={false}
+            tickLine={false}
+          />
+          <Tooltip content={<CustomTooltip />} />
+          <Legend
+            wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+            formatter={(value: string) =>
+              value.length > 10 ? value.slice(0, 9) + '…' : value
+            }
+          />
+          {allValues.map((val, i) => (
+            <Bar
+              key={val}
+              dataKey={val}
+              stackId="a"
+              fill={schemeColors[i % schemeColors.length]}
+              radius={i === 0 ? [4, 0, 0, 4] : i === allValues.length - 1 ? [0, 4, 4, 0] : [0, 0, 0, 0]}
+            />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 // ── StatusView ─────────────────────────────────────────────────
 
 interface Props {
@@ -305,16 +451,29 @@ interface Props {
 }
 
 export function StatusView({ dataset, viewConfig }: Props) {
-  const { updateViewConfig, datasets: allDatasets } = useDatasetStore();
+  const { updateViewConfig, datasets: allDatasets, personaConfigs, activePersonaConfigId } = useDatasetStore();
   const isAdmin  = useIsAdmin();
   const groups   = viewConfig.statusGroups ?? [];
 
+  const configs      = personaConfigs[dataset.id] ?? [];
+  const activeConfig = configs.find(c => c.id === activePersonaConfigId);
+
+  // Derive the initial field keys respecting persona config order
+  const initFieldKeys = (() => {
+    if (activeConfig) {
+      return activeConfig.blocks
+        .filter(b => b.visible && b.sourceFieldKey)
+        .map(b => b.sourceFieldKey!)
+        .slice(0, 6);
+    }
+    return (viewConfig.personaFieldKeys ?? []).slice(0, 6);
+  })();
+
   const [selectedGroupKeys, setSelectedGroupKeys] = useState<string[]>(groups.map(g => g.key));
-  const [selectedDimKeys,   setSelectedDimKeys]   = useState<string[]>(
-    (viewConfig.personaFieldKeys ?? []).slice(0, 6),
-  );
+  const [selectedDimKeys,   setSelectedDimKeys]   = useState<string[]>(initFieldKeys);
   const [compareDatasetId,  setCompareDatasetId]  = useState<string | null>(null);
   const [editorOpen,        setEditorOpen]        = useState(false);
+  const [chartMode,         setChartMode]         = useState<'dimension' | 'proportion'>('dimension');
   const [globalConfig,      setGlobalConfig]      = useState<ChartConfig>(
     () => ({ ...DEFAULT_CHART_CONFIG, ...loadChartConfig('status') }),
   );
@@ -339,12 +498,17 @@ export function StatusView({ dataset, viewConfig }: Props) {
     return new Set((viewConfig.personaFieldKeys ?? []).filter(k => cKeys.has(k)));
   }, [compareDataset, viewConfig.personaFieldKeys]);
 
-  const allPersonaFields = useMemo(
-    () => (viewConfig.personaFieldKeys ?? [])
+  const allPersonaFields = useMemo(() => {
+    if (activeConfig) {
+      return activeConfig.blocks
+        .filter(b => b.visible && b.sourceFieldKey)
+        .map(b => dataset.fields.find(f => f.key === b.sourceFieldKey))
+        .filter(Boolean) as Field[];
+    }
+    return (viewConfig.personaFieldKeys ?? [])
       .map(k => dataset.fields.find(f => f.key === k))
-      .filter(Boolean) as Field[],
-    [dataset.fields, viewConfig.personaFieldKeys],
-  );
+      .filter(Boolean) as Field[];
+  }, [dataset.fields, viewConfig.personaFieldKeys, activeConfig]);
 
   const personaFields = useMemo(
     () => selectedDimKeys
@@ -441,6 +605,34 @@ export function StatusView({ dataset, viewConfig }: Props) {
           </span>
 
           <div className="ml-auto flex items-center gap-2">
+            {/* Mode toggle */}
+            <div className="flex items-center gap-0.5 bg-gray-100 rounded-xl p-0.5">
+              <button
+                onClick={() => setChartMode('dimension')}
+                className={cn(
+                  'flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg transition-all',
+                  chartMode === 'dimension'
+                    ? 'bg-white text-gray-800 shadow-sm font-medium'
+                    : 'text-gray-400 hover:text-gray-600',
+                )}
+              >
+                <BarChart2 size={11} />
+                维度分布
+              </button>
+              <button
+                onClick={() => setChartMode('proportion')}
+                className={cn(
+                  'flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg transition-all',
+                  chartMode === 'proportion'
+                    ? 'bg-white text-gray-800 shadow-sm font-medium'
+                    : 'text-gray-400 hover:text-gray-600',
+                )}
+              >
+                <Layers size={11} />
+                堆积比例
+              </button>
+            </div>
+
             {/* Global chart settings */}
             <ChartSettingsPanel
               config={globalConfig}
@@ -534,6 +726,19 @@ export function StatusView({ dataset, viewConfig }: Props) {
       ) : personaFields.length === 0 ? (
         <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-gray-100">
           请选择要对比的维度
+        </div>
+      ) : chartMode === 'proportion' ? (
+        <div className="grid grid-cols-2 gap-4">
+          {personaFields.map(field => (
+            <ProportionStackedCard
+              key={field.key}
+              field={field}
+              dataset={dataset}
+              statusFieldKey={viewConfig.statusFieldKey!}
+              selectedGroups={selectedGroups}
+              config={globalConfig}
+            />
+          ))}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4">

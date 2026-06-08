@@ -174,7 +174,18 @@ interface Props {
 }
 
 export function InsightView({ dataset, viewConfig }: Props) {
-  const { updateViewConfig } = useDatasetStore();
+  const { updateViewConfig, personaConfigs, activePersonaConfigId } = useDatasetStore();
+  const activeConfig = (personaConfigs[dataset.id] ?? []).find(c => c.id === activePersonaConfigId);
+
+  // Use persona config fields when available
+  const insightFieldKeys = useMemo(() => {
+    if (activeConfig) {
+      return activeConfig.blocks
+        .filter(b => b.visible && b.sourceFieldKey)
+        .map(b => b.sourceFieldKey!);
+    }
+    return viewConfig.personaFieldKeys ?? [];
+  }, [activeConfig, viewConfig.personaFieldKeys]);
 
   const [geoLevel,    setGeoLevel]    = useState<GeoLevel>('region');
   const [selectedGeo, setSelectedGeo] = useState<string[]>([]);
@@ -239,7 +250,7 @@ export function InsightView({ dataset, viewConfig }: Props) {
     setError('');
     try {
       const context = buildInsightContext(
-        dataset, filteredRecords, viewConfig.personaFieldKeys ?? [], contextLabel,
+        dataset, filteredRecords, insightFieldKeys, contextLabel,
       );
       const res = await fetch('/api/ai', {
         method: 'POST',

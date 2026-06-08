@@ -177,14 +177,20 @@ interface Props {
 export function RegionalView({ dataset, viewConfig }: Props) {
   const [geoLevel,     setGeoLevel]     = useState<GeoLevel>('region');
   const [selectedGeo,  setSelectedGeo]  = useState<string[]>([]);
-  const { updateViewConfig } = useDatasetStore();
+  const { updateViewConfig, personaConfigs, activePersonaConfigId } = useDatasetStore();
   const [selStatus,    setSelStatus]    = useState<string[]>(['__all']);
-  const [dimKey,       setDimKey]       = useState<string>(viewConfig.personaFieldKeys?.[0] ?? '');
-  const [chartMode,    setChartMode]    = useState<ChartMode>('stacked');
   const [dimOpen,      setDimOpen]      = useState(false);
+  const [chartMode,    setChartMode]    = useState<ChartMode>('stacked');
   const [globalConfig, setGlobalConfig] = useState<ChartConfig>(
     () => ({ ...DEFAULT_CHART_CONFIG, ...loadChartConfig('regional') }),
   );
+
+  const activeConfig = (personaConfigs[dataset.id] ?? []).find(c => c.id === activePersonaConfigId);
+
+  const firstFieldKey = activeConfig
+    ? (activeConfig.blocks.find(b => b.visible && b.sourceFieldKey)?.sourceFieldKey ?? viewConfig.personaFieldKeys?.[0] ?? '')
+    : (viewConfig.personaFieldKeys?.[0] ?? '');
+  const [dimKey, setDimKey] = useState<string>(firstFieldKey);
 
   const handleConfigChange = (c: ChartConfig) => {
     setGlobalConfig(c);
@@ -214,12 +220,17 @@ export function RegionalView({ dataset, viewConfig }: Props) {
     return f.key === key;
   });
 
-  const personaFields = useMemo(
-    () => (viewConfig.personaFieldKeys ?? [])
+  const personaFields = useMemo(() => {
+    if (activeConfig) {
+      return activeConfig.blocks
+        .filter(b => b.visible && b.sourceFieldKey)
+        .map(b => dataset.fields.find(f => f.key === b.sourceFieldKey))
+        .filter(Boolean) as NonNullable<typeof dataset.fields[0]>[];
+    }
+    return (viewConfig.personaFieldKeys ?? [])
       .map(k => dataset.fields.find(f => f.key === k))
-      .filter(Boolean) as NonNullable<typeof dataset.fields[0]>[],
-    [dataset.fields, viewConfig.personaFieldKeys],
-  );
+      .filter(Boolean) as NonNullable<typeof dataset.fields[0]>[];
+  }, [dataset.fields, viewConfig.personaFieldKeys, activeConfig]);
 
   const groupedData = useMemo(() => {
     if (!dimensionField || !geoField || selectedGeo.length === 0) return null;

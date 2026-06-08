@@ -131,11 +131,14 @@ export function GroupedBarChartEngine({
               verticalAlign="bottom"
               iconType="square"
               iconSize={8}
-              formatter={(value: string) =>
-                config.showSampleCount
-                  ? `${value}  (n=${(groupTotals[value] ?? 0).toLocaleString()})`
-                  : value
-              }
+              formatter={(value: string) => {
+                // Truncate long series names (e.g., dataset names in cross-compare)
+                const MAX = 16;
+                const display = value.length > MAX ? value.slice(0, MAX - 1) + '…' : value;
+                return config.showSampleCount
+                  ? `${display}  (n=${(groupTotals[value] ?? 0).toLocaleString()})`
+                  : display;
+              }}
               wrapperStyle={{ fontSize: config.legendFontSize, paddingTop: 8 }}
             />
           )}
