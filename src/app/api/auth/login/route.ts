@@ -21,6 +21,15 @@ const LOCK_MINUTES   = 15;
 const GENERIC_ERROR  = '用户名或密码错误';
 
 export async function POST(req: Request) {
+  try {
+    return await handleLogin(req);
+  } catch (err) {
+    console.error('[login] unhandled error:', err);
+    return NextResponse.json({ error: '服务器内部错误，请稍后重试' }, { status: 500 });
+  }
+}
+
+async function handleLogin(req: Request) {
   // ── 1. 解析 & 基础校验 ────────────────────────────────────
   let body: { username?: unknown; password?: unknown; rememberMe?: unknown };
   try {
