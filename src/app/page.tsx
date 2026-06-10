@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Users, MapPin, GitCompare, Lightbulb, Database, BarChart2, Settings2, Map } from 'lucide-react';
+import { Users, MapPin, GitCompare, Lightbulb, Database, BarChart2, Settings2, Map, Loader2, CloudDownload } from 'lucide-react';
 import { useDatasetStore, useActiveDataset } from '@/store/datasetStore';
 import { useIsAdmin } from '@/lib/auth';
 import { UserSection } from '@/components/auth/UserSection';
 import { autoDetectViewConfig } from '@/lib/viewConfig';
+import { useAutoSyncCloud } from '@/hooks/useAutoSyncCloud';
 import { PersonaView }          from '@/components/views/PersonaView';
 import { RegionalView }         from '@/components/views/RegionalView';
 import { StatusView }           from '@/components/views/StatusView';
@@ -74,6 +75,9 @@ export default function MainPage() {
   const [view,         setView]         = useState<ViewId>('persona');
   const [dcOpen,       setDcOpen]       = useState(false);
   const [personaConfig, setPersonaConfig] = useState(false);
+
+  // 自动拉取最新云端数据集（对 viewer 透明）
+  const { syncing: cloudSyncing, syncedName } = useAutoSyncCloud();
 
   useEffect(() => {
     if (!dataset) return;
@@ -216,6 +220,20 @@ export default function MainPage() {
             )}
           </div>
 
+          {/* 云端同步状态指示器 */}
+          {cloudSyncing && !dataset && (
+            <div className="flex items-center gap-1.5 text-xs text-indigo-500 flex-shrink-0">
+              <Loader2 size={12} className="animate-spin" />
+              <span>正在同步云端数据…</span>
+            </div>
+          )}
+          {syncedName && (
+            <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg flex-shrink-0">
+              <CloudDownload size={11} />
+              <span>已同步：{syncedName}</span>
+            </div>
+          )}
+
           {dataset && (
             <div className="flex items-center gap-2.5 flex-shrink-0">
               {/* 配置画像 — admin only, persona view only */}
@@ -240,6 +258,12 @@ export default function MainPage() {
                 <span className="text-gray-200">·</span>
                 <span>{dataset.fields.length} 字段</span>
               </div>
+              {/* 云端实时同步中（数据集已显示但刷新中） */}
+              {cloudSyncing && (
+                <span title="正在检查云端更新…">
+                  <Loader2 size={11} className="animate-spin text-indigo-400 flex-shrink-0" />
+                </span>
+              )}
             </div>
           )}
         </div>

@@ -77,6 +77,17 @@ interface DatasetStore {
   toggleFieldVisible: (datasetId: string, fieldKey: string) => void;
   removeField: (datasetId: string, fieldKey: string) => void;
   cleanSkipValues: (datasetId: string, fieldKey: string) => void;
+  /** 从云端拉取的完整数据集 + 配置，原子写入本地 store 并激活 */
+  loadFromCloud: (
+    datasetId: string,
+    dataset:   Dataset,
+    config:    {
+      view_config?:      ViewConfig        | null;
+      persona_configs?:  PersonaConfig[]   | null;
+      saved_charts?:     SavedChart[]      | null;
+      canvas_elements?:  CanvasTextElement[] | null;
+    } | null,
+  ) => void;
   addAIDerivedField: (
     datasetId: string,
     sourceFieldKey: string,
@@ -270,6 +281,29 @@ export const useDatasetStore = create<DatasetStore>()(
                 : d
             ),
           };
+        });
+      },
+
+      loadFromCloud(datasetId, dataset, config) {
+        set(state => {
+          const next: Partial<typeof state> = {
+            // Replace or prepend the dataset (keep other local datasets intact)
+            datasets: [dataset, ...state.datasets.filter(d => d.id !== datasetId)],
+            activeDatasetId: datasetId,
+          };
+          if (config?.view_config) {
+            next.viewConfigs = { ...state.viewConfigs, [datasetId]: config.view_config! };
+          }
+          if (config?.persona_configs) {
+            next.personaConfigs = { ...state.personaConfigs, [datasetId]: config.persona_configs! };
+          }
+          if (config?.saved_charts) {
+            next.savedCharts = { ...state.savedCharts, [datasetId]: config.saved_charts! };
+          }
+          if (config?.canvas_elements) {
+            next.canvasElements = { ...state.canvasElements, [datasetId]: config.canvas_elements! };
+          }
+          return next;
         });
       },
 
