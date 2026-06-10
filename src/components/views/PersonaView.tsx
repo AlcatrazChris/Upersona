@@ -2,9 +2,10 @@
 
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Filter, MapPin, ChevronDown, Check, Settings2, Pencil } from 'lucide-react';
-import { aggregateField } from '@/lib/dataAggregator';
+import { aggregateField, aggregateRanking } from '@/lib/dataAggregator';
 import { filterRecords, getGeoOptions, getStatusOptions, type GeoLevel } from '@/lib/filterRecords';
 import { ChartRenderer, type ChartType } from '@/components/charts/engine/ChartRenderer';
+import { RankingHeatmapEngine }          from '@/components/charts/engine/RankingHeatmapEngine';
 import { ChartSettingsPanel } from '@/components/charts/ChartSettingsPanel';
 import { DEFAULT_CHART_CONFIG, loadChartConfig, saveChartConfig, type ChartConfig } from '@/lib/chartConfig';
 import type { Dataset, Field } from '@/types/dataSchema';
@@ -81,6 +82,30 @@ function GeoDropdown({
   );
 }
 
+// ── Chart type helpers ─────────────────────────────────────────
+
+const PERSONA_SUPPORTED_SET = new Set(['bar', 'pie', 'donut', 'line', 'area']);
+
+const CHART_TYPE_LABEL: Record<string, string> = {
+  bar: '条形', pie: '饼图', donut: '环形', line: '折线', area: '面积',
+};
+
+function isPersonaChartType(t: string): t is ChartType {
+  return PERSONA_SUPPORTED_SET.has(t);
+}
+
+function getDefaultChartType(field: Field): ChartType {
+  if (field.type === 'ranking') return 'ranking-heatmap';
+  const rec = field.recommendedCharts.find(t => isPersonaChartType(t));
+  return isPersonaChartType(rec ?? '') ? (rec as ChartType) : 'bar';
+}
+
+function getAvailableTypes(field: Field): ChartType[] {
+  if (field.type === 'ranking') return [];
+  const types = field.recommendedCharts.filter(isPersonaChartType) as ChartType[];
+  return types.length > 0 ? types : ['bar'];
+}
+
 // ── Per-card chart card ────────────────────────────────────────
 
 function PersonaChartCard({
@@ -88,17 +113,34 @@ function PersonaChartCard({
   filteredRecords,
   config,
   datasetId,
+  initialChartType,
 }: {
-  field:           Field;
-  filteredRecords: Record<string, unknown>[];
-  config:          ChartConfig;   // global config (from filter bar)
-  datasetId:       string;
+  field:             Field;
+  filteredRecords:   Record<string, unknown>[];
+  config:            ChartConfig;   // global config (from filter bar)
+  datasetId:         string;
+  initialChartType?: ChartType;
 }) {
   const { updateFieldOrdering } = useDatasetStore();
-  const data   = useMemo(() => aggregateField(filteredRecords, field), [filteredRecords, field]);
-  const validN = data.reduce((s, d) => s + d.count, 0);
+  const isRanking = field.type === 'ranking';
 
-  const [chartType, setChartType] = useState<ChartType>('bar');
+  // Ranking path: aggregateRanking; regular path: aggregateField
+  const rankData = useMemo(
+    () => isRanking ? aggregateRanking(filteredRecords, field) : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredRecords, field, isRanking],
+  );
+  const data   = useMemo(
+    () => isRanking ? [] : aggregateField(filteredRecords, field),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredRecords, field, isRanking],
+  );
+  const validN = isRanking
+    ? (rankData?.N ?? 0)
+    : data.reduce((s, d) => s + d.count, 0);
+
+  const [chartType, setChartType] = useState<ChartType>(() => initialChartType ?? getDefaultChartType(field));
+  const availableTypes = getAvailableTypes(field);
   // localCfg: null = follow global; non-null = card-level override
   const [localCfg, setLocalCfg] = useState<ChartConfig | null>(null);
   // manualH: 用户拖拽覆盖；null 时跟随有效配置的 chartHeight
@@ -129,71 +171,89 @@ function PersonaChartCard({
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div>
-          <h3 className="text-sm font-semibold text-gray-800">{field.name}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-gray-800">{field.name}</h3>
+            {isRanking && (
+              <span className="text-[9.5px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-500 border border-indigo-200 font-medium">
+                排序题
+              </span>
+            )}
+          </div>
           <p className="text-xs text-gray-400 mt-0.5">有效样本 n={validN.toLocaleString()}</p>
         </div>
 
-        {/* Hover toolbar: chart type switcher + settings */}
-        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          {/* Chart type switcher */}
-          <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
-            {(['bar', 'pie', 'donut'] as ChartType[]).map(t => (
+        {/* Hover toolbar: chart type switcher + settings — hidden for ranking */}
+        {!isRanking && (
+          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* Chart type switcher — adapts to field's recommendedCharts */}
+            {availableTypes.length > 1 && (
+              <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+                {availableTypes.map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setChartType(t)}
+                    className={cn(
+                      'text-[10px] px-2 py-1 rounded-md transition-all whitespace-nowrap',
+                      chartType === t
+                        ? 'bg-white text-gray-800 shadow-sm font-medium'
+                        : 'text-gray-400 hover:text-gray-600',
+                    )}
+                  >
+                    {CHART_TYPE_LABEL[t] ?? t}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Per-card chart settings (includes field ordering) */}
+            <ChartSettingsPanel
+              config={effective}
+              onChange={c => { setLocalCfg(c); setManualH(null); }}
+              field={field}
+              onUpdateOrdering={(isOrdered, orderedValues) =>
+                updateFieldOrdering(datasetId, field.key, isOrdered, orderedValues)
+              }
+            />
+
+            {/* Reset local override back to global config */}
+            {localCfg && (
               <button
-                key={t}
-                onClick={() => setChartType(t)}
-                className={cn(
-                  'text-[10px] px-2 py-1 rounded-md transition-all',
-                  chartType === t
-                    ? 'bg-white text-gray-800 shadow-sm font-medium'
-                    : 'text-gray-400 hover:text-gray-600',
-                )}
+                onClick={() => { setLocalCfg(null); setManualH(null); }}
+                title="恢复全局设置"
+                className="text-[10px] text-gray-400 hover:text-blue-500 px-1 leading-none"
               >
-                {t === 'bar' ? '条' : t === 'pie' ? '饼' : '环'}
+                ↺
               </button>
-            ))}
+            )}
           </div>
+        )}
+      </div>
 
-          {/* Per-card chart settings (includes field ordering) */}
-          <ChartSettingsPanel
-            config={effective}
-            onChange={c => { setLocalCfg(c); setManualH(null); }}
-            field={field}
-            onUpdateOrdering={(isOrdered, orderedValues) =>
-              updateFieldOrdering(datasetId, field.key, isOrdered, orderedValues)
-            }
+      {/* Chart — ranking uses heatmap engine; others use ChartRenderer */}
+      {isRanking && rankData
+        ? <RankingHeatmapEngine data={rankData} fieldName={field.name} />
+        : (
+          <ChartRenderer
+            type={chartType}
+            data={chartType === 'line' || chartType === 'area' ? data : data.slice(0, 10)}
+            config={{ ...effective, chartHeight: cardH, showSampleCount: false }}
+            isMultiSelect={field.type === 'multi_choice'}
+            totalSamples={filteredRecords.length}
+            height={cardH}
           />
+        )
+      }
 
-          {/* Reset local override back to global config */}
-          {localCfg && (
-            <button
-              onClick={() => { setLocalCfg(null); setManualH(null); }}
-              title="恢复全局设置"
-              className="text-[10px] text-gray-400 hover:text-blue-500 px-1 leading-none"
-            >
-              ↺
-            </button>
-          )}
+      {/* Resize handle — only for non-ranking cards */}
+      {!isRanking && (
+        <div
+          onMouseDown={handleResizeStart}
+          className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-16 h-4 flex items-center justify-center cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity"
+          title="拖动调整高度"
+        >
+          <div className="w-10 h-1 bg-gray-200 rounded-full hover:bg-blue-300 transition-colors" />
         </div>
-      </div>
-
-      {/* Chart */}
-      <ChartRenderer
-        type={chartType}
-        data={data.slice(0, 10)}
-        config={{ ...effective, chartHeight: cardH, showSampleCount: false }}
-        isMultiSelect={field.type === 'multi_choice'}
-        totalSamples={filteredRecords.length}
-        height={cardH}
-      />
-
-      {/* Resize handle */}
-      <div
-        onMouseDown={handleResizeStart}
-        className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-16 h-4 flex items-center justify-center cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity"
-        title="拖动调整高度"
-      >
-        <div className="w-10 h-1 bg-gray-200 rounded-full hover:bg-blue-300 transition-colors" />
-      </div>
+      )}
     </div>
   );
 }
@@ -270,6 +330,21 @@ export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
     },
     [dataset.fields, viewConfig.personaFieldKeys, activeConfig],
   );
+
+  // 从活跃画像配置中提取每个字段的图表类型偏好
+  // 仅 distribution 块且配置了 chartType 才会覆盖默认类型
+  const blockChartTypeMap = useMemo(() => {
+    if (!activeConfig) return {} as Record<string, ChartType>;
+    const map: Record<string, ChartType> = {};
+    for (const b of activeConfig.blocks) {
+      if (!b.visible || !b.sourceFieldKey) continue;
+      if (b.blockType === 'distribution' && b.config?.chartType) {
+        const ct = b.config.chartType;
+        if (isPersonaChartType(ct)) map[b.sourceFieldKey] = ct as ChartType;
+      }
+    }
+    return map;
+  }, [activeConfig]);
 
   // ── Dashboard mode (safe early-return — all hooks already called) ──
   if (dashMode && activeConfig) {
@@ -494,11 +569,12 @@ export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
         <div className="grid grid-cols-2 gap-4">
           {personaFields.map(field => (
             <PersonaChartCard
-              key={field.key}
+              key={`${activeConfig?.id ?? 'default'}-${field.key}`}
               field={field}
               filteredRecords={filteredRecords}
               config={globalConfig}
               datasetId={dataset.id}
+              initialChartType={blockChartTypeMap[field.key]}
             />
           ))}
         </div>

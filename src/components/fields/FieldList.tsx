@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { Check, ChevronDown, Edit2, ArrowUpDown, Sparkles } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Check, ChevronDown, Edit2, ArrowUpDown, Sparkles, Trash2, Wand2, FilterX } from 'lucide-react';
 import { useDatasetStore } from '@/store/datasetStore';
+import { useIsAdmin } from '@/lib/auth';
+import { autoDetectViewConfig } from '@/lib/viewConfig';
 import { ManualOrderModal } from './ManualOrderModal';
 import { FieldAIEnrichModal } from './FieldAIEnrichModal';
 import { cn } from '@/lib/utils';
@@ -10,11 +12,12 @@ import type { Dataset, Field, FieldType } from '@/types/dataSchema';
 
 // ── Type config ────────────────────────────────────────────────────
 
-const FIELD_TYPES: FieldType[] = ['single_choice', 'multi_choice', 'number', 'date', 'boolean', 'text'];
+const FIELD_TYPES: FieldType[] = ['single_choice', 'multi_choice', 'ranking', 'number', 'date', 'boolean', 'text'];
 
 const TYPE_LABELS: Record<FieldType, string> = {
   single_choice: '单选',
   multi_choice:  '多选',
+  ranking:       '排序',
   number:        '数值',
   date:          '日期',
   boolean:       '布尔',
@@ -24,6 +27,7 @@ const TYPE_LABELS: Record<FieldType, string> = {
 const TYPE_DOT: Record<FieldType, string> = {
   single_choice: 'bg-blue-400',
   multi_choice:  'bg-purple-400',
+  ranking:       'bg-indigo-400',
   number:        'bg-emerald-400',
   date:          'bg-amber-400',
   boolean:       'bg-rose-400',
@@ -33,6 +37,7 @@ const TYPE_DOT: Record<FieldType, string> = {
 const TYPE_BADGE: Record<FieldType, string> = {
   single_choice: 'bg-blue-50 text-blue-700 border-blue-200',
   multi_choice:  'bg-purple-50 text-purple-700 border-purple-200',
+  ranking:       'bg-indigo-50 text-indigo-700 border-indigo-200',
   number:        'bg-emerald-50 text-emerald-700 border-emerald-200',
   date:          'bg-amber-50 text-amber-700 border-amber-200',
   boolean:       'bg-rose-50 text-rose-700 border-rose-200',
@@ -252,19 +257,52 @@ function MissingBadge({ missing, count }: { missing: number; count: number }) {
 
 // ── FieldList ──────────────────────────────────────────────────────
 
+// Skip value patterns used for detection and cleaning
+const SKIP_PATTERNS = new Set([
+  '跳过', '跳', 'N/A', 'n/a', 'NA', 'na', '-', '—',
+  '不适用', '未作答', '未回答', '跳答', '免答',
+]);
+
 export function FieldList({ dataset }: { dataset: Dataset }) {
-  const { updateFieldOrdering } = useDatasetStore();
-  const [orderingField, setOrderingField] = useState<Field | null>(null);
-  const [enrichField,   setEnrichField]   = useState<Field | null>(null);
+  const { updateFieldOrdering, removeField, updateViewConfig, cleanSkipValues } = useDatasetStore();
+  const isAdmin = useIsAdmin();
+  const [orderingField, setOrderingField]   = useState<Field | null>(null);
+  const [enrichField,   setEnrichField]     = useState<Field | null>(null);
+  const [deletingKey,   setDeletingKey]     = useState<string | null>(null);
+  const [autoHint,      setAutoHint]        = useState<number | null>(null);
+
+  // Count skip values per field for badge display
+  const skipCounts = useMemo(() => {
+    const result: Record<string, number> = {};
+    for (const field of dataset.fields) {
+      let count = 0;
+      for (const record of dataset.records) {
+        const v = String(record[field.key] ?? '').trim();
+        if (SKIP_PATTERNS.has(v)) count++;
+      }
+      result[field.key] = count;
+    }
+    return result;
+  }, [dataset.records, dataset.fields]);
+
+  function handleAutoDetect() {
+    const detected = autoDetectViewConfig(dataset);
+    updateViewConfig(dataset.id, { personaFieldKeys: detected.personaFieldKeys });
+    setAutoHint(detected.personaFieldKeys?.length ?? 0);
+    setTimeout(() => setAutoHint(null), 3000);
+  }
 
   return (
     <>
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
 
         {/* Header */}
-        <div className="grid grid-cols-[2.5fr_1.4fr_2fr_96px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100">
-          {(['字段信息', '类型', '数据概览', '操作'] as const).map(h => (
-            <div key={h} className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+        <div className={cn(
+          'grid gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100',
+          isAdmin ? 'grid-cols-[2.5fr_1.4fr_2fr_96px_36px]' : 'grid-cols-[2.5fr_1.4fr_2fr_96px]',
+        )}>
+          {(['字段信息', '类型', '数据概览', '操作', ...(isAdmin ? [''] : [])] as const).map((h, i) => (
+            <div key={i} className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
               {h}
             </div>
           ))}
@@ -276,12 +314,17 @@ export function FieldList({ dataset }: { dataset: Dataset }) {
             const stats   = field.statistics;
             const canSort = (field.type === 'single_choice' || field.type === 'multi_choice')
               && (field.options?.length ?? 0) >= 3;
-            const canAI   = (field.type === 'single_choice' || field.type === 'text') && !field.derived;
+            const canAI      = !field.derived;
+            const skipCount  = skipCounts[field.key] ?? 0;
+            const canClean   = isAdmin && skipCount > 0;
 
             return (
               <div
                 key={field.key}
-                className="grid grid-cols-[2.5fr_1.4fr_2fr_96px] gap-4 px-5 py-3.5 items-start hover:bg-gray-50/60 transition-colors"
+                className={cn(
+                  'grid gap-4 px-5 py-3.5 items-start hover:bg-gray-50/60 transition-colors',
+                  isAdmin ? 'grid-cols-[2.5fr_1.4fr_2fr_96px_36px]' : 'grid-cols-[2.5fr_1.4fr_2fr_96px]',
+                )}
               >
                 {/* Col 1: Field info */}
                 <FieldNameCell field={field} datasetId={dataset.id} />
@@ -289,7 +332,7 @@ export function FieldList({ dataset }: { dataset: Dataset }) {
                 {/* Col 2: Type + delimiter */}
                 <div>
                   <TypeDropdown field={field} datasetId={dataset.id} />
-                  {field.type === 'multi_choice' && (
+                  {(field.type === 'multi_choice' || field.type === 'ranking') && (
                     <DelimiterPicker field={field} datasetId={dataset.id} />
                   )}
                 </div>
@@ -352,17 +395,59 @@ export function FieldList({ dataset }: { dataset: Dataset }) {
                       AI 派生
                     </button>
                   )}
+                  {canClean && (
+                    <button
+                      onClick={() => cleanSkipValues(dataset.id, field.key)}
+                      title={`将 ${skipCount} 条"跳过"类答案清空（不可撤销）`}
+                      className="inline-flex items-center justify-center gap-1 text-[11px] px-2 py-1 rounded-lg border bg-orange-50 text-orange-500 border-orange-200 hover:bg-orange-100 hover:text-orange-700 transition-colors w-full"
+                    >
+                      <FilterX size={10} />
+                      去除跳过
+                      <span className="ml-0.5 tabular-nums text-orange-400">({skipCount})</span>
+                    </button>
+                  )}
                 </div>
+
+                {/* Col 5: Delete (admin only) */}
+                {isAdmin && (
+                  <div className="flex items-start pt-0.5">
+                    <button
+                      onClick={() => setDeletingKey(field.key)}
+                      title="删除字段（同时从所有记录中移除该列）"
+                      className="p-1.5 rounded-lg text-gray-200 hover:text-red-500 hover:bg-red-50 transition-all"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
 
-        {/* Footer — stats only, no UI legend needed */}
-        <div className="px-5 py-3 bg-gray-50 border-t border-gray-100">
+        {/* Footer */}
+        <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between gap-4">
           <span className="text-xs text-gray-400">
             共 {dataset.fields.length} 个字段 · {dataset.rowCount.toLocaleString()} 行数据
           </span>
+          {isAdmin && (
+            <button
+              onClick={handleAutoDetect}
+              title="根据字段类型智能配置画像视图，将所有适合的字段自动加入用户画像"
+              className={cn(
+                'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-all whitespace-nowrap',
+                autoHint !== null
+                  ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                  : 'bg-violet-50 text-violet-600 border-violet-200 hover:bg-violet-100',
+              )}
+            >
+              {autoHint !== null ? (
+                <><Check size={11} />已配置 {autoHint} 个画像字段</>
+              ) : (
+                <><Wand2 size={11} />智能识别画像字段</>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -386,6 +471,47 @@ export function FieldList({ dataset }: { dataset: Dataset }) {
           onClose={() => setEnrichField(null)}
         />
       )}
+
+      {/* Delete field confirm dialog */}
+      {deletingKey && (() => {
+        const f = dataset.fields.find(x => x.key === deletingKey);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 p-6 w-[400px] space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
+                  <Trash2 size={16} className="text-red-500" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-gray-800">删除字段</div>
+                  <div className="text-xs text-gray-400 mt-0.5">此操作会从所有记录中移除该列，且不可恢复</div>
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm">
+                <span className="font-medium text-gray-700">{f?.name}</span>
+                <span className="text-gray-400 ml-2 font-mono text-xs">{f?.key}</span>
+              </div>
+              <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                将从 <strong>{dataset.rowCount.toLocaleString()}</strong> 条记录中删除此字段列
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  onClick={() => setDeletingKey(null)}
+                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-all"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => { removeField(dataset.id, deletingKey); setDeletingKey(null); }}
+                  className="px-4 py-2 text-sm text-white bg-red-500 hover:bg-red-600 rounded-xl transition-all font-medium"
+                >
+                  确认删除
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }

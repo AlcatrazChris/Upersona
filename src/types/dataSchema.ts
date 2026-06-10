@@ -8,7 +8,8 @@
 // ── 字段类型 ──────────────────────────────────────────────────
 export type FieldType =
   | 'single_choice'  // 单选：如性别、年龄段
-  | 'multi_choice'   // 多选：如消费观念（逗号分隔）
+  | 'multi_choice'   // 多选：如消费观念（┋ 分隔）
+  | 'ranking'        // 排序题：如孩子→父母→配偶→自己（→ 分隔，位置即含义）
   | 'number'         // 数值：如年龄、金额
   | 'date'           // 日期：如 2025-01-01
   | 'boolean'        // 布尔：如是/否
@@ -18,7 +19,7 @@ export type FieldType =
 export type ChartTypeRecommend =
   | 'bar' | 'pie' | 'donut'
   | 'line' | 'area'
-  | 'scatter' | 'heatmap'
+  | 'scatter' | 'heatmap' | 'ranking-heatmap'
   | 'wordcloud' | 'table';
 
 // ── 字段描述 ──────────────────────────────────────────────────
@@ -83,6 +84,7 @@ export function recommendCharts(type: FieldType): ChartTypeRecommend[] {
   switch (type) {
     case 'single_choice': return ['bar', 'pie', 'donut'];
     case 'multi_choice':  return ['bar', 'wordcloud'];
+    case 'ranking':       return ['ranking-heatmap'];
     case 'number':        return ['bar', 'line', 'scatter'];
     case 'date':          return ['line', 'area'];
     case 'boolean':       return ['pie', 'bar'];

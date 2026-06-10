@@ -39,6 +39,14 @@ export function detectFieldType(values: unknown[]): FieldType {
   const numCount = nonEmpty.filter(v => NUMBER_RE.test(v)).length;
   if (numCount / total >= 0.8) return 'number';
 
+  // 排序题：≥15% 的值包含 → 且每部分长度合理（排除 URL、箭头符号滥用）
+  const rankCount = nonEmpty.filter(v => {
+    if (!v.includes('→')) return false;
+    const parts = v.split('→').map(p => p.trim()).filter(Boolean);
+    return parts.length >= 2 && parts.every(p => p.length >= 1 && p.length <= 30);
+  }).length;
+  if (rankCount / total >= 0.15) return 'ranking';
+
   // 多选：出现 ┋ 分隔符 → 确定是多选（无需达到阈值）
   if (nonEmpty.some(v => v.includes('┋'))) return 'multi_choice';
 
@@ -100,6 +108,17 @@ export function detectSchema(
         values.map(v => (v == null ? '' : String(v).trim())).filter(Boolean)
       )];
       options = opts.sort();
+    } else if (type === 'ranking') {
+      // Extract unique options across all ranked sequences
+      const opts = new Set<string>();
+      for (const v of values) {
+        if (v == null) continue;
+        const raw = String(v).trim();
+        if (!raw) continue;
+        raw.split('→').map(p => p.trim()).filter(Boolean).forEach(p => opts.add(p));
+      }
+      options = [...opts];
+      multiDelimiter = '→';
     } else if (type === 'multi_choice') {
       // Detect which delimiter this column actually uses
       const DELIM_CANDIDATES = ['┋', '、', '，', ',', ';', '；', '|', '/'];

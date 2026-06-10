@@ -1,28 +1,31 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   X, Table2, BarChart2, Bookmark, Sparkles,
-  Database, Trash2, ChevronRight,
+  Database, Trash2, ChevronRight, CloudUpload,
+  Cloud, RefreshCw, Loader2, HardDrive,
 } from 'lucide-react';
-import { FieldList }       from '@/components/fields/FieldList';
-import { ChartBuilder }    from '@/components/charts/ChartBuilder';
-import { SavedChartGrid }  from '@/components/charts/SavedChartGrid';
-import { AIPanel }         from '@/components/ai/AIPanel';
-import { UploadDropzone }  from '@/components/upload/UploadDropzone';
-import { SchemaDiffDialog } from '@/components/upload/SchemaDiffDialog';
-import { EnrichmentDialog } from '@/components/upload/EnrichmentDialog';
+import { FieldList }         from '@/components/fields/FieldList';
+import { ChartBuilder }      from '@/components/charts/ChartBuilder';
+import { SavedChartGrid }    from '@/components/charts/SavedChartGrid';
+import { AIPanel }           from '@/components/ai/AIPanel';
+import { UploadDropzone }    from '@/components/upload/UploadDropzone';
+import { SchemaDiffDialog }  from '@/components/upload/SchemaDiffDialog';
+import { EnrichmentDialog }  from '@/components/upload/EnrichmentDialog';
+import { PushToDBDialog }    from '@/components/upload/PushToDBDialog';
 import { useDatasetStore, useDatasetList } from '@/store/datasetStore';
-import { compareSchemas }  from '@/lib/schemaDetector';
+import { useIsAdmin }        from '@/lib/auth';
+import { compareSchemas }    from '@/lib/schemaDetector';
 import {
   detectEnrichable, applyRegionEnrichment,
   applyCityTierEnrichment, applyOccupationEnrichment,
 } from '@/lib/fieldEnricher';
 import { cn } from '@/lib/utils';
-import type { Dataset, FieldDiff } from '@/types/dataSchema';
-import type { EnrichableField }    from '@/lib/fieldEnricher';
+import type { Dataset, Field, FieldDiff } from '@/types/dataSchema';
+import type { EnrichableField }           from '@/lib/fieldEnricher';
 
-// ── Tabs ─────────────────────────────────────────────────────────
+// ── Tabs ──────────────────────────────────────────────────────────
 
 const TABS = [
   { id: 'data',    label: '数据管理', icon: Database,  needsDataset: false },
@@ -33,22 +36,86 @@ const TABS = [
 ] as const;
 type TabId = typeof TABS[number]['id'];
 
-// ── Dataset management tab ────────────────────────────────────────
+// ── 云端数据集元信息 ──────────────────────────────────────────────
+
+interface DBDatasetMeta {
+  id:           string;
+  name:         string;
+  source_type:  string;
+  row_count:    number;
+  fields:       Field[];
+  created_at:   string;
+  uploaded_by:  string | null;
+}
+
+// ── Source badge ──────────────────────────────────────────────────
+
+const SOURCE_COLORS: Record<string, string> = {
+  xlsx:     'bg-green-50 text-green-700',
+  xls:      'bg-green-50 text-green-700',
+  csv:      'bg-blue-50 text-blue-700',
+  json:     'bg-orange-50 text-orange-700',
+  supabase: 'bg-violet-50 text-violet-700',
+};
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString('zh-CN', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+// ── DataManagementTab ─────────────────────────────────────────────
 
 function DataManagementTab() {
-  const { addDataset, removeDataset, setActiveDatasetId, getDataset, activeDatasetId } =
-    useDatasetStore();
-  const datasets = useDatasetList();
+  const {
+    addDataset, removeDataset, setActiveDatasetId, getDataset,
+    activeDatasetId, updateDataset, viewConfigs, personaConfigs,
+    savedCharts, canvasElements,
+  } = useDatasetStore();
+  const datasets  = useDatasetList();
+  const isAdmin   = useIsAdmin();
 
-  const [uploading,    setUploading]    = useState(false);
-  const [pendingData,  setPendingData]  =
+  // Local upload state
+  const [uploading,     setUploading]     = useState(false);
+  const [pendingData,   setPendingData]   =
     useState<{ dataset: Dataset; diff: FieldDiff; targetId: string } | null>(null);
   const [pendingEnrich, setPendingEnrich] =
     useState<{ dataset: Dataset; enrichments: EnrichableField[] } | null>(null);
 
-  function finalizeDataset(ds: Dataset) {
-    addDataset(ds); // also sets activeDatasetId
-  }
+  // Push-to-DB state
+  const [pushingDs,     setPushingDs]     = useState<Dataset | null>(null);
+
+  // Cloud datasets state
+  const [dbDatasets,    setDbDatasets]    = useState<DBDatasetMeta[]>([]);
+  const [dbLoading,     setDbLoading]     = useState(false);
+  const [dbError,       setDbError]       = useState('');
+  const [loadingId,     setLoadingId]     = useState<string | null>(null);
+
+  // ── Fetch DB dataset list ────────────────────────────────────
+
+  const fetchDBDatasets = useCallback(async () => {
+    setDbLoading(true);
+    setDbError('');
+    try {
+      const res = await fetch('/api/datasets');
+      if (!res.ok) {
+        if (res.status === 401) { setDbError('未登录，无法拉取云端数据集'); return; }
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json() as DBDatasetMeta[];
+      setDbDatasets(data);
+    } catch (e) {
+      setDbError(e instanceof Error ? e.message : '拉取失败');
+    } finally {
+      setDbLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchDBDatasets(); }, [fetchDBDatasets]);
+
+  // ── Local upload flow ────────────────────────────────────────
+
+  function finalizeDataset(ds: Dataset) { addDataset(ds); }
 
   async function handleFile(file: File) {
     setUploading(true);
@@ -56,11 +123,8 @@ function DataManagementTab() {
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch('/api/parse', { method: 'POST', body: fd });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error ?? '解析失败');
-      }
-      const newDs: Dataset = await res.json();
+      if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? '解析失败');
+      const newDs: Dataset = await res.json() as Dataset;
 
       const existing = datasets.find(d => d.name === newDs.name);
       if (existing) {
@@ -93,7 +157,6 @@ function DataManagementTab() {
 
   async function handleEnrichConfirm(selected: EnrichableField[]) {
     if (!pendingEnrich) return;
-    // 先关闭弹窗，再在后台完成 enrichment
     const snapshot = pendingEnrich;
     setPendingEnrich(null);
     setUploading(true);
@@ -127,21 +190,58 @@ function DataManagementTab() {
     }
   }
 
-  function fmtDate(iso: string) {
-    return new Date(iso).toLocaleDateString('zh-CN', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-    });
+  // ── Load DB dataset into local store ─────────────────────────
+
+  async function handleLoadDB(meta: DBDatasetMeta) {
+    // Already loaded locally?
+    const existing = datasets.find(d => d.id === meta.id);
+    if (existing) { setActiveDatasetId(existing.id); return; }
+
+    setLoadingId(meta.id);
+    try {
+      const res = await fetch(`/api/datasets/${meta.id}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { dataset: ds } = await res.json() as { dataset: Dataset };
+      addDataset(ds);
+    } catch (e) {
+      alert(`加载失败: ${(e as Error).message}`);
+    } finally {
+      setLoadingId(null);
+    }
   }
 
-  const SOURCE_COLORS: Record<string, string> = {
-    xlsx: 'bg-green-50 text-green-700',
-    xls:  'bg-green-50 text-green-700',
-    csv:  'bg-blue-50 text-blue-700',
-    json: 'bg-orange-50 text-orange-700',
-  };
+  // ── Delete DB dataset ─────────────────────────────────────────
+
+  async function handleDeleteDB(meta: DBDatasetMeta) {
+    if (!confirm(`彻底删除云端数据集「${meta.name}」？此操作不可撤销。`)) return;
+    try {
+      const res = await fetch(`/api/datasets/${meta.id}?hard=1`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setDbDatasets(prev => prev.filter(d => d.id !== meta.id));
+      // Also remove from local store if loaded
+      removeDataset(meta.id);
+    } catch (e) {
+      alert(`删除失败: ${(e as Error).message}`);
+    }
+  }
+
+  // ── Push success ──────────────────────────────────────────────
+
+  function handlePushSuccess(datasetId: string) {
+    setPushingDs(null);
+    // Mark local dataset as supabase-sourced
+    updateDataset(datasetId, { source: 'supabase' });
+    // Refresh cloud list
+    fetchDBDatasets();
+  }
+
+  // ── UI helpers ────────────────────────────────────────────────
+
+  const isLoadedLocally = (id: string) => datasets.some(d => d.id === id);
 
   return (
     <div className="space-y-6">
+
       {/* ── Dialogs ── */}
       {pendingData && (
         <SchemaDiffDialog
@@ -159,6 +259,17 @@ function DataManagementTab() {
           onCancel={() => { const ds = pendingEnrich.dataset; setPendingEnrich(null); finalizeDataset(ds); }}
         />
       )}
+      {pushingDs && (
+        <PushToDBDialog
+          dataset={pushingDs}
+          viewConfig={viewConfigs[pushingDs.id]}
+          personaConfigs={personaConfigs[pushingDs.id]}
+          savedCharts={savedCharts[pushingDs.id]}
+          canvasElements={canvasElements[pushingDs.id]}
+          onClose={() => setPushingDs(null)}
+          onSuccess={handlePushSuccess}
+        />
+      )}
 
       {/* ── Upload area ── */}
       <div>
@@ -168,12 +279,16 @@ function DataManagementTab() {
         <UploadDropzone onFile={handleFile} loading={uploading} />
       </div>
 
-      {/* ── Dataset list ── */}
+      {/* ── Local datasets ── */}
       {datasets.length > 0 && (
         <div>
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-            已上传数据集
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+              <HardDrive size={11} />
+              本地数据集
+            </h3>
+            <span className="text-[10px] text-gray-400">{datasets.length} 个</span>
+          </div>
           <div className="space-y-2">
             {datasets.map(ds => (
               <div
@@ -203,7 +318,7 @@ function DataManagementTab() {
                       'text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0',
                       SOURCE_COLORS[ds.source] ?? 'bg-gray-100 text-gray-500',
                     )}>
-                      {ds.source.toUpperCase()}
+                      {ds.source === 'supabase' ? '已同步' : ds.source.toUpperCase()}
                     </span>
                   </div>
                   <div className="text-xs text-gray-400 mt-0.5">
@@ -211,11 +326,25 @@ function DataManagementTab() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Push to DB (admin only, local source only) */}
+                  {isAdmin && ds.source !== 'supabase' && (
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        const full = getDataset(ds.id);
+                        if (full) setPushingDs(full);
+                      }}
+                      title="推送到 Supabase 数据库"
+                      className="flex items-center gap-1 p-1.5 rounded-lg hover:bg-blue-50 text-gray-300 hover:text-blue-500 transition-all"
+                    >
+                      <CloudUpload size={13} />
+                    </button>
+                  )}
                   <button
                     onClick={e => {
                       e.stopPropagation();
-                      if (confirm(`删除「${ds.name}」？此操作不可撤销。`)) removeDataset(ds.id);
+                      if (confirm(`删除本地「${ds.name}」？`)) removeDataset(ds.id);
                     }}
                     className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-all"
                   >
@@ -230,12 +359,134 @@ function DataManagementTab() {
       )}
 
       {datasets.length === 0 && !uploading && (
-        <div className="text-center py-12 text-gray-300">
-          <Database size={32} className="mx-auto mb-3 opacity-40" />
+        <div className="text-center py-8 text-gray-300">
+          <HardDrive size={28} className="mx-auto mb-3 opacity-40" />
           <p className="text-sm">上传数据文件后开始分析</p>
           <p className="text-xs mt-1">支持 Excel (.xlsx/.xls)、CSV、JSON</p>
         </div>
       )}
+
+      {/* ── Cloud datasets (Supabase) ── */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+            <Cloud size={11} />
+            云端数据集（Supabase）
+          </h3>
+          <button
+            onClick={fetchDBDatasets}
+            disabled={dbLoading}
+            className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 transition-all disabled:opacity-40"
+          >
+            <RefreshCw size={10} className={dbLoading ? 'animate-spin' : ''} />
+            刷新
+          </button>
+        </div>
+
+        {dbLoading && (
+          <div className="flex items-center justify-center py-6 text-gray-400 gap-2">
+            <Loader2 size={14} className="animate-spin" />
+            <span className="text-xs">正在拉取…</span>
+          </div>
+        )}
+
+        {dbError && !dbLoading && (
+          <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+            {dbError}
+          </div>
+        )}
+
+        {!dbLoading && !dbError && dbDatasets.length === 0 && (
+          <div className="text-center py-8 text-gray-300">
+            <Cloud size={28} className="mx-auto mb-3 opacity-40" />
+            <p className="text-sm">暂无云端数据集</p>
+            {isAdmin && (
+              <p className="text-xs mt-1">在本地数据集上点击 <CloudUpload size={10} className="inline" /> 推送到 Supabase</p>
+            )}
+          </div>
+        )}
+
+        {!dbLoading && dbDatasets.length > 0 && (
+          <div className="space-y-2">
+            {dbDatasets.map(meta => {
+              const loaded   = isLoadedLocally(meta.id);
+              const isActive = activeDatasetId === meta.id;
+              const isLoading = loadingId === meta.id;
+              return (
+                <div
+                  key={meta.id}
+                  className={cn(
+                    'group flex items-center gap-3 p-3.5 rounded-xl border transition-all',
+                    isActive
+                      ? 'bg-violet-50 border-violet-200'
+                      : 'bg-white border-gray-100 hover:border-violet-200 hover:shadow-sm',
+                  )}
+                >
+                  <div className={cn(
+                    'w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0',
+                    isActive ? 'bg-violet-600' : 'bg-violet-50',
+                  )}>
+                    <Cloud size={15} className={isActive ? 'text-white' : 'text-violet-400'} />
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-800 truncate">{meta.name}</span>
+                      {loaded && !isActive && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 font-medium flex-shrink-0">
+                          已加载
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      {meta.row_count.toLocaleString()} 行 · {meta.fields.length} 字段
+                      {meta.uploaded_by && ` · 由 ${meta.uploaded_by} 上传`}
+                      {' · '}{fmtDate(meta.created_at)}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {/* Load button */}
+                    <button
+                      onClick={() => handleLoadDB(meta)}
+                      disabled={isLoading}
+                      className={cn(
+                        'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all font-medium',
+                        isActive
+                          ? 'bg-violet-100 text-violet-700 cursor-default'
+                          : loaded
+                            ? 'bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-600'
+                            : 'bg-violet-100 text-violet-700 hover:bg-violet-200',
+                        isLoading && 'opacity-60 cursor-wait',
+                      )}
+                    >
+                      {isLoading
+                        ? <Loader2 size={11} className="animate-spin" />
+                        : isActive
+                          ? <><Database size={11} />使用中</>
+                          : loaded
+                            ? <><ChevronRight size={11} />切换</>
+                            : <><CloudUpload size={11} className="rotate-180" />加载</>
+                      }
+                    </button>
+
+                    {/* Delete (admin) */}
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleDeleteDB(meta)}
+                        className="p-1.5 rounded-lg hover:bg-red-50 text-gray-200 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }
@@ -271,7 +522,7 @@ export function DataCenterPanel({ dataset, onClose }: Props) {
           {/* Tabs */}
           <div className="flex items-center gap-0.5 ml-4 overflow-x-auto flex-1">
             {TABS.map(t => {
-              const Icon = t.icon;
+              const Icon     = t.icon;
               const disabled = t.needsDataset && !dataset;
               return (
                 <button

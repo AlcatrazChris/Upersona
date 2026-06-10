@@ -1,6 +1,7 @@
 ﻿'use client';
 
-import { ChartRenderer } from '@/components/charts/engine/ChartRenderer';
+import { ChartRenderer }         from '@/components/charts/engine/ChartRenderer';
+import { RankingHeatmapEngine }  from '@/components/charts/engine/RankingHeatmapEngine';
 import { cn } from '@/lib/utils';
 import { DEFAULT_CHART_CONFIG } from '@/lib/chartConfig';
 import type { PersonaBlockData } from '@/lib/personaEngine';
@@ -164,26 +165,31 @@ export function DateRangeBlock({ data }: { data: PersonaBlockData }) {
   );
 }
 
+// ════════════════ Ranking Heatmap Block ════════════════
+
+export function RankingHeatmapBlock({ data }: { data: PersonaBlockData }) {
+  if (!data.rankingData || data.rankingData.N === 0) return null;
+  return (
+    <RankingHeatmapEngine
+      data={data.rankingData}
+      fieldName={data.block.displayName}
+    />
+  );
+}
+
 // ════════════════ Block Dispatcher ════════════════
 
 export function PersonaBlockRenderer({ data }: { data: PersonaBlockData }) {
   switch (data.block.blockType) {
-    case 'tag_cloud':
-      return <TagCloudBlock data={data} />;
-    case 'stat_badge':
-      return <StatBadgeBlock data={data} />;
-    case 'distribution':
-      return <DistributionBlock data={data} />;
-    case 'property_row':
-      return <PropertyRowBlock data={data} />;
-    case 'text_card':
-      return <TextCardBlock data={data} />;
-    case 'boolean_tick':
-      return <BooleanTickBlock data={data} />;
-    case 'date_range':
-      return <DateRangeBlock data={data} />;
+    case 'tag_cloud':       return <TagCloudBlock data={data} />;
+    case 'stat_badge':      return <StatBadgeBlock data={data} />;
+    case 'distribution':    return <DistributionBlock data={data} />;
+    case 'property_row':    return <PropertyRowBlock data={data} />;
+    case 'text_card':       return <TextCardBlock data={data} />;
+    case 'boolean_tick':    return <BooleanTickBlock data={data} />;
+    case 'date_range':      return <DateRangeBlock data={data} />;
+    case 'ranking_heatmap': return <RankingHeatmapBlock data={data} />;
     case 'grouped_compare':
-      // Grouped compare uses its own rendering in the future
       return <div className="text-sm text-gray-400 italic">分组对比（待渲染）</div>;
     default:
       return null;

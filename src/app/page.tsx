@@ -77,9 +77,23 @@ export default function MainPage() {
 
   useEffect(() => {
     if (!dataset) return;
-    const stored = viewConfigs[dataset.id];
-    if (!stored || (!stored.personaFieldKeys?.length && !stored.statusFieldKey)) {
-      updateViewConfig(dataset.id, autoDetectViewConfig(dataset));
+    const stored   = viewConfigs[dataset.id];
+    const detected = autoDetectViewConfig(dataset);
+
+    if (!stored) {
+      // 全新数据集：直接写入自动识别结果
+      updateViewConfig(dataset.id, detected);
+      return;
+    }
+
+    // 已有配置：仅补充"字段概览里有但 personaFieldKeys 里没有"的字段
+    // 不删除用户手动移除的字段，不重置其他配置项
+    const storedSet = new Set(stored.personaFieldKeys ?? []);
+    const missing   = (detected.personaFieldKeys ?? []).filter(k => !storedSet.has(k));
+    if (!stored.personaFieldKeys || missing.length > 0) {
+      updateViewConfig(dataset.id, {
+        personaFieldKeys: [...(stored.personaFieldKeys ?? []), ...missing],
+      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataset?.id]);

@@ -16,4 +16,4 @@ export interface ChartEngineProps {
   className?:     string;
 }
 
-export type ChartType = 'bar' | 'pie' | 'donut' | 'line' | 'area' | 'grouped-bar' | 'stacked-bar';
+export type ChartType = 'bar' | 'pie' | 'donut' | 'line' | 'area' | 'grouped-bar' | 'stacked-bar' | 'ranking-heatmap';

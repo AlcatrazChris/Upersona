@@ -10,8 +10,10 @@ import { ChartSettingsPanel } from './ChartSettingsPanel';
 import { ComparePanel } from './ComparePanel';
 import { GroupedBarChartEngine } from './engine/GroupedBarChartEngine';
 import { StackedBarChartEngine } from './engine/StackedBarChartEngine';
+import { RankingHeatmapEngine } from './engine/RankingHeatmapEngine';
 import { useDatasetStore } from '@/store/datasetStore';
-import { aggregateField, aggregateFieldGrouped, inferDateGran } from '@/lib/dataAggregator';
+import { aggregateField, aggregateFieldGrouped, aggregateRanking, inferDateGran } from '@/lib/dataAggregator';
+import type { RankingData } from '@/lib/dataAggregator';
 import { loadChartConfig, saveChartConfig } from '@/lib/chartConfig';
 import { cn } from '@/lib/utils';
 import type { Dataset, Field, FieldType } from '@/types/dataSchema';
@@ -23,6 +25,7 @@ import type { ChartConfig } from '@/lib/chartConfig';
 const TYPE_COLORS: Record<FieldType, string> = {
   single_choice: 'bg-blue-50 text-blue-600',
   multi_choice:  'bg-purple-50 text-purple-600',
+  ranking:       'bg-indigo-50 text-indigo-600',
   number:        'bg-green-50 text-green-600',
   date:          'bg-orange-50 text-orange-600',
   boolean:       'bg-red-50 text-red-600',
@@ -30,8 +33,8 @@ const TYPE_COLORS: Record<FieldType, string> = {
 };
 
 const TYPE_LABELS: Record<FieldType, string> = {
-  single_choice: '单选', multi_choice: '多选', number: '数值',
-  date: '日期', boolean: '布尔', text: '文本',
+  single_choice: '单选', multi_choice: '多选', ranking: '排序',
+  number: '数值', date: '日期', boolean: '布尔', text: '文本',
 };
 
 type NormalType = 'bar' | 'pie' | 'donut' | 'line' | 'area';
@@ -107,13 +110,21 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
     if (groupFieldKey === field.key) { setGroupFieldKey(null); setSelectedGroups([]); }
   }, [chartType, dataset.records, groupFieldKey]);
 
+  // ── Ranking field ─────────────────────────────────────────────
+  const isRankingField = activeField?.type === 'ranking';
+
+  const rankingData = useMemo<RankingData | null>(() => {
+    if (!activeField || activeField.type !== 'ranking') return null;
+    return aggregateRanking(dataset.records, activeField);
+  }, [dataset.records, activeField]);
+
   const chartData = useMemo(() => {
-    if (!activeField || compareMode) return [];
+    if (!activeField || compareMode || isRankingField) return [];
     return aggregateField(
       dataset.records, activeField,
       activeField.type === 'date' ? dateGran : 'month',
     );
-  }, [dataset.records, activeField, dateGran, compareMode]);
+  }, [dataset.records, activeField, dateGran, compareMode, isRankingField]);
 
   const groupedData = useMemo(() => {
     if (!compareMode || !activeField || !groupFieldKey || selectedGroups.length < 2) return null;
@@ -143,16 +154,18 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
 
   function handleSave() {
     if (!activeField) return;
-    const finalType: ChartType = compareMode
-      ? (compareType === 'stacked' ? 'stacked-bar' : 'grouped-bar')
-      : chartType;
+    const finalType: ChartType = isRankingField
+      ? 'ranking-heatmap'
+      : compareMode
+        ? (compareType === 'stacked' ? 'stacked-bar' : 'grouped-bar')
+        : chartType;
     saveChart(dataset.id, {
       fieldKey:      activeField.key,
       chartType:     finalType,
       title:         chartTitle || activeField.name,
       config,
-      groupFieldKey: compareMode && groupFieldKey ? groupFieldKey : undefined,
-      selectedGroups: compareMode && selectedGroups.length ? selectedGroups : undefined,
+      groupFieldKey:  (!isRankingField && compareMode && groupFieldKey) ? groupFieldKey : undefined,
+      selectedGroups: (!isRankingField && compareMode && selectedGroups.length) ? selectedGroups : undefined,
     });
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 2000);
@@ -161,7 +174,11 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
   const chartableFields = dataset.fields.filter(isChartable);
   const textFieldCount  = dataset.fields.length - chartableFields.length;
   const validSamples    = chartData.reduce((s, d) => s + d.count, 0);
-  const canSave = compareMode ? !!(groupedData) : chartData.length > 0;
+  const canSave = isRankingField
+    ? (rankingData?.N ?? 0) > 0
+    : compareMode
+      ? !!(groupedData)
+      : chartData.length > 0;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -228,7 +245,12 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
           <>
             {/* Toolbar */}
             <div className="flex items-center gap-2 flex-wrap">
-              {compareMode ? (
+              {isRankingField ? (
+                // Ranking field: fixed heatmap indicator
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-600 text-xs font-medium border border-indigo-200">
+                  排序热力图
+                </div>
+              ) : compareMode ? (
                 // Compare mode: show 簇状 / 堆积 buttons
                 <>
                   {(['grouped', 'stacked'] as const).map(t => (
@@ -265,8 +287,8 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
                 ))
               )}
 
-              {/* Date granularity (normal mode only) */}
-              {!compareMode && activeField.type === 'date' && (
+              {/* Date granularity (normal mode, date field only) */}
+              {!isRankingField && !compareMode && activeField.type === 'date' && (
                 <div className="ml-auto flex items-center gap-1 bg-gray-100 rounded-xl p-0.5">
                   {(Object.keys(DATE_GRAN_LABELS) as DateGran[]).map(g => (
                     <button
@@ -283,29 +305,34 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
                 </div>
               )}
 
-              {/* Settings panel */}
-              <ChartSettingsPanel
-                config={config}
-                onChange={handleConfigChange}
-                field={activeField}
-                onUpdateOrdering={(isOrdered, orderedValues) =>
-                  updateFieldOrdering(dataset.id, activeField.key, isOrdered, orderedValues)
-                }
-                className={compareMode || activeField.type !== 'date' ? 'ml-auto' : ''}
-              />
+              {/* Settings panel — not for ranking */}
+              {!isRankingField && (
+                <ChartSettingsPanel
+                  config={config}
+                  onChange={handleConfigChange}
+                  field={activeField}
+                  onUpdateOrdering={(isOrdered, orderedValues) =>
+                    updateFieldOrdering(dataset.id, activeField.key, isOrdered, orderedValues)
+                  }
+                  className={compareMode || activeField.type !== 'date' ? 'ml-auto' : ''}
+                />
+              )}
 
-              {/* Compare toggle */}
-              <button
-                onClick={toggleCompare}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all',
-                  compareMode
-                    ? 'bg-orange-100 text-orange-600 hover:bg-orange-200'
-                    : 'bg-gray-100 text-gray-500 hover:bg-blue-50 hover:text-blue-600',
-                )}
-              >
-                {compareMode ? <><X size={12} />退出对比</> : <><Layers size={12} />对比</>}
-              </button>
+              {/* Compare toggle — not for ranking */}
+              {!isRankingField && (
+                <button
+                  onClick={toggleCompare}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all',
+                    isRankingField ? 'hidden' : '',
+                    compareMode
+                      ? 'bg-orange-100 text-orange-600 hover:bg-orange-200'
+                      : 'bg-gray-100 text-gray-500 hover:bg-blue-50 hover:text-blue-600',
+                  )}
+                >
+                  {compareMode ? <><X size={12} />退出对比</> : <><Layers size={12} />对比</>}
+                </button>
+              )}
             </div>
 
             {/* Compare panel */}
@@ -333,7 +360,30 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
             </div>
 
             {/* Chart preview */}
-            {compareMode ? (
+            {isRankingField ? (
+              rankingData && rankingData.N > 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-100 p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-sm font-semibold text-gray-800 truncate flex-1">
+                      {chartTitle || activeField.name}
+                    </span>
+                    <span className="text-xs text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                      排序题 · {rankingData.rows.length} 个选项 · n={rankingData.N}
+                    </span>
+                  </div>
+                  <RankingHeatmapEngine
+                    data={rankingData}
+                    fieldName={chartTitle || activeField.name}
+                    height={config.chartHeight}
+                  />
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center">
+                  <div className="text-sm text-gray-400">该排序字段无可聚合数据</div>
+                  <div className="text-xs text-gray-300 mt-1">请检查字段值中是否包含 → 分隔符</div>
+                </div>
+              )
+            ) : compareMode ? (
               groupedData ? (
                 <div className="bg-white rounded-2xl border border-gray-100 p-5">
                   <div className="flex items-center gap-2 mb-3">
@@ -392,7 +442,20 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
             {/* Footer: summary + save */}
             {canSave && (
               <div className="flex items-center gap-4 px-1">
-                {compareMode ? (
+                {isRankingField ? (
+                  rankingData && (
+                    <>
+                      <span className="flex items-center gap-1 text-xs text-gray-400">
+                        <MousePointerClick size={10} />
+                        {rankingData.rows.length} 个选项
+                      </span>
+                      <span className="flex items-center gap-1 text-xs text-gray-400">
+                        <BarChart2 size={10} />
+                        {rankingData.N.toLocaleString()} / {dataset.rowCount.toLocaleString()} 份有效数据
+                      </span>
+                    </>
+                  )
+                ) : compareMode ? (
                   groupedData && (
                     <span className="flex items-center gap-1 text-xs text-gray-400">
                       <BarChart2 size={10} />

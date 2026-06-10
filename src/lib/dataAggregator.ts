@@ -170,6 +170,82 @@ function aggregateDate(
   }));
 }
 
+// ── Ranking aggregation ───────────────────────────────────────
+
+export interface RankingRow {
+  option:     string;
+  meanRank:   number;       // 平均排名（越低越靠前）
+  bordaScore: number;       // Borda 分（越高越重要）
+  firstPct:   number;       // 被排在第 1 位的比例 %
+  positions:  number[];     // positions[i] = 被排在第 i+1 位的 % (length = maxRank)
+  n:          number;       // 选择了该选项的人数
+}
+
+export interface RankingData {
+  N:       number;          // 有效填答人数
+  maxRank: number;          // 最大排名深度
+  rows:    RankingRow[];    // 按 meanRank 升序排列
+}
+
+export function aggregateRanking(
+  records: Record<string, unknown>[],
+  field:   Field,
+): RankingData {
+  const delimiter = field.multiDelimiter ?? '→';
+  const sequences: string[][] = [];
+
+  for (const r of records) {
+    const raw = toStr(r[field.key]);
+    if (!raw) continue;
+    const parts = raw.split(delimiter).map(s => s.trim()).filter(Boolean);
+    if (parts.length >= 2) sequences.push(parts);
+  }
+
+  const N       = sequences.length;
+  const maxRank = sequences.reduce((m, s) => Math.max(m, s.length), 0);
+  if (N === 0 || maxRank === 0) return { N: 0, maxRank: 0, rows: [] };
+
+  // count[option][rankIdx] = number of respondents who put option at rankIdx
+  const countMap = new Map<string, number[]>();
+  const optionN  = new Map<string, number>();
+
+  for (const seq of sequences) {
+    for (let i = 0; i < seq.length; i++) {
+      const opt = seq[i];
+      if (!countMap.has(opt)) countMap.set(opt, Array(maxRank).fill(0));
+      countMap.get(opt)![i]++;
+      optionN.set(opt, (optionN.get(opt) ?? 0) + 1);
+    }
+  }
+
+  const rows: RankingRow[] = [...countMap.entries()].map(([option, counts]) => {
+    const n = optionN.get(option) ?? 0;
+    const positions = counts.map(c => N > 0 ? Math.round((c / N) * 1000) / 10 : 0);
+
+    // mean rank: weighted average of (rank × count) / n
+    const meanRank = n > 0
+      ? counts.reduce((sum, c, i) => sum + c * (i + 1), 0) / n
+      : maxRank + 1;
+
+    // Borda: sum(c_i × (K – i)) / N  where K = maxRank
+    const bordaScore = N > 0
+      ? counts.reduce((sum, c, i) => sum + c * (maxRank - i), 0) / N
+      : 0;
+
+    return {
+      option,
+      meanRank: Math.round(meanRank * 100) / 100,
+      bordaScore: Math.round(bordaScore * 100) / 100,
+      firstPct: positions[0] ?? 0,
+      positions,
+      n,
+    };
+  });
+
+  rows.sort((a, b) => a.meanRank - b.meanRank);
+  return { N, maxRank, rows };
+}
+
 export function aggregateField(
   records: Record<string, unknown>[],
   field: Field,
@@ -189,6 +265,9 @@ export function aggregateField(
       return aggregateDate(records, field, dateGran);
     case 'text':
       return aggregateCategorical(records, field).slice(0, 15);
+    case 'ranking':
+      // Flat fallback: treat options as multi-choice for grouping contexts
+      return aggregateMultiChoice(records, { ...field, multiDelimiter: field.multiDelimiter ?? '→' });
     default:
       return [];
   }

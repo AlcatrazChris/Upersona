@@ -9,14 +9,15 @@ import type { ChartTypeRecommend } from './dataSchema';
 // ═══════════ 区块展现方式 ═══════════
 
 export type PersonaBlockType =
-  | 'tag_cloud'       // 标签云：展示一组标签 + 计数
-  | 'stat_badge'      // 数值徽标：展示大号数值 + 标签
-  | 'distribution'    // 分布图：以图表展示占比
-  | 'property_row'    // 属性行：字段名:值 列表
-  | 'text_card'       // 文本卡片：精选文本展示
-  | 'boolean_tick'    // 布尔标记：显示为勾选/叉号
-  | 'date_range'      // 日期范围：展示最早～最晚
-  | 'grouped_compare';// 分组对比：两个字段交叉分析
+  | 'tag_cloud'        // 标签云：展示一组标签 + 计数
+  | 'stat_badge'       // 数值徽标：展示大号数值 + 标签
+  | 'distribution'     // 分布图：以图表展示占比
+  | 'property_row'     // 属性行：字段名:值 列表
+  | 'text_card'        // 文本卡片：精选文本展示
+  | 'boolean_tick'     // 布尔标记：显示为勾选/叉号
+  | 'date_range'       // 日期范围：展示最早～最晚
+  | 'grouped_compare'  // 分组对比：两个字段交叉分析
+  | 'ranking_heatmap'; // 排序热力图：位次矩阵 + 平均名次
 
 // ═══════════ 区块字段映射 ═══════════
 
@@ -105,52 +106,42 @@ export const PERSONA_BLOCK_META: Record<PersonaBlockType, {
     description: '两个字段交叉分析',
     supportedFieldTypes: ['single_choice', 'multi_choice', 'boolean'],
   },
+  ranking_heatmap: {
+    label: '排序热力图',
+    description: '以热力图矩阵展示排序题的位次分布',
+    supportedFieldTypes: ['ranking'],
+  },
 };
 
 // ═══════════ 默认区块推荐 ═══════════
 
 export function recommendPersonaBlocks(
-  fieldKeys: string[],
-  fieldTypes: Record<string, string>,
+  fields: { key: string; name: string; type: string }[],
 ): PersonaBlockField[] {
   const blocks: PersonaBlockField[] = [];
   let order = 0;
 
-  for (const key of fieldKeys) {
-    const type = fieldTypes[key];
-    if (!type) continue;
-
+  for (const field of fields) {
     let blockType: PersonaBlockType | null = null;
 
-    switch (type) {
-      case 'number':
-        blockType = 'stat_badge';
-        break;
-      case 'multi_choice':
-        blockType = 'tag_cloud';
-        break;
-      case 'single_choice':
-        blockType = 'distribution';
-        break;
-      case 'boolean':
-        blockType = 'boolean_tick';
-        break;
-      case 'date':
-        blockType = 'date_range';
-        break;
-      case 'text':
-        blockType = 'property_row';
-        break;
+    switch (field.type) {
+      case 'ranking':      blockType = 'ranking_heatmap'; break;
+      case 'number':       blockType = 'stat_badge';      break;
+      case 'multi_choice': blockType = 'tag_cloud';       break;
+      case 'single_choice':blockType = 'distribution';    break;
+      case 'boolean':      blockType = 'boolean_tick';    break;
+      case 'date':         blockType = 'date_range';      break;
+      case 'text':         blockType = 'property_row';    break;
     }
 
     if (blockType) {
       blocks.push({
-        sourceFieldKey: key,
-        displayName: key,
+        sourceFieldKey: field.key,
+        displayName:    field.name,   // use human-readable name, not raw key
         blockType,
         order: order++,
         visible: true,
-        config: blockType === 'tag_cloud' ? { maxTags: 10, tagSortBy: 'count' } :
+        config: blockType === 'tag_cloud'  ? { maxTags: 10, tagSortBy: 'count' } :
                 blockType === 'stat_badge' ? { statAggregation: 'top', statSuffix: '' } : undefined,
       });
     }

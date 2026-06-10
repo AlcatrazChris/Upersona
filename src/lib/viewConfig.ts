@@ -101,20 +101,16 @@ export function autoDetectViewConfig(dataset: Dataset): ViewConfig {
   );
   if (cityField) config.geoCityKey = cityField.key;
 
-  // Persona fields — categoricals, not geo/status, reasonable cardinality
+  // Persona fields — all chartable types, not geo/status
+  // Note: type detector already ensures single_choice/multi_choice have reasonable cardinality,
+  // so we simply exclude 'text' fields and the special-purpose geo/status fields.
   const exclude = new Set(
     [config.statusFieldKey, config.geoRegionKey, config.geoProvinceKey, config.geoCityKey]
       .filter(Boolean) as string[]
   );
   config.personaFieldKeys = dataset.fields
-    .filter(f =>
-      (f.type === 'single_choice' || f.type === 'multi_choice') &&
-      !exclude.has(f.key) &&
-      (f.statistics?.unique ?? 0) >= 2 &&
-      (f.statistics?.unique ?? 0) <= 30
-    )
-    .map(f => f.key)
-    .slice(0, 14);
+    .filter(f => f.type !== 'text' && !exclude.has(f.key))
+    .map(f => f.key);
 
   config.insightPrompt = DEFAULT_INSIGHT_PROMPT;
   return config;

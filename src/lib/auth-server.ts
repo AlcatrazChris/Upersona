@@ -98,9 +98,9 @@ export async function dummyVerify(password: string): Promise<void> {
 
 // ── 输入校验 ─────────────────────────────────────────────────
 
-/** 用户名：3-30 字符，字母/数字/下划线 */
+/** 用户名：3-30 字符，字母/数字/下划线/连字符（如 SGMW-SD → sgmw-sd） */
 export function isValidUsername(v: string): boolean {
-  return /^[a-zA-Z0-9_]{3,30}$/.test(v);
+  return /^[a-zA-Z0-9_-]{3,30}$/.test(v);
 }
 
 /** 密码：8-100 字符 */

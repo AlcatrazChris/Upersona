@@ -75,6 +75,8 @@ interface DatasetStore {
   updateFieldMultiDelimiter: (datasetId: string, fieldKey: string, delimiter: string) => void;
   updateFieldOrdering: (datasetId: string, fieldKey: string, isOrdered: boolean, orderedValues: string[]) => void;
   toggleFieldVisible: (datasetId: string, fieldKey: string) => void;
+  removeField: (datasetId: string, fieldKey: string) => void;
+  cleanSkipValues: (datasetId: string, fieldKey: string) => void;
   addAIDerivedField: (
     datasetId: string,
     sourceFieldKey: string,
@@ -192,6 +194,83 @@ export const useDatasetStore = create<DatasetStore>()(
             return { ...d, fields: d.fields.map(f => (f.key === fieldKey ? patched : f)) };
           }),
         }));
+      },
+
+      removeField(datasetId, fieldKey) {
+        set(state => ({
+          datasets: state.datasets.map(d => {
+            if (d.id !== datasetId) return d;
+            // Remove field from schema
+            const fields = d.fields.filter(f => f.key !== fieldKey);
+            // Remove the key from every record
+            const records = d.records.map(r => {
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              const { [fieldKey]: _dropped, ...rest } = r as Record<string, unknown>;
+              return rest;
+            });
+            return { ...d, fields, records, updatedAt: new Date().toISOString() };
+          }),
+        }));
+      },
+
+      cleanSkipValues(datasetId, fieldKey) {
+        const SKIP_PATTERNS = new Set([
+          '跳过', '跳', 'N/A', 'n/a', 'NA', 'na', '-', '—',
+          '不适用', '未作答', '未回答', '跳答', '免答',
+        ]);
+
+        set(state => {
+          const dataset = state.datasets.find(d => d.id === datasetId);
+          if (!dataset) return state;
+          const field = dataset.fields.find(f => f.key === fieldKey);
+          if (!field) return state;
+
+          // Replace skip values with empty string in records
+          const records = dataset.records.map(r => {
+            const raw = String(r[fieldKey] ?? '').trim();
+            return SKIP_PATTERNS.has(raw) ? { ...r, [fieldKey]: '' } : r;
+          });
+
+          // Recompute statistics for this field
+          const values = records.map(r => r[fieldKey]);
+          const total = values.length;
+          const nonEmpty = values.filter(v => v != null && String(v).trim() !== '');
+          const missing = total - nonEmpty.length;
+          const counter: Record<string, number> = {};
+          for (const v of nonEmpty) {
+            const s = String(v).trim();
+            counter[s] = (counter[s] ?? 0) + 1;
+          }
+          const unique = Object.keys(counter).length;
+          const topValues = Object.entries(counter)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
+            .map(([value, count]) => ({ value, count }));
+
+          // Remove skip values from options array
+          const newOptions = field.options
+            ? field.options.filter(o => !SKIP_PATTERNS.has(o.trim()))
+            : undefined;
+
+          const updatedField: Field = {
+            ...field,
+            options: newOptions,
+            statistics: { count: total, unique, missing, topValues },
+          };
+
+          return {
+            datasets: state.datasets.map(d =>
+              d.id === datasetId
+                ? {
+                    ...d,
+                    fields: d.fields.map(f => (f.key === fieldKey ? updatedField : f)),
+                    records,
+                    updatedAt: new Date().toISOString(),
+                  }
+                : d
+            ),
+          };
+        });
       },
 
       addAIDerivedField(datasetId, sourceFieldKey, newFieldKey, newFieldName, mapping) {

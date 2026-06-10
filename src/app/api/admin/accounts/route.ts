@@ -59,7 +59,7 @@ export async function POST(req: Request) {
   const email    = typeof body.email === 'string' ? body.email.trim() || null : null;
 
   if (!isValidUsername(username)) {
-    return NextResponse.json({ error: '用户名格式错误（3-30 位字母/数字/下划线）' }, { status: 400 });
+    return NextResponse.json({ error: '用户名格式错误（3-30 位字母/数字/下划线/连字符）' }, { status: 400 });
   }
   if (!isValidPassword(password)) {
     return NextResponse.json({ error: '密码至少 8 位' }, { status: 400 });

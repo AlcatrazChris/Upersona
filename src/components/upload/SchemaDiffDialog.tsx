@@ -4,8 +4,8 @@ import { X, Plus, Minus, RefreshCw } from 'lucide-react';
 import type { FieldDiff, FieldType } from '@/types/dataSchema';
 
 const TYPE_LABELS: Record<FieldType, string> = {
-  single_choice: '单选', multi_choice: '多选', number: '数值',
-  date: '日期', boolean: '布尔', text: '文本',
+  single_choice: '单选', multi_choice: '多选', ranking: '排序',
+  number: '数值', date: '日期', boolean: '布尔', text: '文本',
 };
 
 interface SchemaDiffDialogProps {

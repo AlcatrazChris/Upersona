@@ -4,10 +4,9 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Plus, Trash2, Settings2,
   Eye, EyeOff, Check, X,
-  ChevronUp, ChevronDown, ArrowLeft,
+  ChevronUp, ChevronDown, ArrowLeft, RefreshCw,
 } from 'lucide-react';
 import { useDatasetStore } from '@/store/datasetStore';
-import { getBlockFieldTypes } from '@/lib/personaEngine';
 import { recommendPersonaBlocks, PERSONA_BLOCK_META } from '@/types/personaSchema';
 import { PersonaDashboard } from './PersonaDashboard';
 import { cn } from '@/lib/utils';
@@ -243,6 +242,7 @@ export function PersonaConfigEditor({ dataset, onClose }: PersonaConfigEditorPro
   const {
     personaConfigs, savePersonaConfig, removePersonaConfig,
     activePersonaConfigId, setActivePersonaConfigId,
+    updateViewConfig,
   } = useDatasetStore();
 
   const configs      = personaConfigs[dataset.id] ?? [];
@@ -254,6 +254,7 @@ export function PersonaConfigEditor({ dataset, onClose }: PersonaConfigEditorPro
   const [localBlocks,  setLocalBlocks]  = useState<PersonaBlockField[]>(activeConfig?.blocks ?? []);
   const [localColumns, setLocalColumns] = useState<1 | 2 | 3>(activeConfig?.layout?.columns ?? 2);
   const [isDirty,      setIsDirty]      = useState(false);
+  const [syncHint,     setSyncHint]     = useState(false);
 
   // Sync local state whenever the active config changes (user switches config or creates a new one)
   useEffect(() => {
@@ -266,20 +267,16 @@ export function PersonaConfigEditor({ dataset, onClose }: PersonaConfigEditorPro
     () => dataset.fields.map(f => ({ key: f.key, name: f.name, type: f.type })),
     [dataset],
   );
-  const fieldTypes = useMemo(() => getBlockFieldTypes(dataset), [dataset]);
 
   // ── Config-level actions ─────────────────────────────────────────
 
   function createNew() {
-    const personaKeys = dataset.fields
-      .filter(f =>
-        f.type === 'single_choice' || f.type === 'multi_choice' ||
-        f.type === 'number'        || f.type === 'boolean'       || f.type === 'date',
-      )
-      .map(f => f.key)
-      .slice(0, 12);
+    // 所有非文本字段都纳入，不设上限
+    const personaFields = dataset.fields
+      .filter(f => f.type !== 'text')
+      .map(f => ({ key: f.key, name: f.name, type: f.type }));
 
-    const recommended = recommendPersonaBlocks(personaKeys, fieldTypes);
+    const recommended = recommendPersonaBlocks(personaFields);
     const config: PersonaConfig = {
       id:        genId(),
       name:      `画像 ${configs.length + 1}`,
@@ -309,6 +306,17 @@ export function PersonaConfigEditor({ dataset, onClose }: PersonaConfigEditorPro
     setLocalBlocks(activeConfig?.blocks ?? []);
     setLocalColumns(activeConfig?.layout?.columns ?? 2);
     setIsDirty(false);
+  }
+
+  /** 将当前画像配置的可见字段同步到图表模式的字段顺序 */
+  function syncToChartMode() {
+    if (!activeConfig) return;
+    const keys = localBlocks
+      .filter(b => b.visible && b.sourceFieldKey)
+      .map(b => b.sourceFieldKey);
+    updateViewConfig(dataset.id, { personaFieldKeys: keys });
+    setSyncHint(true);
+    setTimeout(() => setSyncHint(false), 2500);
   }
 
   // ── Block-level actions ──────────────────────────────────────────
@@ -430,6 +438,25 @@ export function PersonaConfigEditor({ dataset, onClose }: PersonaConfigEditorPro
           <span className="ml-1 text-[11px] text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
             未保存
           </span>
+        )}
+
+        {/* Sync to chart mode */}
+        {activeConfig && (
+          <button
+            onClick={syncToChartMode}
+            title="将此画像配置的字段顺序同步到图表模式，图表模式将按本配置字段顺序和图表类型展示"
+            className={cn(
+              'ml-auto flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border transition-all flex-shrink-0',
+              syncHint
+                ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200',
+            )}
+          >
+            {syncHint
+              ? <><Check size={11} />已同步到图表模式</>
+              : <><RefreshCw size={11} />同步到图表模式</>
+            }
+          </button>
         )}
       </div>
 

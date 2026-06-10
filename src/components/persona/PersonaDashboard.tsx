@@ -82,14 +82,15 @@ export function PersonaDashboard({ dataset, config }: PersonaDashboardProps) {
                   {b.displayName}
                 </h3>
                 <span className="text-[10px] text-gray-300 bg-gray-50 px-1.5 py-0.5 rounded">
-                  {b.blockType === 'tag_cloud' && '标签云'}
-                  {b.blockType === 'stat_badge' && '数值'}
-                  {b.blockType === 'distribution' && '分布'}
-                  {b.blockType === 'property_row' && '属性'}
-                  {b.blockType === 'text_card' && '文本'}
-                  {b.blockType === 'boolean_tick' && '布尔'}
-                  {b.blockType === 'date_range' && '日期'}
+                  {b.blockType === 'tag_cloud'       && '标签云'}
+                  {b.blockType === 'stat_badge'      && '数值'}
+                  {b.blockType === 'distribution'    && '分布'}
+                  {b.blockType === 'property_row'    && '属性'}
+                  {b.blockType === 'text_card'       && '文本'}
+                  {b.blockType === 'boolean_tick'    && '布尔'}
+                  {b.blockType === 'date_range'      && '日期'}
                   {b.blockType === 'grouped_compare' && '对比'}
+                  {b.blockType === 'ranking_heatmap' && '排序'}
                 </span>
               </div>
 

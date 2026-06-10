@@ -8,11 +8,11 @@
  *   3. 组装为结构化的 PersonaViewData
  */
 
-import { aggregateField, aggregateFieldGrouped, inferDateGran } from '@/lib/dataAggregator';
+import { aggregateField, aggregateFieldGrouped, aggregateRanking, inferDateGran } from '@/lib/dataAggregator';
 import type { Dataset, Field } from '@/types/dataSchema';
 import type { PersonaBlockField, PersonaConfig, PersonaBlockType } from '@/types/personaSchema';
-import type { ChartDataItem } from '@/components/charts/engine/types';
-import type { GroupedChartData } from '@/lib/dataAggregator';
+import type { ChartDataItem, } from '@/components/charts/engine/types';
+import type { GroupedChartData, RankingData } from '@/lib/dataAggregator';
 
 // ═══════════ 区块聚合结果 ═══════════
 
@@ -28,6 +28,8 @@ export interface PersonaBlockData {
   dateMax?: string;
   // 分组对比专用
   groupedData?: GroupedChartData;
+  // 排序热力图专用
+  rankingData?: RankingData;
   // 统计摘要
   totalCount: number;
   validCount: number;
@@ -131,6 +133,11 @@ export function buildPersonaView(
         const dateMin = dates.length > 0 ? dates[0].toISOString().slice(0, 10) : undefined;
         const dateMax = dates.length > 0 ? dates[dates.length - 1].toISOString().slice(0, 10) : undefined;
         return { block, field, dateMin, dateMax, totalCount: records.length, validCount: dates.length };
+      }
+
+      case 'ranking_heatmap': {
+        const rd = aggregateRanking(records, field);
+        return { block, field, rankingData: rd, totalCount: records.length, validCount: rd.N };
       }
 
       case 'grouped_compare': {

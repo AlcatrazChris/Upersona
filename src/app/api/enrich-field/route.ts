@@ -7,6 +7,31 @@ const AI_BASE_URL = process.env.AI_BASE_URL ?? 'https://api.deepseek.com/v1';
 const AI_MODEL    = process.env.AI_MODEL    ?? 'deepseek-chat';
 
 /**
+ * Try to parse a potentially truncated JSON string.
+ * If strict parse fails, attempt to strip the last incomplete entry and close
+ * the object — handles the case where the AI ran out of tokens mid-response.
+ */
+function safeParseMapping(raw: string): Record<string, string> {
+  try {
+    return JSON.parse(raw) as Record<string, string>;
+  } catch {
+    const trimmed = raw.trimEnd();
+    // Remove the last (likely incomplete) key-value pair and close the object
+    const lastComma = trimmed.lastIndexOf(',');
+    if (lastComma > 0) {
+      try {
+        return JSON.parse(trimmed.slice(0, lastComma) + '}') as Record<string, string>;
+      } catch { /* fall through */ }
+    }
+    // Last resort: just append a closing brace
+    try {
+      return JSON.parse(trimmed + '}') as Record<string, string>;
+    } catch { /* fall through */ }
+    return {};
+  }
+}
+
+/**
  * POST /api/enrich-field
  *
  * Body: { fieldName: string; values: string[]; prompt: string }
@@ -56,7 +81,7 @@ ${JSON.stringify(uniqueVals)}
           { role: 'system', content: systemMsg },
           { role: 'user',   content: userMsg },
         ],
-        max_tokens: 3000,
+        max_tokens: 8000,
         temperature: 0.1,
         response_format: { type: 'json_object' },
       }),
@@ -69,7 +94,7 @@ ${JSON.stringify(uniqueVals)}
 
     const data = await res.json();
     const raw = data.choices?.[0]?.message?.content ?? '{}';
-    const mapping = JSON.parse(raw) as Record<string, string>;
+    const mapping = safeParseMapping(raw);
 
     // Validate: ensure returned keys are a subset of input values
     const inputSet = new Set(uniqueVals);
