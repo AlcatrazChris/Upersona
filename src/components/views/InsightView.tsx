@@ -5,6 +5,7 @@ import { Sparkles, RefreshCw, Loader2, Edit2, Check, X, ChevronDown } from 'luci
 import { filterRecords, getStatusOptions, getGeoOptions, type GeoLevel } from '@/lib/filterRecords';
 import { buildInsightContext, DEFAULT_INSIGHT_PROMPT, type ViewConfig, type StatusGroup } from '@/lib/viewConfig';
 import { useDatasetStore } from '@/store/datasetStore';
+import { MarkdownContent } from '@/components/ui/MarkdownContent';
 import type { Dataset } from '@/types/dataSchema';
 
 // ── Segment parser ────────────────────────────────────────────
@@ -392,7 +393,7 @@ export function InsightView({ dataset, viewConfig }: Props) {
             segments.map((seg, i) => <SegmentCard key={i} segment={seg} index={i} />)
           ) : (
             <div className="bg-white rounded-2xl border border-gray-100 p-6">
-              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{cachedResult}</p>
+              <MarkdownContent content={cachedResult} />
             </div>
           )}
         </div>

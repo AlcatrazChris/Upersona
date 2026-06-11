@@ -8,6 +8,7 @@ import { autoDetectViewConfig } from '@/lib/viewConfig';
 import { ManualOrderModal } from './ManualOrderModal';
 import { FieldAIEnrichModal } from './FieldAIEnrichModal';
 import { cn } from '@/lib/utils';
+import { isSkipValue } from '@/lib/skipPatterns';
 import type { Dataset, Field, FieldType } from '@/types/dataSchema';
 
 // ── Type config ────────────────────────────────────────────────────
@@ -257,11 +258,6 @@ function MissingBadge({ missing, count }: { missing: number; count: number }) {
 
 // ── FieldList ──────────────────────────────────────────────────────
 
-// Skip value patterns used for detection and cleaning
-const SKIP_PATTERNS = new Set([
-  '跳过', '跳', 'N/A', 'n/a', 'NA', 'na', '-', '—',
-  '不适用', '未作答', '未回答', '跳答', '免答',
-]);
 
 export function FieldList({ dataset }: { dataset: Dataset }) {
   const { updateFieldOrdering, removeField, updateViewConfig, cleanSkipValues } = useDatasetStore();
@@ -277,8 +273,7 @@ export function FieldList({ dataset }: { dataset: Dataset }) {
     for (const field of dataset.fields) {
       let count = 0;
       for (const record of dataset.records) {
-        const v = String(record[field.key] ?? '').trim();
-        if (SKIP_PATTERNS.has(v)) count++;
+        if (isSkipValue(record[field.key])) count++;
       }
       result[field.key] = count;
     }
@@ -314,9 +309,8 @@ export function FieldList({ dataset }: { dataset: Dataset }) {
             const stats   = field.statistics;
             const canSort = (field.type === 'single_choice' || field.type === 'multi_choice')
               && (field.options?.length ?? 0) >= 3;
-            const canAI      = !field.derived;
-            const skipCount  = skipCounts[field.key] ?? 0;
-            const canClean   = isAdmin && skipCount > 0;
+            const canAI     = !field.derived;
+            const skipCount = skipCounts[field.key] ?? 0;
 
             return (
               <div
@@ -395,15 +389,27 @@ export function FieldList({ dataset }: { dataset: Dataset }) {
                       AI 派生
                     </button>
                   )}
-                  {canClean && (
+                  {isAdmin && !field.derived && (
                     <button
-                      onClick={() => cleanSkipValues(dataset.id, field.key)}
-                      title={`将 ${skipCount} 条"跳过"类答案清空（不可撤销）`}
-                      className="inline-flex items-center justify-center gap-1 text-[11px] px-2 py-1 rounded-lg border bg-orange-50 text-orange-500 border-orange-200 hover:bg-orange-100 hover:text-orange-700 transition-colors w-full"
+                      disabled={skipCount === 0}
+                      onClick={() => skipCount > 0 && cleanSkipValues(dataset.id, field.key)}
+                      title={
+                        skipCount > 0
+                          ? `将 ${skipCount} 条"跳过"类答案清空（不可撤销）`
+                          : '未检测到跳过类答案（跳过 / N/A / — / 未填写 等）'
+                      }
+                      className={cn(
+                        'inline-flex items-center justify-center gap-1 text-[11px] px-2 py-1 rounded-lg border transition-colors w-full',
+                        skipCount > 0
+                          ? 'bg-orange-50 text-orange-500 border-orange-200 hover:bg-orange-100 hover:text-orange-700 cursor-pointer'
+                          : 'bg-gray-50 text-gray-300 border-gray-100 cursor-default',
+                      )}
                     >
                       <FilterX size={10} />
                       去除跳过
-                      <span className="ml-0.5 tabular-nums text-orange-400">({skipCount})</span>
+                      {skipCount > 0 && (
+                        <span className="ml-0.5 tabular-nums text-orange-400">({skipCount})</span>
+                      )}
                     </button>
                   )}
                 </div>

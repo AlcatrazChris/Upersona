@@ -16,6 +16,7 @@ import type { ChartType } from '@/components/charts/engine/types';
 import type { ChartConfig } from '@/lib/chartConfig';
 import type { PersonaConfig } from '@/types/personaSchema';
 import type { ViewConfig } from '@/lib/viewConfig';
+import { isSkipValue } from '@/lib/skipPatterns';
 
 export interface SavedChart {
   id: string;
@@ -225,11 +226,6 @@ export const useDatasetStore = create<DatasetStore>()(
       },
 
       cleanSkipValues(datasetId, fieldKey) {
-        const SKIP_PATTERNS = new Set([
-          '跳过', '跳', 'N/A', 'n/a', 'NA', 'na', '-', '—',
-          '不适用', '未作答', '未回答', '跳答', '免答',
-        ]);
-
         set(state => {
           const dataset = state.datasets.find(d => d.id === datasetId);
           if (!dataset) return state;
@@ -237,10 +233,9 @@ export const useDatasetStore = create<DatasetStore>()(
           if (!field) return state;
 
           // Replace skip values with empty string in records
-          const records = dataset.records.map(r => {
-            const raw = String(r[fieldKey] ?? '').trim();
-            return SKIP_PATTERNS.has(raw) ? { ...r, [fieldKey]: '' } : r;
-          });
+          const records = dataset.records.map(r =>
+            isSkipValue(r[fieldKey]) ? { ...r, [fieldKey]: '' } : r,
+          );
 
           // Recompute statistics for this field
           const values = records.map(r => r[fieldKey]);
@@ -260,7 +255,7 @@ export const useDatasetStore = create<DatasetStore>()(
 
           // Remove skip values from options array
           const newOptions = field.options
-            ? field.options.filter(o => !SKIP_PATTERNS.has(o.trim()))
+            ? field.options.filter(o => !isSkipValue(o))
             : undefined;
 
           const updatedField: Field = {

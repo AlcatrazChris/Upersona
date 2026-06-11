@@ -327,18 +327,26 @@ function DataManagementTab() {
                 </div>
 
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {/* Push to DB (admin only, local source only) */}
-                  {isAdmin && ds.source !== 'supabase' && (
+                  {/* Push / re-sync to DB (admin only) */}
+                  {isAdmin && (
                     <button
                       onClick={e => {
                         e.stopPropagation();
                         const full = getDataset(ds.id);
                         if (full) setPushingDs(full);
                       }}
-                      title="推送到 Supabase 数据库"
-                      className="flex items-center gap-1 p-1.5 rounded-lg hover:bg-blue-50 text-gray-300 hover:text-blue-500 transition-all"
+                      title={ds.source === 'supabase' ? '同步最新修改到 Supabase（覆盖）' : '推送到 Supabase 数据库'}
+                      className={cn(
+                        'flex items-center gap-1 p-1.5 rounded-lg transition-all',
+                        ds.source === 'supabase'
+                          ? 'text-gray-300 hover:bg-emerald-50 hover:text-emerald-600'
+                          : 'text-gray-300 hover:bg-blue-50 hover:text-blue-500',
+                      )}
                     >
-                      <CloudUpload size={13} />
+                      {ds.source === 'supabase'
+                        ? <RefreshCw size={13} />
+                        : <CloudUpload size={13} />
+                      }
                     </button>
                   )}
                   <button

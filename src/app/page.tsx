@@ -6,7 +6,8 @@ import { useDatasetStore, useActiveDataset } from '@/store/datasetStore';
 import { useIsAdmin } from '@/lib/auth';
 import { UserSection } from '@/components/auth/UserSection';
 import { autoDetectViewConfig } from '@/lib/viewConfig';
-import { useAutoSyncCloud } from '@/hooks/useAutoSyncCloud';
+import { useAutoSyncCloud }  from '@/hooks/useAutoSyncCloud';
+import { useConfigAutoSync } from '@/hooks/useConfigAutoSync';
 import { PersonaView }          from '@/components/views/PersonaView';
 import { RegionalView }         from '@/components/views/RegionalView';
 import { StatusView }           from '@/components/views/StatusView';
@@ -78,6 +79,8 @@ export default function MainPage() {
 
   // 自动拉取最新云端数据集（对 viewer 透明）
   const { syncing: cloudSyncing, syncedName } = useAutoSyncCloud();
+  // 配置变更后自动同步到云端（仅 supabase 来源数据集）
+  useConfigAutoSync(dataset);
 
   useEffect(() => {
     if (!dataset) return;

@@ -16,6 +16,7 @@ import { cookies }       from 'next/headers';
 import { verifyToken, COOKIE_NAME } from '@/lib/auth-server';
 import { getSupabaseAdmin }         from '@/lib/supabase';
 import type { Field }               from '@/types/dataSchema';
+import type { ViewConfig }          from '@/lib/viewConfig';
 
 // ── 鉴权辅助 ─────────────────────────────────────────────────────
 
@@ -104,21 +105,49 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return NextResponse.json({ error: '仅管理员可修改数据集' }, { status: 403 });
     }
 
-    let body: { fields?: Field[] };
+    let body: {
+      fields?:          Field[];
+      viewConfig?:      ViewConfig;
+      personaConfigs?:  unknown;
+      savedCharts?:     unknown;
+      canvasElements?:  unknown;
+    };
     try { body = await req.json() as typeof body; } catch {
       return NextResponse.json({ error: '请求格式错误' }, { status: 400 });
     }
 
     const sb = getSupabaseAdmin();
-    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (body.fields) patch.fields = body.fields;
 
-    const { error } = await sb
-      .from('upersona_datasets')
-      .update(patch)
-      .eq('id', params.id);
+    // Update dataset fields if provided
+    if (body.fields) {
+      const patch = { fields: body.fields, updated_at: new Date().toISOString() };
+      const { error } = await sb
+        .from('upersona_datasets')
+        .update(patch)
+        .eq('id', params.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // Update config if any config fields provided
+    const hasConfig = body.viewConfig !== undefined
+      || body.personaConfigs !== undefined
+      || body.savedCharts    !== undefined
+      || body.canvasElements !== undefined;
+
+    if (hasConfig) {
+      const configPatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (body.viewConfig     !== undefined) configPatch.view_config     = body.viewConfig;
+      if (body.personaConfigs !== undefined) configPatch.persona_configs = body.personaConfigs;
+      if (body.savedCharts    !== undefined) configPatch.saved_charts    = body.savedCharts;
+      if (body.canvasElements !== undefined) configPatch.canvas_elements = body.canvasElements;
+
+      const { error } = await sb
+        .from('upersona_dataset_configs')
+        .upsert({ dataset_id: params.id, ...configPatch }, { onConflict: 'dataset_id' });
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : '服务器内部错误';
