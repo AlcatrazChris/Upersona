@@ -135,17 +135,25 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       || body.canvasElements !== undefined;
 
     if (hasConfig) {
-      const configPatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      const now = new Date().toISOString();
+      const configPatch: Record<string, unknown> = { updated_at: now };
       if (body.viewConfig     !== undefined) configPatch.view_config     = body.viewConfig;
       if (body.personaConfigs !== undefined) configPatch.persona_configs = body.personaConfigs;
       if (body.savedCharts    !== undefined) configPatch.saved_charts    = body.savedCharts;
       if (body.canvasElements !== undefined) configPatch.canvas_elements = body.canvasElements;
 
-      const { error } = await sb
+      const { error: cfgErr } = await sb
         .from('upersona_dataset_configs')
         .upsert({ dataset_id: params.id, ...configPatch }, { onConflict: 'dataset_id' });
 
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (cfgErr) return NextResponse.json({ error: cfgErr.message }, { status: 500 });
+
+      // Bump the main dataset's updated_at so that useAutoSyncCloud timestamp comparison
+      // detects config-only changes and re-fetches the latest config for viewers.
+      await sb
+        .from('upersona_datasets')
+        .update({ updated_at: now })
+        .eq('id', params.id);
     }
 
     return NextResponse.json({ ok: true });

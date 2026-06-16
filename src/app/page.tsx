@@ -14,7 +14,7 @@ import { StatusView }           from '@/components/views/StatusView';
 import { InsightView }          from '@/components/views/InsightView';
 import { RegionalFeatureView }  from '@/components/views/RegionalFeatureView';
 import { DataCenterPanel }      from '@/components/views/DataCenterPanel';
-import { PersonaConfigEditor } from '@/components/persona/PersonaConfigEditor';
+import { PersonaConfigEditor }  from '@/components/persona/PersonaConfigEditor';
 import { cn } from '@/lib/utils';
 
 // ── View definitions ──────────────────────────────────────────────
@@ -32,7 +32,7 @@ const VIEW_SUBTITLES: Record<ViewId, string> = {
   persona:  '全量及筛选用户的维度分布',
   regional: '按地区对比人群特征差异',
   status:   '不同状态用户的特征对比',
-  insight:  '数据驱动的关键洞察',
+  insight:  '数据驱动的关键洞察与典型人群画像',
   rfeature: '地区 × 画像维度交叉特征表',
 };
 
@@ -239,8 +239,8 @@ export default function MainPage() {
 
           {dataset && (
             <div className="flex items-center gap-2.5 flex-shrink-0">
-              {/* 配置画像 — admin only, persona view only */}
-              {view === 'persona' && isAdmin && (
+              {/* 配置画像 — admin only, persona / insight view */}
+              {(view === 'persona' || view === 'insight') && isAdmin && (
                 <button
                   onClick={() => setPersonaConfig(true)}
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl bg-violet-600 text-white hover:bg-violet-700 transition-all shadow-sm font-medium"

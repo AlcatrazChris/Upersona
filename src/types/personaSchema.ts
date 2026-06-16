@@ -3,6 +3,7 @@
  *
  * PersonaConfig 定义了"一个数据集里的字段如何渲染成用户画像看板"。
  * 每种字段可以选不同的区块类型（标签云、统计徽标、分布图等）。
+ * 可选地定义 segments[]，用于驱动分群画像报告视图。
  */
 import type { ChartTypeRecommend } from './dataSchema';
 
@@ -41,6 +42,50 @@ export interface PersonaBlockField {
   };
 }
 
+// ═══════════ 分群报告类型 ═══════════
+
+/** 每个分群的颜色主题 */
+export type SegmentColor = 'red' | 'yellow' | 'green' | 'blue' | 'purple';
+
+export const SEGMENT_COLORS: Record<SegmentColor, {
+  bg: string; bar: string; accent: string; border: string; label: string;
+}> = {
+  red:    { bg: '#FEF2F2', bar: '#FCA5A5', accent: '#DC2626', border: '#FECACA', label: '红' },
+  yellow: { bg: '#FFFBEB', bar: '#FCD34D', accent: '#D97706', border: '#FDE68A', label: '黄' },
+  green:  { bg: '#F0FDF4', bar: '#86EFAC', accent: '#16A34A', border: '#BBF7D0', label: '绿' },
+  blue:   { bg: '#EFF6FF', bar: '#93C5FD', accent: '#2563EB', border: '#BFDBFE', label: '蓝' },
+  purple: { bg: '#FAF5FF', bar: '#C4B5FD', accent: '#7C3AED', border: '#DDD6FE', label: '紫' },
+};
+
+/** AI 生成的分群叙事（缓存在分群定义里） */
+export interface SegmentNarrative {
+  psych_title:   string;                                  // 消费心理标题
+  psych_text:    string;                                  // Markdown 正文
+  sections:      Array<{ title: string; content: string }>; // 各维度分析卡
+  purchase_text: string;                                  // 购车偏好 Markdown
+  generatedAt:   string;                                  // ISO 时间戳
+}
+
+/** 一个分群的完整定义 */
+export interface SegmentDef {
+  id:          string;
+  name:        string;               // "进取务实的职场中产"
+  color:       SegmentColor;
+  /** 筛选条件：filterField 字段的值在 filterValues 里 → 属于本分群
+   *  filterField 为空字符串 = 全量（不过滤）
+   */
+  filterField:  string;
+  filterValues: string[];
+  /** 最多 4 个画像词标签（虚线边框展示） */
+  keywords:    string[];
+  /** 左栏人口统计用哪些字段（按序排列） */
+  demoFields:  string[];
+  /** 右下角迷你对比图用哪些字段 */
+  chartFields: string[];
+  /** AI 生成的叙事文本（缓存，Package C 填充） */
+  cachedNarrative?: SegmentNarrative | null;
+}
+
 // ═══════════ 整张画像配置 ═══════════
 
 export interface PersonaConfig {
@@ -57,6 +102,8 @@ export interface PersonaConfig {
     showRecordCount?: boolean;
   };
   filters?: Record<string, string[]>;
+  /** 分群报告定义（Package A+B+C 驱动） */
+  segments?: SegmentDef[];
 }
 
 // ═══════════ 预置区块类型元信息 ═══════════

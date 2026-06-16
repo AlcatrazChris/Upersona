@@ -542,7 +542,26 @@ export function StatusView({ dataset, viewConfig }: Props) {
     ? '（请先选择状态组）'
     : `${selectedGroups.map(g => g.label).join(' vs ')} · ${personaFields.map(f => f.name).join('、').slice(0, 30)}`;
 
-  const STATUS_DEFAULT_PROMPT = `你是专业的用户研究分析师。请基于以下不同状态用户群体的对比数据，找出强意向用户的典型特征，分析各状态群体在各维度上的核心差异，并给出业务洞察与转化建议。请用简洁的中文回答，使用条目式结构。`;
+  const STATUS_DEFAULT_PROMPT = `你是专业的汽车品牌用户研究分析师，正在分析不同购买意向状态用户群体在各画像维度上的特征差异，目标是找出驱动购车转化的关键用户特征。数据已在上方 JSON 上下文中提供。
+
+请输出以下五部分结构化转化分析报告，每部分直接给出判断而非罗列数字：
+
+## 强意向用户画像
+描述强意向群体在各维度上的核心特征，直接指出与弱意向群体最显著的区别（哪些维度拉开距离最大）
+
+## 转化关键维度
+基于数据判断：哪2-3个维度特征与购车意向的相关性最强？说明依据
+
+## 流失风险信号
+低意向群体的典型画像是什么？最可能的流失原因和节点在哪里？
+
+## 差异化运营策略
+针对强/中性/弱意向用户，给出可落地的差异化触达建议（每条明确针对对象和行动）
+
+## 优先行动项
+综合以上，最值得立即执行的1-2个运营动作是什么？
+
+语言风格：专业且有洞察力，优先给出判断和结论；引用关键数据时用【XX%】格式（只引用上方真实数据，不编造）。`;
 
   function buildStatusContext() {
     return {
@@ -710,6 +729,12 @@ export function StatusView({ dataset, viewConfig }: Props) {
             })
           }
           defaultPrompt={STATUS_DEFAULT_PROMPT}
+          savedPrompt={viewConfig.viewPrompts?.['status']}
+          onPromptSave={p =>
+            updateViewConfig(dataset.id, {
+              viewPrompts: { ...(viewConfig.viewPrompts ?? {}), status: p },
+            })
+          }
           buildContext={buildStatusContext}
         />
       )}

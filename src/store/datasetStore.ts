@@ -287,7 +287,28 @@ export const useDatasetStore = create<DatasetStore>()(
             activeDatasetId: datasetId,
           };
           if (config?.view_config) {
-            next.viewConfigs = { ...state.viewConfigs, [datasetId]: config.view_config! };
+            const local = state.viewConfigs[datasetId];
+            // Merge: cloud provides structural fields (statusGroups, geo keys, etc.)
+            // Local insightPrompt wins when the user has explicitly set a custom one.
+            // Local insightResults wins (may contain freshly-generated AI outputs not yet synced).
+            next.viewConfigs = {
+              ...state.viewConfigs,
+              [datasetId]: {
+                ...config.view_config!,
+                // Preserve user-customised prompts; local wins over cloud defaults
+                ...(local?.insightPrompt ? { insightPrompt: local.insightPrompt } : {}),
+                ...(local?.viewPrompts   ? { viewPrompts:   local.viewPrompts   } : {}),
+                // Merge result caches: keep local entries that cloud doesn't have
+                insightResults: {
+                  ...(config.view_config!.insightResults ?? {}),
+                  ...(local?.insightResults ?? {}),
+                },
+                clusterResults: {
+                  ...(config.view_config!.clusterResults ?? {}),
+                  ...(local?.clusterResults ?? {}),
+                },
+              },
+            };
           }
           if (config?.persona_configs) {
             next.personaConfigs = { ...state.personaConfigs, [datasetId]: config.persona_configs! };

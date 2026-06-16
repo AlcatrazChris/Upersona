@@ -245,7 +245,23 @@ export function RegionalView({ dataset, viewConfig }: Props) {
     ? '（请先选择地区）'
     : `${selectedGeo.join(' vs ')} · ${dimensionField?.name ?? ''}`;
 
-  const REGIONAL_DEFAULT_PROMPT = `你是专业的用户研究分析师。请基于以下不同地区的用户数据对比，分析各地区用户群体在选定维度上的核心差异，找出显著特征，并给出数据驱动的业务洞察与建议。请用简洁的中文回答，使用条目式结构。`;
+  const REGIONAL_DEFAULT_PROMPT = `你是专业的汽车品牌用户研究分析师，正在分析不同地区用户群体在所选维度上的分布差异。数据已在上方 JSON 上下文中提供（含各地区分布及与均值偏差）。
+
+请输出以下四部分结构化报告，每部分直接给出判断而非罗列数字：
+
+## 显著差异
+哪些地区偏离整体均值最大？直接给出核心判断（如"X地区用户明显集中于Y特征"），说明差异幅度
+
+## 差异成因
+结合城市层级、消费结构、人口特点等，推断造成地区差异的背后原因（3-4点）
+
+## 核心洞察
+最有决策价值的1-2条发现，直接指向营销或产品决策
+
+## 运营建议
+基于差异给出具体可落地的分区运营或本地化策略（每条建议明确目标地区和行动）
+
+语言风格：专业且有洞察力，优先给出判断和结论；引用关键数据时用【XX%】格式（只引用上方真实数据，不编造）。`;
 
   function buildRegionalContext() {
     return {
@@ -398,6 +414,12 @@ export function RegionalView({ dataset, viewConfig }: Props) {
             })
           }
           defaultPrompt={REGIONAL_DEFAULT_PROMPT}
+          savedPrompt={viewConfig.viewPrompts?.['regional']}
+          onPromptSave={p =>
+            updateViewConfig(dataset.id, {
+              viewPrompts: { ...(viewConfig.viewPrompts ?? {}), regional: p },
+            })
+          }
           buildContext={buildRegionalContext}
         />
       )}

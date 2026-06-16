@@ -46,31 +46,64 @@ export interface ViewConfig {
   geoCityKey?:        string;
   personaFieldKeys?:  string[];
   insightPrompt?:     string;
-  insightResults?:    Record<string, string>; // context-hash → AI result
+  /** per-view custom AI prompts: key = view id ('regional' | 'status' | 'rfeature') */
+  viewPrompts?:       Record<string, string>;
+  insightResults?:    Record<string, string>;
+  clusterResults?:    Record<string, ClusterInsightResult>;
+}
+
+// ── Cluster insight types ─────────────────────────────────────
+
+export interface ClusterDimension {
+  top_value: string;
+  est_pct:   number;
+}
+
+export interface ClusterSegment {
+  name:                 string;
+  subtitle:             string;
+  estimated_pct:        number;
+  key_traits:           string[];
+  core_insight:         string;
+  purchase_motivation?: string;
+  dimensions?:          Record<string, ClusterDimension>;
+}
+
+export interface ClusterInsightResult {
+  segments:    ClusterSegment[];
+  overview?:   string;
+  generatedAt: string;
 }
 
 // ── Default insight prompt ────────────────────────────────────
 
-export const DEFAULT_INSIGHT_PROMPT = `你是专业的用户研究分析师。请基于以下调研数据，为当前筛选人群生成核心用户画像分析。
+export const DEFAULT_INSIGHT_PROMPT = `你是资深汽车行业用户研究分析师，擅长从调研数据中洞察购车用户的行为特征与消费心理。请基于以下数据，为当前筛选人群生成核心用户画像报告。
 
-分析要求：
-1. 识别 1-2 个具有代表性的用户群体
-2. 每个群体给出简洁的标签（格式：职业/特征·行为特点）
-3. 从以下维度分析：人群基本信息、人群兴趣点、消费习惯预测
-4. 引用具体数据（百分比、与全量对比差值 ±X%）
+**分析维度（按优先级）：**
+1. **人群画像**：年龄/性别/城市线级/职业/收入等基础特征，标注与全量的显著差异（±X%）
+2. **购车决策**：核心购买动机（空间/动力/智能/品牌/价格等）、决策周期、信息获取渠道
+3. **竞争态势**：主要竞品考虑集合，本品牌/车型的核心胜出点与潜在流失风险
+4. **生活方式与价值观**：家庭结构、出行场景、兴趣偏好，折射出的消费价值取向
+5. **关键洞察**：1-2条最值得关注的结论，直接用于产品/营销决策
 
-输出格式（严格遵守，不要输出其他内容）：
+**输出格式（严格遵守）：**
 人群A
-[简洁标题]
-• 人群基本信息：...（含具体比例和与全量差异）
-• 人群兴趣点：...（含具体比例）
-• 消费习惯预测：...（含决策因素和行为预测）
+[简洁群体标签，例如：进取务实的新中产·家庭首购]
+• 人群画像：...（核心特征 + 与全量差异）
+• 购车决策：...（动机、渠道、周期）
+• 竞品对比：...（考虑过哪些车，为何选/不选本品牌）
+• 生活方式：...（场景、价值观）
+• 关键洞察：...
 
 人群B（如有）
-[标题]
-• 人群基本信息：...
-• 人群兴趣点：...
-• 消费习惯预测：...`;
+[标签]
+• 人群画像：...
+• 购车决策：...
+• 竞品对比：...
+• 生活方式：...
+• 关键洞察：...
+
+**注意：引用真实数据百分比，不得编造；与全量差异用 ±X% 标注。**`;
 
 // ── Auto-detection ────────────────────────────────────────────
 
@@ -112,7 +145,8 @@ export function autoDetectViewConfig(dataset: Dataset): ViewConfig {
     .filter(f => f.type !== 'text' && !exclude.has(f.key))
     .map(f => f.key);
 
-  config.insightPrompt = DEFAULT_INSIGHT_PROMPT;
+  // intentionally NOT setting insightPrompt here — only the user explicitly saves it,
+  // so autoDetect never pollutes the cloud with a default that overwrites custom prompts.
   return config;
 }
 

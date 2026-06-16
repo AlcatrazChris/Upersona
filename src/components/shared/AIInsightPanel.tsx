@@ -3,11 +3,12 @@
 /**
  * AIInsightPanel — 可嵌入任意视图的 AI 洞察折叠面板
  *
- * 默认折叠，展开后可生成洞察、编辑提示词（仅管理员）、查看缓存结果。
- * 结果通过 onCache 回调由父组件持久化。
+ * - savedPrompt / onPromptSave：让父组件把自定义提示词持久化到 viewConfig，
+ *   防止 Tab 切换后组件重新挂载时恢复默认值。
+ * - InsightResult：支持 ## 标题、**粗体**、【高亮】、有序/无序列表的渲染。
  */
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   Sparkles, ChevronDown, ChevronUp,
   RefreshCw, Loader2, Edit2, Check, X,
@@ -15,42 +16,135 @@ import {
 import { cn } from '@/lib/utils';
 import { useIsAdmin } from '@/lib/auth';
 
-// ── Prompt editor ──────────────────────────────────────────────
+// ── Inline rich-text renderer ─────────────────────────────────
+
+function renderInline(text: string): React.ReactNode {
+  // Split by **bold** and 【highlight】 patterns
+  const parts = text.split(/(\*\*[^*]+\*\*|【[^】]+】)/);
+  if (parts.length === 1) return text;
+  return (
+    <>
+      {parts.map((p, i) => {
+        if (p.startsWith('**') && p.endsWith('**'))
+          return <strong key={i} className="font-semibold text-gray-800">{p.slice(2, -2)}</strong>;
+        if (p.startsWith('【') && p.endsWith('】'))
+          return <span key={i} className="font-semibold text-blue-600">{p.slice(1, -1)}</span>;
+        return p;
+      })}
+    </>
+  );
+}
+
+// ── Result renderer ───────────────────────────────────────────
+
+function InsightResult({ text }: { text: string }) {
+  const lines = text.split('\n').filter(l => l.trim());
+
+  type Item =
+    | { t: 'h2';      text: string }
+    | { t: 'h3';      text: string }
+    | { t: 'bullet';  text: string }
+    | { t: 'numitem'; n: number; text: string }
+    | { t: 'para';    text: string };
+
+  const items: Item[] = lines.map(raw => {
+    const l = raw.trim();
+    if (/^##\s/.test(l))
+      return { t: 'h2',     text: l.replace(/^#+\s*/, '') } as Item;
+    if (/^###\s/.test(l) || /^[一二三四五六七八九十]+[.、]/.test(l))
+      return { t: 'h3',     text: l.replace(/^###\s*|^[一二三四五六七八九十]+[.、]\s*/, '') } as Item;
+    if (/^[•·\-*]\s/.test(l))
+      return { t: 'bullet', text: l.replace(/^[•·\-*]\s+/, '') } as Item;
+    const nm = l.match(/^(\d+)[.、]\s+([\s\S]+)/);
+    if (nm) return { t: 'numitem', n: parseInt(nm[1]), text: nm[2] } as Item;
+    return { t: 'para', text: l } as Item;
+  });
+
+  // If no structure at all, fall back to plain pre-wrap text
+  const hasStructure = items.some(i => i.t !== 'para');
+  if (!hasStructure) {
+    return <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{text}</p>;
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {items.map((item, idx) => {
+        if (item.t === 'h2') {
+          return (
+            <div key={idx} className={cn(idx > 0 && 'mt-4')}>
+              <div className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-1 mb-2">
+                {renderInline(item.text)}
+              </div>
+            </div>
+          );
+        }
+        if (item.t === 'h3') {
+          return (
+            <div key={idx} className={cn(idx > 0 && 'mt-3')}>
+              <div className="text-sm font-semibold text-gray-700">{renderInline(item.text)}</div>
+            </div>
+          );
+        }
+        if (item.t === 'bullet') {
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0 mt-[6px]" />
+              <span className="text-sm text-gray-600 leading-relaxed">{renderInline(item.text)}</span>
+            </div>
+          );
+        }
+        if (item.t === 'numitem') {
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-1">
+              <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                {item.n}
+              </span>
+              <span className="text-sm text-gray-600 leading-relaxed">{renderInline(item.text)}</span>
+            </div>
+          );
+        }
+        return (
+          <p key={idx} className="text-sm text-gray-600 leading-relaxed pl-1">
+            {renderInline(item.text)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Prompt editor ─────────────────────────────────────────────
 
 function PromptEditor({
-  prompt, onSave, onClose,
+  prompt, defaultPrompt, onSave, onClose,
 }: {
-  prompt:  string;
-  onSave:  (p: string) => void;
-  onClose: () => void;
+  prompt:        string;
+  defaultPrompt: string;
+  onSave:        (p: string) => void;
+  onClose:       () => void;
 }) {
   const [val, setVal] = useState(prompt);
   return (
     <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-gray-600">编辑提示词</span>
-        <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600">
-          <X size={13} />
-        </button>
+        <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600"><X size={13} /></button>
       </div>
       <textarea
         value={val}
         onChange={e => setVal(e.target.value)}
-        rows={6}
+        rows={8}
         className="w-full text-xs border border-gray-200 rounded-xl p-3 outline-none focus:border-blue-400 resize-none leading-relaxed text-gray-700 font-mono"
       />
       <div className="flex items-center gap-2">
         <button
-          onClick={() => setVal(prompt)}
+          onClick={() => setVal(defaultPrompt)}
           className="text-xs text-gray-400 hover:text-gray-600"
         >
-          还原
+          还原默认
         </button>
         <div className="flex-1" />
-        <button
-          onClick={onClose}
-          className="text-xs px-3 py-1.5 rounded-xl text-gray-500 hover:bg-gray-200"
-        >
+        <button onClick={onClose} className="text-xs px-3 py-1.5 rounded-xl text-gray-500 hover:bg-gray-200">
           取消
         </button>
         <button
@@ -65,86 +159,42 @@ function PromptEditor({
   );
 }
 
-// ── Result renderer ────────────────────────────────────────────
-
-function InsightResult({ text }: { text: string }) {
-  // Parse simple bullet structure
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  const blocks: { heading?: string; bullets: string[] }[] = [];
-  let cur: { heading?: string; bullets: string[] } = { bullets: [] };
-
-  for (const line of lines) {
-    if (/^#{1,3}\s/.test(line) || /^[一二三四五六七八九十\d]+[.、]/.test(line)) {
-      if (cur.bullets.length || cur.heading) blocks.push(cur);
-      cur = { heading: line.replace(/^#{1,3}\s|^[一二三四五六七八九十\d]+[.、]\s*/, ''), bullets: [] };
-    } else if (/^[•·\-*]/.test(line)) {
-      cur.bullets.push(line.replace(/^[•·\-*]\s*/, ''));
-    } else {
-      if (cur.bullets.length === 0 && !cur.heading) {
-        cur.heading = line;
-      } else {
-        cur.bullets.push(line);
-      }
-    }
-  }
-  if (cur.bullets.length || cur.heading) blocks.push(cur);
-
-  if (blocks.length <= 1) {
-    // Plain text fallback
-    return (
-      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{text}</p>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {blocks.map((b, i) => (
-        <div key={i}>
-          {b.heading && (
-            <h4 className="text-sm font-semibold text-gray-800 mb-1.5">{b.heading}</h4>
-          )}
-          {b.bullets.length > 0 && (
-            <ul className="space-y-1">
-              {b.bullets.map((bullet, j) => (
-                <li key={j} className="flex items-start gap-2 text-sm text-gray-600 leading-relaxed">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0 mt-1.5" />
-                  {bullet}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── AIInsightPanel ─────────────────────────────────────────────
+// ── AIInsightPanel ────────────────────────────────────────────
 
 export interface AIInsightPanelProps {
-  /** 展示在折叠栏上的标签，说明当前分析对象 */
-  label:        string;
-  /** 用于缓存的唯一 key（由父组件根据当前筛选状态生成） */
-  cacheKey:     string;
-  /** 缓存的历史结果（来自 viewConfig.insightResults） */
-  cachedResult?: string;
-  /** 结果生成后回调，供父组件保存到 viewConfig */
-  onCache:      (key: string, result: string) => void;
-  /** 默认提示词（首次使用） */
-  defaultPrompt: string;
-  /** 构建 AI 请求的 context（惰性求值，仅在点击生成时调用） */
-  buildContext: () => object;
+  label:          string;
+  cacheKey:       string;
+  cachedResult?:  string;
+  onCache:        (key: string, result: string) => void;
+  defaultPrompt:  string;
+  /** Persisted custom prompt from viewConfig — survives tab navigation */
+  savedPrompt?:   string;
+  /** Called when user saves a new prompt so parent can persist it */
+  onPromptSave?:  (p: string) => void;
+  buildContext:   () => object;
 }
 
 export function AIInsightPanel({
-  label, cacheKey, cachedResult, onCache, defaultPrompt, buildContext,
+  label, cacheKey, cachedResult, onCache,
+  defaultPrompt, savedPrompt, onPromptSave, buildContext,
 }: AIInsightPanelProps) {
-  const isAdmin       = useIsAdmin();
-  const [expanded,    setExpanded]    = useState(false);
-  const [editPrompt,  setEditPrompt]  = useState(false);
-  const [prompt,      setPrompt]      = useState(defaultPrompt);
-  const [loading,     setLoading]     = useState(false);
-  const [error,       setError]       = useState('');
+  const isAdmin = useIsAdmin();
+
+  const [expanded,   setExpanded]   = useState(false);
+  const [editPrompt, setEditPrompt] = useState(false);
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState('');
+
+  // Local prompt state initialised from persisted value (or default).
+  // Syncs when an external update arrives (e.g. another admin saves a new prompt via cloud).
+  const [prompt, setPrompt] = useState(savedPrompt ?? defaultPrompt);
+  const prevSavedRef = useRef(savedPrompt);
+  useEffect(() => {
+    if (savedPrompt !== prevSavedRef.current) {
+      prevSavedRef.current = savedPrompt;
+      setPrompt(savedPrompt ?? defaultPrompt);
+    }
+  }, [savedPrompt, defaultPrompt]);
 
   async function generate(p: string) {
     setLoading(true);
@@ -167,45 +217,36 @@ export function AIInsightPanel({
     }
   }
 
+  function handlePromptSave(p: string) {
+    setPrompt(p);
+    onPromptSave?.(p);
+    generate(p);
+  }
+
   return (
     <div className={cn(
       'rounded-2xl border transition-all overflow-hidden',
-      expanded
-        ? 'bg-white border-blue-100 shadow-sm'
-        : 'bg-white border-gray-100 hover:border-blue-100',
+      expanded ? 'bg-white border-blue-100 shadow-sm' : 'bg-white border-gray-100 hover:border-blue-100',
     )}>
 
-      {/* ── Toggle bar ── */}
+      {/* Toggle bar */}
       <button
         onClick={() => setExpanded(o => !o)}
         className="w-full flex items-center gap-2 px-5 py-3.5 text-left"
       >
-        <Sparkles size={14} className={cn(
-          'flex-shrink-0 transition-colors',
-          expanded ? 'text-blue-500' : 'text-gray-400',
-        )} />
-        <span className={cn(
-          'text-sm font-medium transition-colors',
-          expanded ? 'text-blue-700' : 'text-gray-500',
-        )}>
+        <Sparkles size={14} className={cn('flex-shrink-0 transition-colors', expanded ? 'text-blue-500' : 'text-gray-400')} />
+        <span className={cn('text-sm font-medium transition-colors', expanded ? 'text-blue-700' : 'text-gray-500')}>
           AI 洞察
         </span>
         {cachedResult && !loading && (
-          <span className="text-[10px] text-blue-400 bg-blue-50 px-1.5 py-0.5 rounded-md">
-            已生成
-          </span>
+          <span className="text-[10px] text-blue-400 bg-blue-50 px-1.5 py-0.5 rounded-md">已生成</span>
         )}
-        <span className="text-[11px] text-gray-400 flex-1 truncate pl-1">
-          {label}
-        </span>
-        {expanded ? (
-          <ChevronUp size={13} className="text-gray-400 flex-shrink-0" />
-        ) : (
-          <ChevronDown size={13} className="text-gray-400 flex-shrink-0" />
-        )}
+        <span className="text-[11px] text-gray-400 flex-1 truncate pl-1">{label}</span>
+        {expanded
+          ? <ChevronUp size={13} className="text-gray-400 flex-shrink-0" />
+          : <ChevronDown size={13} className="text-gray-400 flex-shrink-0" />}
       </button>
 
-      {/* ── Expanded body ── */}
       {expanded && (
         <div className="px-5 pb-5 space-y-4 border-t border-gray-50">
 
@@ -231,28 +272,24 @@ export function AIInsightPanel({
               disabled={loading}
               className="flex items-center gap-1.5 text-xs px-4 py-1.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
-              {loading
-                ? <Loader2 size={12} className="animate-spin" />
-                : <RefreshCw size={12} />}
+              {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
               {cachedResult ? '重新生成' : '生成洞察'}
             </button>
           </div>
 
-          {/* Prompt editor */}
           {editPrompt && (
             <PromptEditor
               prompt={prompt}
-              onSave={p => { setPrompt(p); generate(p); }}
+              defaultPrompt={defaultPrompt}
+              onSave={handlePromptSave}
               onClose={() => setEditPrompt(false)}
             />
           )}
 
-          {/* Error */}
           {error && (
             <div className="text-xs text-red-500 bg-red-50 rounded-xl px-4 py-3">{error}</div>
           )}
 
-          {/* Loading */}
           {loading && (
             <div className="flex flex-col items-center gap-2 py-8 text-gray-400">
               <Loader2 size={20} className="animate-spin text-blue-400" />
@@ -260,14 +297,12 @@ export function AIInsightPanel({
             </div>
           )}
 
-          {/* Result */}
           {!loading && cachedResult && (
             <div className="bg-gray-50 rounded-xl p-4">
               <InsightResult text={cachedResult} />
             </div>
           )}
 
-          {/* Empty state */}
           {!loading && !cachedResult && !error && (
             <div className="text-center py-6 text-gray-400">
               <Sparkles size={20} className="mx-auto mb-2 opacity-30" />

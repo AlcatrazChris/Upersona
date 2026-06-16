@@ -7,7 +7,7 @@
  * 颜色编码：红 > +5%，蓝 < -5%，加粗 |delta| > 10%
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { Download, RefreshCw, Loader2, Sparkles, Edit2, Check, X, Search, Plus, ChevronDown } from 'lucide-react';
 import { filterRecords, getStatusOptions, type GeoLevel } from '@/lib/filterRecords';
 import { useDatasetStore } from '@/store/datasetStore';
@@ -279,23 +279,42 @@ function RegionPickerDropdown({
 // ── AI summary table ────────────────────────────────────────────
 
 const DEFAULT_AI_PROMPT =
-  '你是专业的用户研究分析师。请基于以下各地区的画像数据，针对每个维度分别为每个地区生成2-4个关键词或短语描述该维度的典型特征，便于快速比较各地区差异。\n\n请严格按照如下格式输出（每个维度一个块，各地区独占一行）：\n[维度名]\n地区1: 关键词1、关键词2\n地区2: 关键词1、关键词2';
+  `你是专业的汽车品牌用户研究分析师，正在对各地区用户画像进行横向对比，目标是快速识别各地区的差异化用户特征。数据已在上方 JSON 上下文中提供。
+
+针对每个维度，请为每个地区提炼2-4个判断性描述词（不要直接说"占比最高"，而是说"理性价值导向"这类有洞察力的描述），可在括号中补充关键数据。
+
+请严格按照如下格式输出（每个维度一个块，各地区独占一行，不要输出其他任何内容）：
+[维度名]
+地区1: 特征词1、特征词2（关键数据）
+地区2: 特征词1、特征词2`;
 
 interface AISummaryProps {
-  profiles:     RegionProfile[];
-  fields:       Field[];
-  datasetName:  string;
-  cachedResult: string | undefined;
-  onCache:      (result: string) => void;
+  profiles:      RegionProfile[];
+  fields:        Field[];
+  datasetName:   string;
+  cachedResult:  string | undefined;
+  onCache:       (result: string) => void;
+  savedPrompt?:  string;
+  onPromptSave?: (p: string) => void;
 }
 
-function AISummaryTable({ profiles, fields, datasetName, cachedResult, onCache }: AISummaryProps) {
+function AISummaryTable({ profiles, fields, datasetName, cachedResult, onCache, savedPrompt, onPromptSave }: AISummaryProps) {
   const isAdmin   = useIsAdmin();
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState('');
   const [editPrompt, setEditPrompt] = useState(false);
-  const [prompt,     setPrompt]     = useState(DEFAULT_AI_PROMPT);
-  const [draftPrompt, setDraftPrompt] = useState(DEFAULT_AI_PROMPT);
+  const [prompt,     setPrompt]     = useState(savedPrompt ?? DEFAULT_AI_PROMPT);
+  const [draftPrompt, setDraftPrompt] = useState(savedPrompt ?? DEFAULT_AI_PROMPT);
+
+  // Sync if an external update arrives (e.g. from cloud or another session)
+  const prevSavedRef = useRef(savedPrompt);
+  useEffect(() => {
+    if (savedPrompt !== prevSavedRef.current) {
+      prevSavedRef.current = savedPrompt;
+      setPrompt(savedPrompt ?? DEFAULT_AI_PROMPT);
+      setDraftPrompt(savedPrompt ?? DEFAULT_AI_PROMPT);
+    }
+  }, [savedPrompt]);
 
   async function generate() {
     setLoading(true);
@@ -406,7 +425,7 @@ function AISummaryTable({ profiles, fields, datasetName, cachedResult, onCache }
               取消
             </button>
             <button
-              onClick={() => { setPrompt(draftPrompt); setEditPrompt(false); generate(); }}
+              onClick={() => { setPrompt(draftPrompt); onPromptSave?.(draftPrompt); setEditPrompt(false); generate(); }}
               className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700"
             >
               <Check size={10} />
@@ -756,6 +775,12 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
           onCache={result =>
             updateViewConfig(dataset.id, {
               insightResults: { ...(viewConfig.insightResults ?? {}), [aiCacheKey]: result },
+            })
+          }
+          savedPrompt={viewConfig.viewPrompts?.['rfeature']}
+          onPromptSave={p =>
+            updateViewConfig(dataset.id, {
+              viewPrompts: { ...(viewConfig.viewPrompts ?? {}), rfeature: p },
             })
           }
         />
