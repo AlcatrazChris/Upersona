@@ -19,13 +19,16 @@ export interface ChartConfig {
   barOpacity:      number;
   chartHeight:     number;
   minBarSize:      number;
+  topN?:           number;   // 0 or undefined = show all; positive = top N bars + 其他
+  compact?:        boolean;  // tighter bar spacing and card padding
 }
 
 export type ColorScheme =
-  | 'ios' | 'ocean' | 'sunset' | 'forest' | 'lavender' | 'mono' | 'brand'
+  | 'mckinsey' | 'ios' | 'ocean' | 'sunset' | 'forest' | 'lavender' | 'mono' | 'brand'
   | 'warm' | 'earth' | 'pastel' | 'neon' | 'cool';
 
-export const COLOR_SCHEMES: Record<ColorScheme, { name: string; colors: string[]; preview: string[] }> = {
+export const COLOR_SCHEMES: Record<ColorScheme, { name: string; colors: string[]; preview: string[]; singleColor?: boolean }> = {
+  mckinsey: { name: '麦肯锡',   singleColor: true,  preview: ['#003087','#1a5496','#5493c2','#c85a12','#748087'], colors: ['#003087','#1a5496','#3674a8','#5493c2','#7fb3d6','#9bbbd6','#c85a12','#748087','#1a3f6b','#4d7ba3'] },
   ios:      { name: 'iOS 系统',  preview: ['#007AFF','#34C759','#FF9500','#5856D6','#FF2D55'], colors: ['#007AFF','#34C759','#FF9500','#5856D6','#FF2D55','#5AC8FA','#AF52DE','#FFCC00','#32ADE6','#FF3B30'] },
   ocean:    { name: '海洋蓝绿',  preview: ['#006994','#0099CC','#00BCD4','#4DD0E1','#80DEEA'], colors: ['#006994','#0099CC','#00BCD4','#26C6DA','#4DD0E1','#80DEEA','#B2EBF2','#0277BD','#01579B','#0288D1'] },
   sunset:   { name: '日落橙红',  preview: ['#E53935','#F4511E','#FB8C00','#FDD835','#FF7043'], colors: ['#E53935','#F4511E','#FB8C00','#FDD835','#FF7043','#EF5350','#FF8A65','#FFCA28','#FF6F00','#BF360C'] },
@@ -41,23 +44,25 @@ export const COLOR_SCHEMES: Record<ColorScheme, { name: string; colors: string[]
 };
 
 export const DEFAULT_CHART_CONFIG: ChartConfig = {
-  colorScheme:     'ios',
+  colorScheme:     'mckinsey',
   showXAxis:       true,
   showYAxis:       true,
-  showGrid:        false,
+  showGrid:        true,
   showLabel:       true,
   labelType:       'pct',
   showLegend:      true,
   legendPosition:  'bottom',
   showSampleCount: true,
   showTooltip:     true,
-  axisFontSize:    12,
+  axisFontSize:    11,
   labelFontSize:   11,
-  legendFontSize:  12,
-  barRadius:       4,
-  barOpacity:      0.82,
-  chartHeight:     320,
+  legendFontSize:  11,
+  barRadius:       0,
+  barOpacity:      1,
+  chartHeight:     300,
   minBarSize:      22,
+  topN:            0,
+  compact:         false,
 };
 
 // 通用 pageKey（任意字符串即可，用于 localStorage 隔离）
@@ -81,4 +86,8 @@ export function saveChartConfig(page: PageKey, config: ChartConfig): void {
 
 export function getColors(scheme: ColorScheme): string[] {
   return COLOR_SCHEMES[scheme].colors;
+}
+
+export function isSingleColorScheme(scheme: ColorScheme): boolean {
+  return !!COLOR_SCHEMES[scheme].singleColor;
 }

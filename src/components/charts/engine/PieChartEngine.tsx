@@ -2,20 +2,23 @@
 
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts';
 import { getColors } from '@/lib/chartConfig';
-import { ChartTooltip, PieSliceLabel } from './shared';
+import { ChartTooltip, PieSliceLabel, applyTopN } from './shared';
 import type { ChartEngineProps } from './types';
+
+const OTHERS_COLOR = '#b0bec5';
 
 interface PieProps extends ChartEngineProps {
   donut?: boolean;
 }
 
 export function PieChartEngine({
-  data, config, isMultiSelect = false, totalSamples, height, donut = true,
+  data: rawData, config, isMultiSelect = false, totalSamples, height, donut = true,
 }: PieProps) {
-  const colors = getColors(config.colorScheme);
-  const chartH = height ?? 280;
-  const innerR = donut ? 44 : 0;
-  const outerR = donut ? 78 : 88;
+  const data    = applyTopN(rawData, config.topN);
+  const colors  = getColors(config.colorScheme);
+  const chartH  = height ?? 280;
+  const innerR  = donut ? 44 : 0;
+  const outerR  = donut ? 78 : 88;
 
   return (
     <div style={{ height: chartH }}>
@@ -39,8 +42,12 @@ export function PieChartEngine({
             )}
             labelLine={false}
           >
-            {data.map((_, i) => (
-              <Cell key={i} fill={colors[i % colors.length]} fillOpacity={config.barOpacity} />
+            {data.map((item, i) => (
+              <Cell
+                key={i}
+                fill={item.label === '其他' ? OTHERS_COLOR : colors[i % colors.length]}
+                fillOpacity={config.barOpacity}
+              />
             ))}
           </Pie>
           {config.showTooltip && (

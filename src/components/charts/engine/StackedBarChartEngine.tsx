@@ -56,16 +56,16 @@ function TooltipContent({
   const entries = [...payload].reverse();
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-lg p-3 min-w-[160px] max-w-[220px]">
-      <div className="text-xs font-semibold text-gray-700 mb-1.5">
+    <div className="bg-white border border-gray-300 p-3 min-w-[160px] max-w-[220px]" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.10)' }}>
+      <div className="text-[11px] font-medium text-gray-800 mb-1.5">
         {label}
-        <span className="text-gray-400 font-normal ml-1.5">n={total.toLocaleString()}</span>
+        <span className="text-gray-400 font-normal ml-1.5 tabular-nums">n={total.toLocaleString()}</span>
       </div>
       {entries.map(e => {
         const raw = data.rawCounts[label]?.[e.name] ?? 0;
         return (
-          <div key={e.name} className="flex items-center gap-1.5 text-xs text-gray-600 py-0.5">
-            <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: e.color }} />
+          <div key={e.name} className="flex items-center gap-1.5 text-[11px] text-gray-600 py-0.5">
+            <span className="w-2 h-2 flex-shrink-0" style={{ background: e.color }} />
             <span className="flex-1 truncate">{e.name}</span>
             <span className="font-semibold tabular-nums">{e.value.toFixed(1)}%</span>
             <span className="text-gray-400 tabular-nums ml-0.5">({raw})</span>

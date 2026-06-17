@@ -17,18 +17,13 @@ interface Props {
   height?:   number;
 }
 
-// 0-100 → CSS rgba blue-purple gradient
+// 0-100 → McKinsey navy monochromatic (#003087 with opacity)
 function heatColor(pct: number): { bg: string; text: string } {
   if (pct <= 0) return { bg: 'transparent', text: 'transparent' };
-  // map pct [0-100] → opacity [0.06-0.92]
-  const opacity = 0.06 + (pct / 100) * 0.86;
-  // shift hue: low pct → blue-200, high pct → violet-700
-  const r = Math.round(79  + (pct / 100) * (109 - 79));
-  const g = Math.round(130 + (pct / 100) * (40  - 130));
-  const b = Math.round(246 + (pct / 100) * (217 - 246));
+  const opacity = 0.07 + (pct / 100) * 0.88;
   return {
-    bg:   `rgba(${r},${g},${b},${opacity.toFixed(2)})`,
-    text: pct >= 20 ? '#fff' : pct >= 8 ? '#4338ca' : '#94a3b8',
+    bg:   `rgba(0,48,135,${opacity.toFixed(2)})`,
+    text: pct >= 28 ? '#fff' : pct >= 10 ? '#003087' : '#94a3b8',
   };
 }
 
@@ -47,16 +42,16 @@ export function RankingHeatmapEngine({ data, fieldName }: Props) {
       <table className="w-full border-separate border-spacing-[3px]">
         <thead>
           <tr>
-            <th className="text-left px-2 py-1 text-[10.5px] font-semibold text-gray-400 uppercase tracking-wide min-w-[120px]">
+            <th className="text-left px-2 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-widest min-w-[120px]">
               {fieldName}
             </th>
             {posLabels.map(pos => (
               <th key={pos}
-                  className="text-center px-1 py-1 text-[10.5px] font-semibold text-gray-400 uppercase tracking-wide min-w-[52px]">
+                  className="text-center px-1 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-widest min-w-[52px]">
                 {pos}
               </th>
             ))}
-            <th className="text-right px-2 py-1 text-[10.5px] font-semibold text-gray-400 uppercase tracking-wide min-w-[52px]">
+            <th className="text-right px-2 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-widest min-w-[52px]">
               均名
             </th>
           </tr>
@@ -64,7 +59,7 @@ export function RankingHeatmapEngine({ data, fieldName }: Props) {
         <tbody>
           {rows.map((row, ri) => (
             <tr key={row.option}>
-              <td className="px-2 py-1.5 font-medium text-gray-700 leading-tight max-w-[140px]">
+              <td className="px-2 py-1.5 text-[12px] font-medium text-gray-700 leading-tight max-w-[140px]">
                 <div className="truncate" title={row.option}>{row.option}</div>
               </td>
 
@@ -72,11 +67,11 @@ export function RankingHeatmapEngine({ data, fieldName }: Props) {
                 const { bg, text } = heatColor(pct);
                 return (
                   <td key={pi}
-                      className="rounded-lg text-center tabular-nums leading-tight"
+                      className="text-center tabular-nums leading-tight"
                       style={{ background: bg }}>
                     <div className="px-1 py-2" style={{ color: text }}>
                       {pct > 0
-                        ? <><span className="font-semibold">{pct.toFixed(0)}</span><span className="text-[9px]">%</span></>
+                        ? <><span className="font-semibold text-[11px]">{pct.toFixed(0)}</span><span className="text-[9px]">%</span></>
                         : <span className="text-gray-200">·</span>
                       }
                     </div>
@@ -84,14 +79,11 @@ export function RankingHeatmapEngine({ data, fieldName }: Props) {
                 );
               })}
 
-              <td className="px-2 py-1.5 text-right tabular-nums">
-                <span className={
-                  ri === 0
-                    ? 'font-bold text-indigo-700'
-                    : ri === rows.length - 1
-                      ? 'text-gray-400'
-                      : 'text-gray-600'
-                }>
+              <td className="px-2 py-1.5 text-right tabular-nums text-[12px]">
+                <span
+                  className={ri === rows.length - 1 ? 'text-gray-400' : 'text-gray-600'}
+                  style={ri === 0 ? { color: '#003087', fontWeight: 700 } : {}}
+                >
                   {row.meanRank.toFixed(1)}
                 </span>
               </td>

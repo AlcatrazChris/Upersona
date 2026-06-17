@@ -11,7 +11,13 @@ interface Props {
 }
 
 export function ManualOrderModal({ field, onClose, onSave }: Props) {
-  const original = field.options ?? [];
+  // options can be undefined if dataset was loaded from cloud without recomputing;
+  // fall back to topValues (count-sorted) or orderedValues as last resort
+  const original =
+    (field.options?.length ? field.options : null) ??
+    field.statistics?.topValues?.map(v => v.value) ??
+    field.orderedValues ??
+    [];
   const initial  = field.orderedValues?.length ? field.orderedValues : original;
   const [items,   setItems]   = useState<string[]>(initial);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -98,10 +104,19 @@ export function ManualOrderModal({ field, onClose, onSave }: Props) {
           <button
             onClick={() => setItems(original)}
             className="inline-flex items-center gap-1 text-xs px-2.5 py-1 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
-            title="还原为原始选项列表"
+            title="还原为按数量排序的原始顺序"
           >
             <RotateCcw size={11} /> 重置
           </button>
+          {field.isOrdered && (
+            <button
+              onClick={() => { onSave(false, []); onClose(); }}
+              className="inline-flex items-center gap-1 text-xs px-2.5 py-1 bg-red-50 text-red-500 rounded-lg hover:bg-red-100 transition-colors"
+              title="清除自定义排序，恢复按数量默认顺序"
+            >
+              清除排序
+            </button>
+          )}
         </div>
 
         {/* Draggable list */}

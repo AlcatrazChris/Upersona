@@ -32,18 +32,18 @@ function TooltipContent({
   if (!active || !payload?.length || !label) return null;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-lg p-3 min-w-[160px] max-w-[240px]">
-      <div className="text-xs font-semibold text-gray-700 mb-1.5">{label}</div>
+    <div className="bg-white border border-gray-300 p-3 min-w-[160px] max-w-[240px]" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.10)' }}>
+      <div className="text-[11px] font-medium text-gray-800 mb-1.5">{label}</div>
       {payload.map(e => {
         const n = data.groupTotals[e.name] ?? 0;
         const raw = data.rawCounts[e.name]?.[label] ?? 0;
         return (
-          <div key={e.name} className="flex items-center gap-1.5 text-xs text-gray-600 py-0.5">
-            <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: e.color }} />
+          <div key={e.name} className="flex items-center gap-1.5 text-[11px] text-gray-600 py-0.5">
+            <span className="w-2 h-2 flex-shrink-0" style={{ background: e.color }} />
             <span className="flex-1 truncate">
               {e.name}
               {showSampleCount && (
-                <span className="text-gray-400 ml-1">(n={n.toLocaleString()})</span>
+                <span className="text-gray-400 ml-1 tabular-nums">(n={n.toLocaleString()})</span>
               )}
             </span>
             <span className="font-semibold tabular-nums">{e.value.toFixed(1)}%</span>

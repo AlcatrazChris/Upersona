@@ -4,11 +4,13 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Cell, LabelList, CartesianGrid,
 } from 'recharts';
-import { getColors } from '@/lib/chartConfig';
-import { ChartTooltip, BarLabelContent, cfgLabelRight } from './shared';
+import { getColors, isSingleColorScheme } from '@/lib/chartConfig';
+import { ChartTooltip, BarLabelContent, cfgLabelRight, applyTopN } from './shared';
 import type { ChartEngineProps } from './types';
 
-// ── Custom Y-axis tick: truncates long labels with ellipsis ──────
+const OTHERS_COLOR = '#b0bec5';
+
+// Custom Y-axis tick: truncates long labels with ellipsis
 function TruncatedYTick({ x, y, payload, fontSize, maxWidth }: {
   x: number; y: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -16,8 +18,6 @@ function TruncatedYTick({ x, y, payload, fontSize, maxWidth }: {
   fontSize: number; maxWidth: number;
 }) {
   const raw = String(payload?.value ?? '');
-  // CJK chars ≈ fontSize px wide; ASCII ≈ fontSize*0.55 px wide.
-  // Use a conservative average of fontSize*0.7 for mixed text.
   const avgPx  = fontSize * 0.7;
   const maxCh  = Math.max(3, Math.floor(maxWidth / avgPx));
   const label  = raw.length > maxCh ? `${raw.slice(0, maxCh - 1)}…` : raw;
@@ -28,7 +28,7 @@ function TruncatedYTick({ x, y, payload, fontSize, maxWidth }: {
         x={-4} y={0}
         textAnchor="end"
         dominantBaseline="middle"
-        fill="rgba(0,0,0,0.55)"
+        fill="rgba(0,0,0,0.50)"
         style={{ fontSize, pointerEvents: 'none' }}
       >
         {label}
@@ -38,16 +38,24 @@ function TruncatedYTick({ x, y, payload, fontSize, maxWidth }: {
 }
 
 export function BarChartEngine({
-  data, config, isMultiSelect = false, totalSamples, height,
+  data: rawData, config, isMultiSelect = false, totalSamples, height,
 }: ChartEngineProps) {
+  const data    = applyTopN(rawData, config.topN);
   const colors  = getColors(config.colorScheme);
-  // barH: minimum px per item so all Y-axis labels have room to render
-  const barH    = Math.max(30, (config.minBarSize ?? 18) + 12);
-  const minH    = Math.max(160, data.length * barH + 40);
+  const useSingleColor = isSingleColorScheme(config.colorScheme);
+
+  const compact = config.compact ?? false;
+  const barH    = Math.max(compact ? 20 : 28, (config.minBarSize ?? 18) + (compact ? 4 : 10));
+  const minH    = Math.max(compact ? 120 : 150, data.length * barH + (compact ? 24 : 36));
   const chartH  = config.chartHeight != null ? Math.max(config.chartHeight, minH) : minH;
   const rightM  = cfgLabelRight(config);
-  // Y-axis width — wider to handle longer Chinese labels
   const yAxisW  = config.showYAxis ? 104 : 0;
+
+  function barFill(label: string, index: number): string {
+    if (label === '其他') return OTHERS_COLOR;
+    if (useSingleColor) return colors[0];
+    return colors[index % colors.length];
+  }
 
   return (
     <div style={{ height: chartH }}>
@@ -55,21 +63,19 @@ export function BarChartEngine({
         <BarChart
           data={data}
           layout="vertical"
-          margin={{ left: 0, right: rightM, top: 0, bottom: 0 }}
-          barCategoryGap="20%"
+          margin={{ left: 0, right: rightM, top: compact ? 0 : 2, bottom: compact ? 0 : 2 }}
+          barCategoryGap={compact ? '15%' : '22%'}
         >
           {config.showGrid && (
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" horizontal={false} />
           )}
           {/* Always render axes — using `hide` instead of conditional mount.
               In layout="vertical", omitting XAxis entirely causes recharts to
-              infer a category-type X axis, which makes all bars except the
-              first collapse to zero width. The `hide` prop keeps the axis in
-              the internal layout without rendering it visually. */}
+              infer a category-type X axis, making all bars except the first collapse. */}
           <XAxis
             type="number"
             hide={!config.showXAxis}
-            tick={{ fontSize: config.axisFontSize, fill: 'rgba(0,0,0,0.30)' }}
+            tick={{ fontSize: config.axisFontSize, fill: 'rgba(0,0,0,0.40)' }}
             axisLine={false}
             tickLine={false}
             tickFormatter={v => `${v}%`}
@@ -79,8 +85,6 @@ export function BarChartEngine({
             dataKey="label"
             width={yAxisW}
             hide={!config.showYAxis}
-            /* interval={0} forces Recharts to render every tick label instead of
-               auto-hiding "overlapping" ones (which it tends to over-estimate). */
             interval={0}
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             tick={config.showYAxis ? (props: any) => (
@@ -106,9 +110,17 @@ export function BarChartEngine({
               )}
             />
           )}
-          <Bar dataKey="percentage" radius={[0, config.barRadius, config.barRadius, 0]} barSize={18}>
-            {data.map((_, i) => (
-              <Cell key={i} fill={colors[i % colors.length]} fillOpacity={config.barOpacity} />
+          <Bar
+            dataKey="percentage"
+            radius={[0, config.barRadius, config.barRadius, 0]}
+            barSize={config.minBarSize ?? 18}
+          >
+            {data.map((item, i) => (
+              <Cell
+                key={i}
+                fill={barFill(item.label, i)}
+                fillOpacity={config.barOpacity}
+              />
             ))}
             {config.showLabel && (
               <LabelList

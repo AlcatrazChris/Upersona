@@ -47,8 +47,13 @@ export async function POST(req: NextRequest) {
 ${JSON.stringify(context, null, 2)}
 \`\`\`
 
-请基于以上真实统计数据作答，不要编造数据集中没有的信息。
-回答要简洁、专业、使用中文，支持 Markdown 格式输出（可使用标题、列表、粗体等）。`;
+输出规则（严格遵守）：
+- 只输出用户要求的格式和内容，不输出其他任何内容
+- 禁止使用开场白、过渡段落、总结段落（如"综合来看""总体而言""以上分析""希望以上内容"等）
+- 禁止使用"值得注意""不难发现""可以看出"等废话表达
+- 每条结论直接陈述，不加铺垫
+- 只引用上方真实统计数据，不编造数据集中没有的信息
+- 使用中文，支持 Markdown 标题和粗体`;
 
     const res = await fetch(`${AI_BASE_URL}/chat/completions`, {
       method: 'POST',
@@ -62,7 +67,7 @@ ${JSON.stringify(context, null, 2)}
           { role: 'system', content: systemPrompt },
           ...chatMessages,
         ],
-        max_tokens:  2000,
+        max_tokens:  1000,
         temperature: 0.3,
       }),
     });

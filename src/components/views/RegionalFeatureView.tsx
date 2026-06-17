@@ -91,42 +91,53 @@ function computeRegionProfiles(
 // ── Cell renderer ───────────────────────────────────────────────
 
 function ValueCell({ items }: { items: ValueItem[] }) {
-  if (!items.length) {
-    return <span className="text-gray-300 text-xs">—</span>;
-  }
+  if (!items.length) return <span className="text-gray-200 text-[10px]">—</span>;
+  const maxPct = Math.max(...items.map(i => i.pct), 1);
   return (
-    <div className="space-y-0.5">
-      {items.map((item, i) => {
+    <div className="space-y-[3px]">
+      {items.slice(0, 4).map((item, i) => {
         const isUp   = item.delta >=  5;
         const isDown = item.delta <= -5;
         const isBig  = Math.abs(item.delta) >= 10;
+        const isTop  = i === 0;
         return (
-          <div key={i} className="text-xs leading-tight">
-            <span className={cn(
-              isBig && 'font-semibold',
-              isUp   ? 'text-red-500'  :
-              isDown ? 'text-blue-500' : 'text-gray-600',
-            )}>
-              {item.value}
-            </span>
-            <span className={cn(
-              'ml-1 tabular-nums',
-              isUp   ? 'text-red-400'  :
-              isDown ? 'text-blue-400' : 'text-gray-400',
-            )}>
-              {item.pct.toFixed(0)}%
-            </span>
-            {Math.abs(item.delta) >= 5 && (
+          <div key={i}>
+            <div className="flex items-center gap-1 min-w-0">
+              {isTop && (
+                <div className="w-7 h-[3px] rounded-full bg-gray-100 flex-shrink-0 overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${(item.pct / maxPct) * 100}%`,
+                      background: isUp ? '#ef4444' : isDown ? '#3b82f6' : '#94a3b8',
+                    }}
+                  />
+                </div>
+              )}
               <span className={cn(
-                'ml-0.5 text-[10px] tabular-nums',
-                isUp ? 'text-red-400' : 'text-blue-400',
+                'text-[10px] leading-tight flex-1 truncate min-w-0',
+                isBig ? 'font-semibold' : 'font-normal',
+                isTop
+                  ? (isUp ? 'text-red-500' : isDown ? 'text-blue-500' : 'text-gray-700')
+                  : 'text-gray-500',
               )}>
-                {item.delta > 0
-                  ? `↑${item.delta.toFixed(0)}%`
-                  : `↓${Math.abs(item.delta).toFixed(0)}%`
-                }
+                {item.value}
               </span>
-            )}
+              <span className={cn(
+                'text-[10px] tabular-nums flex-shrink-0',
+                isUp ? 'text-red-400' : isDown ? 'text-blue-400' : 'text-gray-400',
+              )}>
+                {item.pct.toFixed(0)}%
+              </span>
+              {Math.abs(item.delta) >= 5 && (
+                <span className={cn(
+                  'text-[8px] tabular-nums px-[3px] py-[1px] rounded leading-none flex-shrink-0 font-medium',
+                  isUp ? 'bg-red-50 text-red-400' : 'bg-blue-50 text-blue-400',
+                )}>
+                  {item.delta > 0 ? `+${item.delta.toFixed(0)}` : item.delta.toFixed(0)}
+                </span>
+              )}
+            </div>
           </div>
         );
       })}
@@ -279,14 +290,12 @@ function RegionPickerDropdown({
 // ── AI summary table ────────────────────────────────────────────
 
 const DEFAULT_AI_PROMPT =
-  `你是专业的汽车品牌用户研究分析师，正在对各地区用户画像进行横向对比，目标是快速识别各地区的差异化用户特征。数据已在上方 JSON 上下文中提供。
+  `基于上方数据，为每个维度的每个地区提炼2-3个判断性描述词（直接说结论，如"理性价值主导"，禁止说"占比最高/低"），括号内补充关键数据（如"本科62%"）。
 
-针对每个维度，请为每个地区提炼2-4个判断性描述词（不要直接说"占比最高"，而是说"理性价值导向"这类有洞察力的描述），可在括号中补充关键数据。
-
-请严格按照如下格式输出（每个维度一个块，各地区独占一行，不要输出其他任何内容）：
+严格按以下格式输出，不输出其他任何内容：
 [维度名]
-地区1: 特征词1、特征词2（关键数据）
-地区2: 特征词1、特征词2`;
+地区1: 特征词1、特征词2（XX%）
+地区2: 特征词1、特征词2（XX%）`;
 
 interface AISummaryProps {
   profiles:      RegionProfile[];
@@ -455,11 +464,11 @@ function AISummaryTable({ profiles, fields, datasetName, cachedResult, onCache, 
           <table className="min-w-full text-xs border-collapse">
             <thead>
               <tr>
-                <th className="sticky left-0 z-10 bg-[#1e3a5f] text-white text-left px-4 py-3 font-medium min-w-[80px] border-r border-[#2a4a7f]">
+                <th className="sticky left-0 z-10 bg-[#1e3a5f] text-white text-left px-3 py-2 font-medium min-w-[80px] border-r border-[#2a4a7f] text-[11px]">
                   维度
                 </th>
                 {regions.map(r => (
-                  <th key={r} className="bg-[#1e3a5f] text-white text-left px-3 py-3 font-medium min-w-[100px] border-r border-[#2a4a7f] whitespace-nowrap">
+                  <th key={r} className="bg-[#1e3a5f] text-white text-left px-2.5 py-2 font-medium min-w-[100px] border-r border-[#2a4a7f] whitespace-nowrap text-[11px]">
                     {r}
                   </th>
                 ))}
@@ -468,11 +477,11 @@ function AISummaryTable({ profiles, fields, datasetName, cachedResult, onCache, 
             <tbody>
               {tableData.map((block, i) => (
                 <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-blue-50/30'}>
-                  <td className="sticky left-0 z-10 bg-inherit px-4 py-3 font-medium text-gray-700 border-r border-gray-100 whitespace-nowrap">
+                  <td className="sticky left-0 z-10 bg-inherit px-3 py-2 font-medium text-gray-700 border-r border-gray-100 whitespace-nowrap text-[11px]">
                     {block.dimension}
                   </td>
                   {regions.map(region => (
-                    <td key={region} className="px-3 py-3 text-gray-600 border-r border-gray-50 leading-relaxed">
+                    <td key={region} className="px-2.5 py-2 text-gray-600 border-r border-gray-50 leading-snug text-[11px]">
                       {block.regionData[region] ?? '—'}
                     </td>
                   ))}
@@ -727,16 +736,16 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
             <table className="min-w-full text-xs border-collapse">
               <thead>
                 <tr>
-                  <th className="sticky left-0 z-20 bg-[#1e3a5f] text-white text-left px-4 py-3 font-medium min-w-[72px] border-r border-[#2a4a7f]">
+                  <th className="sticky left-0 z-20 bg-[#1e3a5f] text-white text-left px-3 py-2 font-medium min-w-[72px] border-r border-[#2a4a7f] text-[11px]">
                     地域
                   </th>
-                  <th className="sticky left-[72px] z-20 bg-[#1e3a5f] text-white text-center px-3 py-3 font-medium w-[56px] border-r border-[#2a4a7f]">
+                  <th className="sticky left-[72px] z-20 bg-[#1e3a5f] text-white text-center px-2 py-2 font-medium w-[52px] border-r border-[#2a4a7f] text-[11px]">
                     n
                   </th>
                   {personaFields.map(f => (
                     <th
                       key={f.key}
-                      className="bg-[#1e3a5f] text-white text-left px-3 py-3 font-medium min-w-[110px] border-r border-[#2a4a7f] whitespace-nowrap"
+                      className="bg-[#1e3a5f] text-white text-left px-2.5 py-2 font-medium min-w-[100px] border-r border-[#2a4a7f] whitespace-nowrap text-[11px]"
                     >
                       {f.name}
                     </th>
@@ -746,14 +755,14 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
               <tbody>
                 {profiles.map((profile, ri) => (
                   <tr key={profile.region} className={ri % 2 === 0 ? 'bg-white' : 'bg-blue-50/20'}>
-                    <td className="sticky left-0 z-10 bg-inherit px-4 py-3 font-semibold text-gray-800 border-r border-gray-100 whitespace-nowrap">
+                    <td className="sticky left-0 z-10 bg-inherit px-3 py-2 font-semibold text-gray-800 border-r border-gray-100 whitespace-nowrap text-[11px]">
                       {profile.region}
                     </td>
-                    <td className="sticky left-[72px] z-10 bg-inherit px-3 py-3 text-center text-gray-500 tabular-nums border-r border-gray-100">
+                    <td className="sticky left-[72px] z-10 bg-inherit px-2 py-2 text-center text-gray-500 tabular-nums border-r border-gray-100 text-[11px]">
                       {profile.n.toLocaleString()}
                     </td>
                     {profile.fieldValues.map((items, fi) => (
-                      <td key={fi} className="px-3 py-3 border-r border-gray-50 align-top">
+                      <td key={fi} className="px-2.5 py-2 border-r border-gray-50 align-top">
                         <ValueCell items={items} />
                       </td>
                     ))}

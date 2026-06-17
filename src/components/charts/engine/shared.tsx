@@ -1,6 +1,16 @@
 import type { ChartDataItem } from './types';
 import type { ChartConfig, LabelType } from '@/lib/chartConfig';
 
+// Keeps the first topN items (by existing order) and aggregates the rest as "其他".
+export function applyTopN(data: ChartDataItem[], topN: number | undefined): ChartDataItem[] {
+  if (!topN || topN <= 0 || data.length <= topN) return data;
+  const top  = data.slice(0, topN);
+  const rest = data.slice(topN);
+  const othersCount = rest.reduce((s, d) => s + d.count, 0);
+  const othersPct   = parseFloat(rest.reduce((s, d) => s + d.percentage, 0).toFixed(1));
+  return [...top, { label: '其他', count: othersCount, percentage: othersPct }];
+}
+
 export function ChartTooltip({
   active, payload, isMultiSelect, totalSamples,
 }: {
@@ -12,13 +22,15 @@ export function ChartTooltip({
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-xl px-3 py-2.5 text-[12px] min-w-[140px] pointer-events-none">
-      <div className="font-semibold text-black/80 mb-1">{d.label}</div>
-      <div className="text-black/55">{d.count.toLocaleString()} 人</div>
-      <div className="text-black/40">{d.percentage.toFixed(1)}%</div>
+    <div className="bg-white border border-gray-300 px-3 py-2 text-[11px] min-w-[130px] pointer-events-none" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.10)' }}>
+      <div className="font-medium text-gray-800 mb-1 leading-tight">{d.label}</div>
+      <div className="flex items-baseline gap-2">
+        <span className="tabular-nums font-semibold" style={{ color: '#003087' }}>{d.percentage.toFixed(1)}%</span>
+        <span className="text-gray-400 tabular-nums">{d.count.toLocaleString()} 人</span>
+      </div>
       {isMultiSelect && totalSamples != null && (
-        <div className="text-black/28 text-[10px] mt-0.5">
-          总样本：{totalSamples.toLocaleString()} 人
+        <div className="text-gray-400 text-[10px] mt-0.5 tabular-nums">
+          总样本 {totalSamples.toLocaleString()} 人
         </div>
       )}
     </div>
@@ -67,7 +79,7 @@ export function BarLabelContent(props: any & { items: ChartDataItem[]; labelType
   if (labelType === 'both')  text = `${Number(value).toFixed(1)}% / ${item.count}`;
   return (
     <text x={lx} y={ly} dominantBaseline="middle"
-      style={{ fontSize, fill: 'rgba(0,0,0,0.42)', fontWeight: 500, pointerEvents: 'none' }}>
+      style={{ fontSize, fill: 'rgba(0,0,0,0.62)', fontWeight: 600, fontVariantNumeric: 'tabular-nums', pointerEvents: 'none' }}>
       {text}
     </text>
   );

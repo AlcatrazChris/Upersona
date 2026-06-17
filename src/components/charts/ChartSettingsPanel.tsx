@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Settings2, Palette, LayoutGrid, Type, Maximize2, ArrowUpDown } from 'lucide-react';
+import { Settings2, Palette, LayoutGrid, Type, Maximize2, ArrowUpDown, ListFilter } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { COLOR_SCHEMES, DEFAULT_CHART_CONFIG } from '@/lib/chartConfig';
 import { ManualOrderModal } from '@/components/fields/ManualOrderModal';
@@ -134,14 +134,36 @@ export function ChartSettingsPanel({
                   ['showTooltip',     '提示框'],
                   ['showLegend',      '图例'],
                   ['showSampleCount', '样本数'],
+                  ['compact',         '紧凑模式'],
                 ] as [keyof ChartConfig, string][]).map(([key, label]) => (
                   <Toggle
                     key={key}
                     label={label}
-                    value={config[key] as boolean}
+                    value={!!(config[key] as boolean)}
                     onChange={v => update(key, v as ChartConfig[typeof key])}
                   />
                 ))}
+              </div>
+            </Section>
+
+            {/* 前N项 */}
+            <Section icon={<ListFilter size={13} />} label="前 N 项">
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 w-14 flex-shrink-0">项目数</span>
+                  <input
+                    type="range" min={0} max={15} step={1}
+                    value={config.topN ?? 0}
+                    onChange={e => update('topN', parseInt(e.target.value))}
+                    className="flex-1 h-1.5 accent-blue-600"
+                  />
+                  <span className="text-xs text-gray-400 w-10 text-right tabular-nums">
+                    {(config.topN ?? 0) === 0 ? '全部' : `前 ${config.topN}`}
+                  </span>
+                </div>
+                <p className="text-[10px] text-gray-400 leading-relaxed">
+                  超出部分合并为「其他」，0 = 显示全部
+                </p>
               </div>
             </Section>
 
