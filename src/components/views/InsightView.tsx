@@ -2,10 +2,12 @@
 
 import { useState, useMemo } from 'react';
 import { Loader2, RefreshCw, MapPin } from 'lucide-react';
+import { MarkdownContent } from '@/components/ui/MarkdownContent';
 import { filterRecords, getGeoOptions, type GeoLevel } from '@/lib/filterRecords';
 import { aggregateField } from '@/lib/dataAggregator';
+import { computeClusters } from '@/lib/clusterEngine';
 import { useDatasetStore } from '@/store/datasetStore';
-import type { ViewConfig, ClusterInsightResult, ClusterSegment } from '@/lib/viewConfig';
+import type { ViewConfig, ClusterInsightResult, ClusterSegment, DataPoint } from '@/lib/viewConfig';
 import type { Dataset, Field } from '@/types/dataSchema';
 
 // ── McKinsey palette (one per segment) ───────────────────────
@@ -19,8 +21,10 @@ const MK_COLORS = [
 
 // ── Field categorisation ──────────────────────────────────────
 
-const CLUSTER_KW      = ['年龄', '学历', '行业', '职业', '岗位', '工作状态', '工作生活', '生活状态', '收入'];
-const DISPLAY_EXCL_KW = ['大区', '省份', '城市', '地区', '状态', '意向', '订单', '阶段',
+const CLUSTER_KW      = ['年龄', '学历', '行业', '职业', '岗位', '工作状态', '工作生活', '生活状态', '收入', '单位类型'];
+// '状态' 已移除：真正的订单/意向状态字段由 viewConfig.statusFieldKey 单独排除，
+// '状态' 过于宽泛会误伤"工作生活状态"等核心人口统计字段。
+const DISPLAY_EXCL_KW = ['大区', '省份', '城市', '地区', '意向', '订单', '阶段',
                           '号码', '姓名', '电话', '联系', '编号', 'ID', 'id'];
 
 function categorise(dataset: Dataset, vc: ViewConfig) {
@@ -49,16 +53,83 @@ function fieldDist(records: Record<string, unknown>[], field: Field) {
   }));
 }
 
+// ── Bold text renderer (parses **text** → <strong>) ──────────
+
+function renderBold(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*.+?\*\*)/g);
+  return parts.map((part, i) =>
+    part.startsWith('**') && part.endsWith('**')
+      ? <strong key={i} className="font-semibold text-gray-900">{part.slice(2, -2)}</strong>
+      : part
+  );
+}
+
 // ── MiniBar ───────────────────────────────────────────────────
 
 function MiniBar({ value, pct, bar }: { value: string; pct: number; bar: string }) {
   return (
     <div className="flex items-center gap-2">
-      <div className="text-[11px] text-gray-600 w-16 truncate flex-shrink-0">{value}</div>
-      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-        <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%`, background: bar }} />
+      <div className="text-[10px] text-gray-600 w-14 truncate flex-shrink-0">{value}</div>
+      <div className="flex-1 h-1.5 bg-white/60 rounded-full overflow-hidden">
+        <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: bar }} />
       </div>
-      <div className="text-[11px] text-gray-500 w-7 text-right flex-shrink-0">{pct.toFixed(0)}%</div>
+      <div className="text-[10px] font-semibold w-7 text-right flex-shrink-0" style={{ color: bar }}>{pct.toFixed(0)}%</div>
+    </div>
+  );
+}
+
+// ── resolveDataPoint — looks up actual computed % for AI-selected values ──
+// Prefers cluster-specific pcts (from clusterDist) over global averages.
+// delta/pp values are never passed here — they stay internal to the AI pipeline.
+
+function resolveDataPoint(
+  dp: DataPoint,
+  chartable: Field[],
+  filteredRecords: Record<string, unknown>[],
+  clusterDist?: ClusterSegment['clusterDist'],
+): { name: string; entries: { value: string; pct: number }[] } | null {
+  // 1. Use cluster-specific distribution when available (V2 results)
+  if (clusterDist?.length) {
+    const dist = clusterDist.find(d => d.fieldName === dp.field);
+    if (dist?.topValues.length) {
+      const distMap = new Map(dist.topValues.map(v => [v.value, v.pct]));
+      const entries = dp.values
+        .map(v => ({ value: v, pct: distMap.get(v) ?? 0 }))
+        .filter(e => e.pct > 0);
+      if (entries.length) return { name: dp.label ?? dp.field, entries };
+    }
+  }
+  // 2. Fallback: global distribution from filteredRecords
+  const field = chartable.find(f => f.name === dp.field);
+  if (!field) return null;
+  const all     = fieldDist(filteredRecords, field);
+  const distMap = new Map(all.map(d => [d.value, d.pct]));
+  const entries = dp.values
+    .map(v => ({ value: v, pct: distMap.get(v) ?? 0 }))
+    .filter(e => e.pct > 0);
+  if (!entries.length) return null;
+  return { name: dp.label ?? field.name, entries };
+}
+
+// ── DataBar — compact bar row used everywhere ─────────────────
+
+function DataBar({ value, pct, bar, dimColor }: {
+  value:    string; pct: number; bar: string; dimColor?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className={`text-[10px] w-[3.5rem] truncate flex-shrink-0 ${dimColor ? 'text-gray-500' : 'text-gray-700'}`}>
+        {value}
+      </div>
+      <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${dimColor ? 'bg-gray-100' : 'bg-white/60'}`}>
+        <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: bar }} />
+      </div>
+      <div
+        className={`text-[10px] w-6 text-right flex-shrink-0 ${dimColor ? 'text-gray-400' : 'font-semibold'}`}
+        style={dimColor ? {} : { color: bar }}
+      >
+        {pct.toFixed(0)}%
+      </div>
     </div>
   );
 }
@@ -66,129 +137,209 @@ function MiniBar({ value, pct, bar }: { value: string; pct: number; bar: string 
 // ── Segment card ──────────────────────────────────────────────
 
 function SegmentCard({
-  seg, index, chartable, filteredRecords,
+  seg, index, chartable, clusterFields, filteredRecords,
 }: {
   seg:             ClusterSegment;
   index:           number;
   chartable:       Field[];
+  clusterFields:   Field[];
   filteredRecords: Record<string, unknown>[];
 }) {
-  const c = MK_COLORS[index % MK_COLORS.length];
+  const c   = MK_COLORS[index % MK_COLORS.length];
+  const pct = seg.pct_estimate ?? seg.estimated_pct;
 
-  // Show AI estimated dimension distribution (dimensions object from AI)
-  const dimEntries = seg.dimensions
-    ? Object.entries(seg.dimensions).filter(([, v]) => v.top_value && v.est_pct > 0)
-    : [];
+  type Resolved = { name: string; entries: { value: string; pct: number }[] };
+  const notNull = <T,>(x: T | null): x is T => x !== null;
 
-  // Fallback: show overall distribution for cluster fields if AI didn't return dimensions
-  const showOverallBars = dimEntries.length === 0;
-  const overallBars = showOverallBars
-    ? chartable
-        .filter(f => CLUSTER_KW.some(kw => f.name.includes(kw)))
-        .slice(0, 4)
-        .map(f => {
-          const dist = fieldDist(filteredRecords, f);
-          const top  = dist[0];
-          return top ? { name: f.name, value: top.value, pct: top.pct } : null;
-        })
-        .filter(Boolean) as { name: string; value: string; pct: number }[]
-    : [];
+  // ── Left col: who_data (new) or fallback to cluster fields (legacy) ──
+  const leftResolved: Resolved[] = (() => {
+    if (seg.who_data?.length) {
+      return seg.who_data
+        .map(dp => resolveDataPoint(dp, chartable, filteredRecords, seg.clusterDist))
+        .filter(notNull);
+    }
+    const aiDimNames = new Set(Object.keys(seg.dimensions ?? {}));
+    return [
+      ...clusterFields.filter(f => aiDimNames.has(f.name)),
+      ...clusterFields.filter(f => !aiDimNames.has(f.name)),
+    ].slice(0, 4).map(f => {
+      const dist = fieldDist(filteredRecords, f).slice(0, 3);
+      return dist.length ? { name: f.name, entries: dist.map(d => ({ value: d.value, pct: d.pct })) } : null;
+    }).filter(notNull);
+  })();
+
+  // ── Center insight sections ──
+  const hasSections = (seg.insight_sections?.length ?? 0) > 0;
+
+  // ── Bottom: preference_data (new) or preference_fields (legacy) ──
+  const prefResolved: Resolved[] = (() => {
+    if (seg.preference_data?.length) {
+      return seg.preference_data
+        .map(dp => resolveDataPoint(dp, chartable, filteredRecords, seg.clusterDist))
+        .filter(notNull);
+    }
+    return (seg.preference_fields ?? []).slice(0, 3).map(name => {
+      const field = chartable.find(f => f.name === name);
+      if (!field) return null;
+      const dist = fieldDist(filteredRecords, field).slice(0, 4);
+      return dist.length ? { name, entries: dist.map(d => ({ value: d.value, pct: d.pct })) } : null;
+    }).filter(notNull);
+  })();
+
+  const hasBottom = prefResolved.length > 0 || !!seg.preference_intro;
 
   return (
-    <div
-      className="bg-white border border-gray-200 rounded-sm overflow-hidden"
-      style={{ borderLeft: `4px solid ${c.accent}` }}
-    >
-      {/* ── Header ── */}
-      <div className="px-5 py-4 flex items-center gap-4 border-b border-gray-100" style={{ background: c.bg }}>
+    <div className="bg-white border border-gray-200 rounded-sm overflow-hidden"
+      style={{ borderLeft: `4px solid ${c.accent}` }}>
+
+      {/* ── Header: compact, 1 row ── */}
+      <div className="px-4 py-2.5 flex items-center gap-2 flex-wrap" style={{ background: c.bg }}>
         <span
-          className="text-[10px] font-bold tracking-[0.2em] px-2 py-0.5 rounded-sm flex-shrink-0"
+          className="text-[9px] font-bold tracking-[0.2em] px-1.5 py-0.5 rounded-sm flex-shrink-0"
           style={{ background: `${c.accent}18`, color: c.accent }}
         >
-          SEGMENT {String(index + 1).padStart(2, '0')}
+          S{String(index + 1).padStart(2, '0')}
         </span>
-        <div className="min-w-0">
-          <div className="text-[20px] font-bold text-gray-900 leading-tight">{seg.name}</div>
-          <div className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">{seg.subtitle}</div>
-        </div>
-      </div>
-
-      {/* ── Body — 3 cols ── */}
-      <div className="grid grid-cols-[180px_1fr_1fr] divide-x divide-gray-100">
-
-        {/* Col 1 — 人群画像 */}
-        <div className="px-5 py-4">
-          <div className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.18em] mb-4">人群画像</div>
-          {dimEntries.length > 0 ? (
-            <div className="space-y-3">
-              {dimEntries.map(([field, dim]) => (
-                <div key={field}>
-                  <div className="text-[9px] text-gray-400 uppercase tracking-wide mb-1">{field}</div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${Math.min(dim.est_pct, 100)}%`, background: c.bar }} />
-                    </div>
-                    <span className="text-[11px] font-semibold flex-shrink-0" style={{ color: c.accent }}>
-                      {dim.est_pct}%
-                    </span>
-                  </div>
-                  <div className="text-[11px] font-medium text-gray-700 mt-0.5">{dim.top_value}</div>
-                </div>
-              ))}
-            </div>
-          ) : overallBars.length > 0 ? (
-            <div className="space-y-3">
-              {overallBars.map(b => (
-                <div key={b.name}>
-                  <div className="text-[9px] text-gray-400 uppercase tracking-wide mb-1">{b.name}</div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${Math.min(b.pct, 100)}%`, background: c.bar }} />
-                    </div>
-                    <span className="text-[11px] font-semibold flex-shrink-0" style={{ color: c.accent }}>
-                      {b.pct.toFixed(0)}%
-                    </span>
-                  </div>
-                  <div className="text-[11px] font-medium text-gray-700 mt-0.5">{b.value}</div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-[11px] text-gray-300">暂无画像数据</p>
-          )}
-        </div>
-
-        {/* Col 2 — 关键特征 */}
-        <div className="px-5 py-4">
-          <div className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.18em] mb-4">关键特征</div>
-          <ol className="space-y-2.5">
-            {(seg.key_traits ?? []).map((t, i) => (
-              <li key={i} className="flex items-start gap-2.5">
-                <span
-                  className="w-4 h-4 rounded-sm text-[9px] font-bold text-white flex items-center justify-center flex-shrink-0 mt-0.5"
-                  style={{ background: c.accent }}
-                >
-                  {i + 1}
-                </span>
-                <span className="text-[12px] text-gray-700 leading-snug">{t}</span>
-              </li>
+        <span className="text-base font-bold text-gray-900 leading-tight">
+          典型人群{index + 1}：{seg.name}
+        </span>
+        {pct != null && (
+          <span className="text-sm font-bold flex-shrink-0" style={{ color: c.accent }}>（{pct}%）</span>
+        )}
+        {/* Keywords inline */}
+        {(seg.keywords?.length ?? 0) > 0 && (
+          <div className="flex items-center gap-1 flex-wrap ml-1">
+            {seg.keywords!.map(kw => (
+              <span
+                key={kw}
+                className="text-[10px] px-1.5 py-0.5 border border-dashed"
+                style={{ borderColor: `${c.accent}55`, color: c.accent }}
+              >
+                {kw}
+              </span>
             ))}
-          </ol>
-        </div>
+          </div>
+        )}
+      </div>
 
-        {/* Col 3 — 核心洞察 + 购车动机 */}
-        <div className="px-5 py-4">
-          <div className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.18em] mb-4">核心洞察</div>
-          <p className="text-[12px] text-gray-700 leading-relaxed">{seg.core_insight}</p>
-          {seg.purchase_motivation && (
-            <>
-              <div className="h-px bg-gray-100 my-4" />
-              <div className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.18em] mb-2">购车动机</div>
-              <p className="text-[12px] text-gray-600 leading-relaxed">{seg.purchase_motivation}</p>
-            </>
+      {/* ── Body: left blue | center ── */}
+      <div className="flex divide-x divide-gray-100">
+
+        {/* Left — 他们是谁 */}
+        <div className="flex-shrink-0 px-3 py-3 space-y-3" style={{ width: 200, background: c.bg }}>
+          {leftResolved.length > 0 ? leftResolved.map(r => (
+            <div key={r.name}>
+              <div className="text-[9px] font-bold tracking-wide mb-1" style={{ color: c.accent }}>
+                {r.name}
+              </div>
+              <div className="space-y-1">
+                {r.entries.map(e => (
+                  <DataBar key={e.value} value={e.value} pct={e.pct} bar={c.bar} />
+                ))}
+              </div>
+            </div>
+          )) : (
+            <p className="text-[10px] text-gray-300">暂无画像数据</p>
           )}
         </div>
+
+        {/* Center — 消费心理 */}
+        <div className="flex-1 px-4 py-3 min-w-0">
+          {/* Header + pull quote */}
+          <div className="flex items-baseline gap-1.5 mb-2.5">
+            <div className="w-[3px] self-stretch rounded-sm flex-shrink-0" style={{ background: c.accent }} />
+            <span className="text-[10px] font-bold flex-shrink-0" style={{ color: c.accent }}>消费心理</span>
+            {seg.core_insight && (
+              <span className="text-[12px] font-semibold text-gray-800 leading-snug">
+                ：{seg.core_insight}
+              </span>
+            )}
+          </div>
+
+          {/* Insight sections table */}
+          {hasSections ? (
+            <div className="border border-gray-100 rounded-sm overflow-hidden">
+              {seg.insight_sections!.map((section, i) => {
+                const inlineData = section.data
+                  ? resolveDataPoint(section.data, chartable, filteredRecords, seg.clusterDist)
+                  : null;
+                return (
+                  <div key={i} className={`flex ${i > 0 ? 'border-t border-gray-100' : ''}`}>
+                    {/* Title cell */}
+                    <div
+                      className="flex-shrink-0 px-2.5 py-2 text-[10px] font-semibold flex items-start justify-center text-center leading-snug pt-2"
+                      style={{ width: 70, background: `${c.accent}0d`, color: c.accent }}
+                    >
+                      {section.title}
+                    </div>
+                    {/* Content cell */}
+                    <div className="flex-1 px-3 py-2 text-[11px] text-gray-700 leading-snug">
+                      <div>{renderBold(section.text)}</div>
+                      {/* Inline supporting data bars */}
+                      {inlineData && (
+                        <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                          {inlineData.entries.map(e => (
+                            <div key={e.value} className="flex items-center gap-1.5 min-w-0">
+                              <div
+                                className="h-2 rounded-sm flex-shrink-0"
+                                style={{ width: Math.max(6, Math.round(e.pct * 0.6)), background: c.bar, opacity: 0.8 }}
+                              />
+                              <span className="text-[10px] text-gray-500 whitespace-nowrap">
+                                {e.value} <span className="font-semibold" style={{ color: c.accent }}>{e.pct.toFixed(0)}%</span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (seg.key_traits?.length ?? 0) > 0 ? (
+            <ol className="space-y-1.5">
+              {seg.key_traits!.map((t, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span
+                    className="w-3.5 h-3.5 rounded-sm text-[8px] font-bold text-white flex items-center justify-center flex-shrink-0 mt-0.5"
+                    style={{ background: c.accent }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="text-[11px] text-gray-700 leading-snug">{t}</span>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </div>
       </div>
+
+      {/* ── Bottom — 购车偏好 ── */}
+      {hasBottom && (
+        <div className="border-t border-gray-100 px-4 py-3" style={{ background: '#fafafa' }}>
+          <div className="flex items-baseline gap-1.5 mb-2">
+            <div className="w-[3px] h-3.5 rounded-sm flex-shrink-0" style={{ background: c.accent }} />
+            <span className="text-[10px] font-bold" style={{ color: c.accent }}>购车偏好</span>
+            {seg.preference_intro && (
+              <span className="text-[11px] text-gray-600 leading-snug">：{seg.preference_intro}</span>
+            )}
+          </div>
+          {prefResolved.length > 0 && (
+            <div className="grid gap-5" style={{ gridTemplateColumns: `repeat(${Math.min(prefResolved.length, 3)}, 1fr)` }}>
+              {prefResolved.map(r => (
+                <div key={r.name}>
+                  <div className="text-[9px] font-bold text-gray-400 tracking-wide mb-1.5">{r.name}</div>
+                  <div className="space-y-1.5">
+                    {r.entries.map(e => (
+                      <DataBar key={e.value} value={e.value} pct={e.pct} bar={c.bar} dimColor />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -323,8 +474,8 @@ export function InsightView({ dataset, viewConfig }: Props) {
   ] as const).filter(l => l.fieldKey);
 
   const cacheKey = useMemo(
-    () => `${geoLevel}_${selectedGeo.join(',')}`,
-    [geoLevel, selectedGeo],
+    () => `${geoLevel}_${selectedGeo.join(',')}_r${dataset.rowCount}`,
+    [geoLevel, selectedGeo, dataset.rowCount],
   );
 
   const cachedResult: ClusterInsightResult | undefined = viewConfig.clusterResults?.[cacheKey];
@@ -345,29 +496,51 @@ export function InsightView({ dataset, viewConfig }: Props) {
   }, [selectedGeo]);
 
   async function generate() {
-    if (clusterFields.length === 0) {
-      setError('未找到年龄/学历/职业等聚类字段，请检查数据集字段名称');
-      return;
-    }
     setLoading(true);
     setError('');
     try {
-      const mkDist = (fields: Field[]) =>
-        fields.map(f => ({
-          name:         f.name,
-          distribution: fieldDist(filteredRecords, f),
-        }));
+      // Run statistical clustering in-browser (deterministic, seeded PRNG)
+      const clusterResult = computeClusters(
+        filteredRecords,
+        clusterFields,
+        supplementFields.slice(0, 6),
+      );
 
-      const res = await fetch('/api/ai/cluster-insight', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let body: Record<string, unknown>;
+      if (clusterResult) {
+        body = {
+          datasetName:  dataset.name,
+          label:        contextLabel,
+          totalCount:   filteredRecords.length,
+          optimalK:     clusterResult.optimalK,
+          clusters:     clusterResult.clusters,
+          fieldOptions: clusterResult.fieldOptions,
+        };
+      } else {
+        // Fallback: distribution-based (insufficient data or missing cluster fields)
+        if (clusterFields.length === 0) {
+          setError('未找到年龄/学历/职业等聚类字段，请检查数据集字段名称');
+          setLoading(false);
+          return;
+        }
+        const mkDist = (fields: Field[]) =>
+          fields.map(f => ({
+            name:         f.name,
+            distribution: fieldDist(filteredRecords, f),
+          }));
+        body = {
           datasetName:      dataset.name,
           label:            contextLabel,
           totalCount:       filteredRecords.length,
           clusterFields:    mkDist(clusterFields),
           supplementFields: mkDist(supplementFields.slice(0, 6)),
-        }),
+        };
+      }
+
+      const res = await fetch('/api/ai/cluster-insight', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
       });
 
       const data = await res.json() as { result?: ClusterInsightResult; error?: string };
@@ -445,8 +618,8 @@ export function InsightView({ dataset, viewConfig }: Props) {
         <div className="bg-white border border-gray-200 rounded-sm p-14 flex flex-col items-center gap-4 text-gray-400">
           <Loader2 size={22} className="animate-spin" style={{ color: '#003087' }} />
           <div className="text-center">
-            <p className="text-sm font-medium text-gray-700">AI 正在对人群进行聚类分析</p>
-            <p className="text-xs text-gray-400 mt-1">基于年龄、学历、职业、工作生活状态进行细分，通常需要 20-40 秒</p>
+            <p className="text-sm font-medium text-gray-700">正在分析人群特征</p>
+            <p className="text-xs text-gray-400 mt-1">已完成统计聚类（Calinski-Harabasz 指数），AI 正在撰写群体洞察，通常需要 20-40 秒</p>
           </div>
         </div>
       )}
@@ -457,12 +630,14 @@ export function InsightView({ dataset, viewConfig }: Props) {
 
           {/* Overview banner */}
           {cachedResult.overview && (
-            <div
-              className="px-5 py-3 rounded-sm border text-sm font-medium text-white"
-              style={{ background: '#003087', borderColor: '#003087' }}
-            >
-              <span className="text-blue-200 text-[10px] font-bold tracking-widest mr-3">OVERVIEW</span>
-              {cachedResult.overview}
+            <div className="rounded-sm border border-[#003087]/20 overflow-hidden">
+              <div className="px-4 py-2 flex items-center gap-2" style={{ background: '#003087' }}>
+                <div className="w-[3px] h-3.5 rounded-sm flex-shrink-0 bg-blue-300/60" />
+                <span className="text-blue-200 text-[10px] font-bold tracking-widest">OVERVIEW</span>
+              </div>
+              <div className="px-5 py-4" style={{ background: '#edf2fb' }}>
+                <MarkdownContent content={cachedResult.overview} className="text-[#1e3a5f]" />
+              </div>
             </div>
           )}
 
@@ -473,16 +648,24 @@ export function InsightView({ dataset, viewConfig }: Props) {
               seg={seg}
               index={i}
               chartable={chartable}
+              clusterFields={clusterFields}
               filteredRecords={filteredRecords}
             />
           ))}
 
-          {/* Reference charts — 4 AI-recommended dimensions */}
+          {/* Reference charts — cluster fields not already in who_data */}
           {(() => {
+            const shownNames = new Set([
+              ...cachedResult.segments.flatMap(s => (s.who_data ?? []).map(d => d.field)),
+              ...cachedResult.segments.flatMap(s => (s.preference_data ?? []).map(d => d.field)),
+              ...cachedResult.segments.flatMap(s => s.preference_fields ?? []),
+            ]);
             const aiDimNames = [...new Set(
               cachedResult.segments.flatMap(s => Object.keys(s.dimensions ?? {}))
-            )].slice(0, 4);
-            return <ReferenceCharts filteredRecords={filteredRecords} chartable={chartable} aiDimNames={aiDimNames} />;
+            )].filter(n => !shownNames.has(n)).slice(0, 4);
+            return aiDimNames.length > 0
+              ? <ReferenceCharts filteredRecords={filteredRecords} chartable={chartable} aiDimNames={aiDimNames} />
+              : null;
           })()}
 
           {/* Footer */}

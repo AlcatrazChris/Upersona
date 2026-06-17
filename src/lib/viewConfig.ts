@@ -59,14 +59,44 @@ export interface ClusterDimension {
   est_pct:   number;
 }
 
+/** AI explicitly picks which values of a field to display (resolved to real computed %) */
+export interface DataPoint {
+  field:   string;    // exact field name from dataset
+  values:  string[];  // specific values AI selects to support the conclusion
+  label?:  string;    // optional display label override for field name
+}
+
+export interface InsightSection {
+  title:  string;
+  text:   string;
+  data?:  DataPoint;  // optional inline supporting data (mini bars below text)
+}
+
 export interface ClusterSegment {
-  name:                 string;
-  subtitle:             string;
-  estimated_pct:        number;
-  key_traits:           string[];
-  core_insight:         string;
+  name:              string;
+  subtitle?:         string;
+  estimated_pct?:    number;
+  pct_estimate?:     number;
+  keywords?:         string[];
+  core_insight:      string;
+  // new schema (v4+)
+  who_data?:         DataPoint[];        // left col: AI-selected key demographic values
+  insight_sections?: InsightSection[];   // center table; [2].data = history inline bars
+  preference_intro?: string;
+  preference_data?:  DataPoint[];        // bottom: purchase preference mini charts
+  /** Cluster-specific field distributions (server-injected for V2 results).
+   *  Used by resolveDataPoint to show cluster-level percentages instead of global averages.
+   *  delta is stripped before storage — only clean pct values are kept here. */
+  clusterDist?: Array<{
+    fieldName: string;
+    topValues: Array<{ value: string; pct: number }>;
+  }>;
+  // legacy
+  key_traits?:         string[];
   purchase_motivation?: string;
   dimensions?:          Record<string, ClusterDimension>;
+  chart_fields?:        string[];
+  preference_fields?:   string[];
 }
 
 export interface ClusterInsightResult {
