@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Filter, MapPin, ChevronDown, Check, Settings2, Pencil } from 'lucide-react';
+import { Filter, MapPin, ChevronDown, Check, Settings2, Pencil, Search } from 'lucide-react';
 import { aggregateField, aggregateRanking } from '@/lib/dataAggregator';
 import { filterRecords, getGeoOptions, getStatusOptions, type GeoLevel } from '@/lib/filterRecords';
 import { ChartRenderer, type ChartType } from '@/components/charts/engine/ChartRenderer';
@@ -26,6 +26,7 @@ function GeoDropdown({
   placeholder: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
 
   function toggle(v: string) {
     onChange(selected.includes(v) ? selected.filter(s => s !== v) : [...selected, v]);
@@ -36,10 +37,14 @@ function GeoDropdown({
     selected.length === 1 ? selected[0] :
     `${selected.length} 个地区`;
 
+  const filtered = search
+    ? options.filter(v => v.toLowerCase().includes(search.toLowerCase()))
+    : options;
+
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => { setOpen(o => !o); setSearch(''); }}
         className={cn(
           'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border transition-all',
           selected.length > 0
@@ -54,27 +59,45 @@ function GeoDropdown({
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute z-50 top-8 left-0 bg-white border border-gray-200 rounded-xl shadow-xl p-2 min-w-[140px] max-h-52 overflow-y-auto">
-            <button
-              onClick={() => { onChange([]); setOpen(false); }}
-              className="w-full text-left text-xs px-2 py-1.5 rounded-lg hover:bg-gray-50 text-gray-500 flex items-center gap-1.5"
-            >
-              {selected.length === 0 && <Check size={10} className="text-blue-500" />}
-              {selected.length > 0   && <div className="w-[10px]" />}
-              全国
-            </button>
-            {options.map(v => (
-              <button
-                key={v}
-                onClick={() => toggle(v)}
-                className="w-full text-left text-xs px-2 py-1.5 rounded-lg hover:bg-gray-50 text-gray-700 flex items-center gap-1.5"
-              >
-                {selected.includes(v)
-                  ? <Check size={10} className="text-blue-500 flex-shrink-0" />
-                  : <div className="w-[10px] flex-shrink-0" />}
-                {v}
-              </button>
-            ))}
+          <div className="absolute z-50 top-8 left-0 bg-white border border-gray-200 rounded-xl shadow-xl p-2 min-w-[160px] max-h-64 flex flex-col">
+            <div className="flex items-center gap-1.5 px-2 py-1 mb-1 border-b border-gray-100">
+              <Search size={10} className="text-gray-400 flex-shrink-0" />
+              <input
+                autoFocus
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="搜索…"
+                className="w-full text-xs bg-transparent outline-none placeholder:text-gray-300"
+                onClick={e => e.stopPropagation()}
+              />
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {!search && (
+                <button
+                  onClick={() => { onChange([]); setOpen(false); }}
+                  className="w-full text-left text-xs px-2 py-1.5 rounded-lg hover:bg-gray-50 text-gray-500 flex items-center gap-1.5"
+                >
+                  {selected.length === 0 && <Check size={10} className="text-blue-500" />}
+                  {selected.length > 0   && <div className="w-[10px]" />}
+                  全国
+                </button>
+              )}
+              {filtered.map(v => (
+                <button
+                  key={v}
+                  onClick={() => toggle(v)}
+                  className="w-full text-left text-xs px-2 py-1.5 rounded-lg hover:bg-gray-50 text-gray-700 flex items-center gap-1.5"
+                >
+                  {selected.includes(v)
+                    ? <Check size={10} className="text-blue-500 flex-shrink-0" />
+                    : <div className="w-[10px] flex-shrink-0" />}
+                  {v}
+                </button>
+              ))}
+              {filtered.length === 0 && (
+                <p className="text-[10px] text-gray-300 px-2 py-2">无匹配项</p>
+              )}
+            </div>
           </div>
         </>
       )}
@@ -235,7 +258,7 @@ function PersonaChartCard({
         : (
           <ChartRenderer
             type={chartType}
-            data={chartType === 'line' || chartType === 'area' ? data : data.slice(0, 10)}
+            data={data}
             config={{ ...effective, chartHeight: cardH, showSampleCount: false }}
             isMultiSelect={field.type === 'multi_choice'}
             totalSamples={filteredRecords.length}

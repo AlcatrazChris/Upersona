@@ -93,6 +93,21 @@ function getEffectiveOptions(field: Field, records: Record<string, unknown>[]): 
   return [...counter.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20).map(([v]) => v);
 }
 
+// ── Correlated field groups ───────────────────────────────────
+// 从事行业/工作单位类型/职业类型 高度共线，合并编码后按 1/groupSize 加权
+// 避免同一信号被重复放大
+
+const CORR_GROUP_KW = [
+  ['行业', '单位类型', '职业'],
+];
+
+function fieldGroupId(field: Field): string {
+  for (let g = 0; g < CORR_GROUP_KW.length; g++) {
+    if (CORR_GROUP_KW[g].some(kw => field.name.includes(kw))) return `g${g}`;
+  }
+  return field.key;
+}
+
 // ── One-hot encoding ──────────────────────────────────────────
 
 interface EncodingCol {
@@ -100,16 +115,26 @@ interface EncodingCol {
   value:    string;
   isMulti:  boolean;
   delim:    string;
+  weight:   number;
 }
 
 function buildEncoding(fields: Field[], records: Record<string, unknown>[]): EncodingCol[] {
+  const groupCounts = new Map<string, number>();
+  for (const f of fields) {
+    const gid = fieldGroupId(f);
+    groupCounts.set(gid, (groupCounts.get(gid) ?? 0) + 1);
+  }
+
   const cols: EncodingCol[] = [];
   for (const f of fields) {
     const opts = getEffectiveOptions(f, records);
     const isMulti = f.type === 'multi_choice';
     const delim   = f.multiDelimiter ?? '┋';
+    const gid     = fieldGroupId(f);
+    const gSize   = groupCounts.get(gid) ?? 1;
+    const weight  = 1 / Math.sqrt(gSize);
     for (const opt of opts.slice(0, 12)) {
-      cols.push({ fieldKey: f.key, value: opt, isMulti, delim });
+      cols.push({ fieldKey: f.key, value: opt, isMulti, delim, weight });
     }
   }
   return cols;
@@ -122,9 +147,9 @@ function encodeRecord(rec: Record<string, unknown>, cols: EncodingCol[]): number
     const raw = String(rec[col.fieldKey] ?? '').trim();
     if (!raw) continue;
     if (col.isMulti) {
-      if (raw.split(col.delim).map(v => v.trim()).includes(col.value)) vec[i] = 1;
+      if (raw.split(col.delim).map(v => v.trim()).includes(col.value)) vec[i] = col.weight;
     } else {
-      if (raw === col.value) vec[i] = 1;
+      if (raw === col.value) vec[i] = col.weight;
     }
   }
   return vec;
@@ -278,7 +303,7 @@ export function computeClusters(
   clusterFields:    Field[],
   supplementFields: Field[],
   minK = 2,
-  maxK = 4,
+  maxK = 5,
 ): ClusteringResult | null {
   if (records.length < minK * 10 || clusterFields.length === 0) return null;
 
@@ -308,21 +333,33 @@ export function computeClusters(
   }
   const trainX = trainIndices.map(i => encodeRecord(records[i], cols));
 
-  // Find optimal k — 3 restarts per k, take best balanced score
-  // Multiple restarts avoid local minima from a single k-means++ initialization.
-  const N_RESTARTS = 3;
-  let bestK = minK, bestScore = -Infinity, bestCH = 0, bestCentroids: number[][] = [];
+  // Find optimal k — 5 restarts per k, elbow-normalized scoring.
+  // CH naturally decreases with k; raw-max always picks k=2.
+  // We normalize by CH(2) and add a mild k bonus so finer segmentations
+  // can win when they produce meaningfully different clusters.
+  const N_RESTARTS = 5;
   const kMax = Math.min(maxK, Math.floor(trainX.length / 5));
 
+  // First pass: collect best CH per k
+  const kResults: { k: number; ch: number; labels: number[]; centroids: number[][] }[] = [];
   for (let k = minK; k <= kMax; k++) {
-    let kBestScore = -Infinity, kBestCH = 0, kBestCentroids: number[][] = [];
+    let kBestCH = -Infinity, kBestLabels: number[] = [], kBestCentroids: number[][] = [];
     for (let r = 0; r < N_RESTARTS; r++) {
       const { labels, centroids } = runKMeans(trainX, k, makePRNG(seed + k * 997 + r * 31337));
-      const ch    = calinskiHarabasz(trainX, labels, k);
-      const score = balancedScore(ch, labels, k);
-      if (score > kBestScore) { kBestScore = score; kBestCH = ch; kBestCentroids = centroids; }
+      const ch = calinskiHarabasz(trainX, labels, k);
+      if (ch > kBestCH) { kBestCH = ch; kBestLabels = labels; kBestCentroids = centroids; }
     }
-    if (kBestScore > bestScore) { bestScore = kBestScore; bestCH = kBestCH; bestK = k; bestCentroids = kBestCentroids; }
+    kResults.push({ k, ch: kBestCH, labels: kBestLabels, centroids: kBestCentroids });
+  }
+
+  // Second pass: elbow-normalized scoring
+  const ch2 = kResults[0]?.ch || 1;
+  let bestK = minK, bestScore = -Infinity, bestCH = 0, bestCentroids: number[][] = [];
+  for (const { k, ch, labels, centroids } of kResults) {
+    const normCH   = ch / ch2;
+    const kBonus   = 1 + 0.12 * (k - minK);
+    const score    = balancedScore(normCH * kBonus * ch2, labels, k);
+    if (score > bestScore) { bestScore = score; bestCH = ch; bestK = k; bestCentroids = centroids; }
   }
   if (!bestCentroids.length) return null;
 

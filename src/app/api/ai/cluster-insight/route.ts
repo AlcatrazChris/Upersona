@@ -132,10 +132,30 @@ ${fmtFieldOptions(body.fieldOptions)}
 2. 不要输出 pct_estimate 字段（占比由系统自动注入）
 3. **群体名称（name）和 who_data 的字段选择，只能基于标注了 ▲ 的字段取值**；未标 ▲ 的取值不得作为命名依据或 who_data 核心特征
 4. who_data / preference_data 的 values 中每个值必须与上方合法取值列表完全一致
+5. **禁止在任何 text 字段中出现 "+Xpp"、"pp"、"高出X个百分点"、"差值" 等比较性写法**；只写绝对百分比（如"67%从事制造业"）
+6. **职业/岗位/行业必须体现在 who_data 中**，描述精确到能帮助寻找相似受众（如"制造/建筑行业中层管理者"而非泛泛的"企业员工"）
 
-**A. 他们是谁** who_data：从核心维度选2-4个字段，每个字段只填最能支撑"谁在买车"结论的1-4个取值
-**B. 为什么买** core_insight + insight_sections（3条：工作生活状态 / 消费汽车价值观 / 增换购前车品牌）
-**C. 关注什么** preference_intro + preference_data（2-3个辅助字段，每个字段2-4个取值）
+**写作风格要求**：
+- who_intro：**数据驱动型身份速写**，用绝对百分比直接勾勒人群面貌。
+  示例：「从事制造业占25%、建筑业14%，以大专及以下学历为主（50%），家庭年收入集中在20-30万元（38%）。」
+  格式：列出2-3个最能刻画该群体身份的维度和对应百分比，让读者一眼建立画面。
+- core_insight：直指深层逻辑，有画面感。示例：「买车本质上是一次资产配置决策。他们长期处在制造业、建筑业，见惯营销套路，反感溢价，希望被当聪明的买主。」
+- insight text：每条引用**≥2个不同维度的数据点**构建论证链（如学历+消费观→结论，行业+岗位→结论），不用同一维度的单一数据撑大结论。≤85字，可**加粗**关键词。
+  示例：「**50%为大专及以下学历**，且**68%认为实用性最重要**，务实理性，反感营销溢价。他们看重车辆实际使用价值，对配置和性价比极度敏感。」
+
+**A. 他们是谁**
+  - who_intro：数据驱动型描述（2-3个维度 + 绝对百分比），≤60字
+  - who_data：选3-5个字段，**从事行业必须包含≥3个行业值**以充分佐证群体的职业集中度；优先选行业/职业/岗位/收入/学历，每字段填1-4个最能说明"谁在买车"的取值
+**B. 为什么买** core_insight + insight_sections（3条）
+  - 工作生活状态：工作性质 + 生活节奏 → 购车如何契合其生活场景
+  - 消费/汽车价值观：消费理念 + 对车的态度 → 影响决策的核心价值取向。**必须交叉引用≥2个维度的数据**（如学历+消费观、收入+价值观），不能只用单一维度推导
+  - 增换购/前车品牌：**前车品牌必须具名**（如"大众朗逸/丰田卡罗拉/BBA"等），说明换车动机与升级方向
+**C. 关注什么**
+  - preference_intro：1句话核心偏好特质
+  - preference_detail：2-3句分析文本，综合购车动因、核心关注因素、决策信息来源等维度，揭示这群人"为什么关注这些"以及"如何做购车决策"。含绝对百分比数据。≤100字
+  - preference_data：选2-3个最能佐证preference_detail结论的字段（如购车配置、家庭消费支出等），每字段2-4个取值
+  - ⚠️ **数据筛选原则**：只展示能支撑论点的数据，去除与群体特征无关或构成反例的数据点。如果某维度在该群体中无明显特征（分布接近全体均值），不要展示
+
 keywords：4个3-5字的判断性标签，高度概括消费心理特质
 
 **输出（严格JSON，不输出其他内容）**
@@ -144,22 +164,25 @@ keywords：4个3-5字的判断性标签，高度概括消费心理特质
     {
       "name": "群体描述名（精准，禁用人群A/B）",
       "keywords": ["关键词1", "关键词2", "关键词3", "关键词4"],
+      "who_intro": "从事XX占A%、YY占B%，以ZZ学历为主（C%），家庭年收入集中在D-E万元（F%）",
       "who_data": [
-        { "field": "核心维度字段名", "values": ["取值A", "取值B"] }
+        { "field": "从事行业", "values": ["行业1", "行业2", "行业3"] },
+        { "field": "其他维度", "values": ["取值A", "取值B"] }
       ],
-      "core_insight": "消费动机核心引言",
+      "core_insight": "消费动机核心引言（直指深层逻辑，有画面感）",
       "insight_sections": [
-        { "title": "工作生活状态", "text": "判断（含数字，可**加粗**）" },
-        { "title": "消费/汽车价值观", "text": "判断（含数字，可**加粗**）" },
-        { "title": "增换购/前车品牌", "text": "判断", "data": { "field": "字段名", "values": ["取值"] } }
+        { "title": "工作生活状态", "text": "**A%处于X状态**，且B%表现Y——因此他们购车是[场景判断]" },
+        { "title": "消费/汽车价值观", "text": "**A%具有X学历**，且**B%认为Y最重要**——[交叉维度揭示消费心理]" },
+        { "title": "增换购/前车品牌", "text": "增换购需求以**新增/换购**为主，前车多为[大众/丰田/BBA等]，说明[换车动机]" }
       ],
-      "preference_intro": "购车关注点核心特质",
+      "preference_intro": "购车关注点核心特质（1句话）",
+      "preference_detail": "综合分析：购车动因以XX为主（A%），核心关注XX和XX，决策时依赖XX信息（B%），说明这群人[偏好洞察]",
       "preference_data": [
         { "field": "辅助字段名", "values": ["取值1", "取值2"] }
       ]
     }
   ],
-  "overview": "整体一句话画像（含最显著特征，引用数据）"
+  "overview": "整体一句话画像（含最显著特征，引用绝对百分比数据）"
 }`;
 }
 
@@ -199,9 +222,21 @@ ${body.supplementFields.length > 0 ? fmtDist(body.supplementFields) : '（无）
 
 ⚠️ DataPoint 填写规则：values 中的取值名称必须与上方数据完全一致（含标点），渲染器将用它查找真实百分比。
 
-**A. 他们是谁** who_data：从核心维度中选2-4个字段，每个字段只填最能支撑"谁在买车"结论的1-4个取值
-**B. 为什么买** core_insight + insight_sections（3条：工作生活状态 / 消费汽车价值观 / 增换购前车品牌）
-**C. 关注什么** preference_intro + preference_data（选2-3个辅助维度，每个只填最能说明结论的2-4个取值）
+约束：
+- **禁止在任何 text 字段中出现 "+Xpp"、"pp"、"高出X个百分点"、"差值" 等比较性写法**；只写绝对百分比
+- **职业/岗位/行业必须体现在 who_data 中**，描述精确到能帮助寻找相似受众
+
+**A. 他们是谁**
+  - who_intro：数据驱动型描述（2-3个维度+绝对百分比），≤60字
+  - who_data：选3-5个字段，从事行业必须含≥3个行业值，优先行业/职业/岗位/收入/学历
+**B. 为什么买** core_insight + insight_sections（3条：工作生活状态 / 消费/汽车价值观 / 增换购/前车品牌）
+  - 每条 text 引用≥2个不同维度数据点构建论证链，含绝对百分比，≤85字，可**加粗**关键判断
+  - 消费/汽车价值观必须交叉引用≥2个维度数据
+  - 增换购/前车品牌必须具名（大众朗逸/丰田卡罗拉/BBA等），说明换车动机
+**C. 关注什么**
+  - preference_intro：1句偏好特质
+  - preference_detail：2-3句综合分析（购车动因+关注因素+决策信息），含百分比，≤100字
+  - preference_data：2-3个佐证字段，每字段2-4个取值。只展示支撑论点的数据
 
 keywords：4个3-5字的判断性标签，高度概括消费心理特质
 
@@ -212,18 +247,23 @@ keywords：4个3-5字的判断性标签，高度概括消费心理特质
       "name": "群体描述名（精准，禁用人群A/B）",
       "pct_estimate": 35,
       "keywords": ["关键词1", "关键词2", "关键词3", "关键词4"],
-      "who_data": [{ "field": "核心维度字段名", "values": ["取值A", "取值B"] }],
+      "who_intro": "从事XX占A%、YY占B%，以ZZ学历为主（C%），家庭年收入集中在D-E万元（F%）",
+      "who_data": [
+        { "field": "从事行业", "values": ["行业1", "行业2", "行业3"] },
+        { "field": "其他维度", "values": ["取值A", "取值B"] }
+      ],
       "core_insight": "消费动机核心引言",
       "insight_sections": [
-        { "title": "工作生活状态", "text": "判断（含数字，可**加粗**）" },
-        { "title": "消费/汽车价值观", "text": "判断（含数字，可**加粗**）" },
-        { "title": "增换购/前车品牌", "text": "判断", "data": { "field": "字段名", "values": ["取值"] } }
+        { "title": "工作生活状态", "text": "**A%处于X状态**，且B%有Y特征——因此[场景判断]" },
+        { "title": "消费/汽车价值观", "text": "**A%具有X学历**，且**B%认为Y最重要**——[交叉维度揭示心理]" },
+        { "title": "增换购/前车品牌", "text": "增换购需求以**新增/换购**为主，前车多为[大众/丰田/BBA]，说明[换车动机]" }
       ],
       "preference_intro": "购车关注点核心特质",
+      "preference_detail": "综合分析文本（含百分比，≤100字）",
       "preference_data": [{ "field": "辅助字段名", "values": ["取值1", "取值2"] }]
     }
   ],
-  "overview": "整体一句话画像（含最显著特征，引用数据）"
+  "overview": "整体一句话画像（含最显著特征，引用绝对百分比数据）"
 }`;
 }
 
@@ -274,16 +314,25 @@ export async function POST(req: NextRequest) {
     const v2   = isV2(body);
     const prompt = v2 ? buildPromptV2(body as ReqBodyV2) : buildPromptV1(body as ReqBodyV1);
 
-    const res = await fetch(`${AI_BASE_URL}/chat/completions`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AI_API_KEY}` },
-      body: JSON.stringify({
-        model:       AI_MODEL,
-        messages:    [{ role: 'user', content: prompt }],
-        max_tokens:  5000,
-        temperature: 0.1,
-      }),
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 55_000);
+
+    let res: Response;
+    try {
+      res = await fetch(`${AI_BASE_URL}/chat/completions`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AI_API_KEY}` },
+        body: JSON.stringify({
+          model:       AI_MODEL,
+          messages:    [{ role: 'user', content: prompt }],
+          max_tokens:  2500,
+          temperature: 0.1,
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!res.ok) throw new Error(`AI API ${res.status}: ${await res.text()}`);
 
@@ -336,6 +385,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ result });
   } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      return NextResponse.json({ error: 'AI 分析超时，请稍后重试' }, { status: 504 });
+    }
     const msg = e instanceof Error ? e.message : '聚类分析失败';
     return NextResponse.json({ error: msg }, { status: 500 });
   }

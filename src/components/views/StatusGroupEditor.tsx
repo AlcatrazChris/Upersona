@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Plus } from 'lucide-react';
+import { X, Plus, Search } from 'lucide-react';
 import type { StatusGroup } from '@/lib/viewConfig';
 
 // ── Add-value dropdown ────────────────────────────────────────
@@ -14,12 +14,17 @@ function AddValueDropdown({
   onAdd: (v: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   if (options.length === 0) return null;
+
+  const filtered = search
+    ? options.filter(v => v.toLowerCase().includes(search.toLowerCase()))
+    : options;
 
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => { setOpen(o => !o); setSearch(''); }}
         className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 border border-dashed border-blue-300 px-2.5 py-1 rounded-full hover:bg-blue-50 transition-all"
       >
         <Plus size={9} /> 添加值
@@ -27,16 +32,32 @@ function AddValueDropdown({
       {open && (
         <>
           <div className="fixed inset-0 z-[70]" onClick={() => setOpen(false)} />
-          <div className="absolute z-[70] top-7 left-0 bg-white border border-gray-200 rounded-xl shadow-xl p-1.5 min-w-[120px] max-h-40 overflow-y-auto">
-            {options.map(v => (
-              <button
-                key={v}
-                onClick={() => { onAdd(v); setOpen(false); }}
-                className="w-full text-left text-xs px-2.5 py-1.5 rounded-lg hover:bg-blue-50 text-gray-700 truncate"
-              >
-                {v}
-              </button>
-            ))}
+          <div className="absolute z-[70] top-7 left-0 bg-white border border-gray-200 rounded-xl shadow-xl p-1.5 min-w-[140px] max-h-52 flex flex-col">
+            <div className="flex items-center gap-1.5 px-2 py-1 mb-1 border-b border-gray-100">
+              <Search size={10} className="text-gray-400 flex-shrink-0" />
+              <input
+                autoFocus
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="搜索…"
+                className="w-full text-xs bg-transparent outline-none placeholder:text-gray-300"
+                onClick={e => e.stopPropagation()}
+              />
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {filtered.map(v => (
+                <button
+                  key={v}
+                  onClick={() => { onAdd(v); setOpen(false); }}
+                  className="w-full text-left text-xs px-2.5 py-1.5 rounded-lg hover:bg-blue-50 text-gray-700 truncate"
+                >
+                  {v}
+                </button>
+              ))}
+              {filtered.length === 0 && (
+                <p className="text-[10px] text-gray-300 px-2 py-2">无匹配项</p>
+              )}
+            </div>
           </div>
         </>
       )}

@@ -78,11 +78,13 @@ export interface ClusterSegment {
   estimated_pct?:    number;
   pct_estimate?:     number;
   keywords?:         string[];
+  who_intro?:        string;             // left col header: 1-sentence identity description
   core_insight:      string;
   // new schema (v4+)
   who_data?:         DataPoint[];        // left col: AI-selected key demographic values
   insight_sections?: InsightSection[];   // center table; [2].data = history inline bars
   preference_intro?: string;
+  preference_detail?: string;            // descriptive analysis of purchase drivers/decision factors
   preference_data?:  DataPoint[];        // bottom: purchase preference mini charts
   /** Cluster-specific field distributions (server-injected for V2 results).
    *  Used by resolveDataPoint to show cluster-level percentages instead of global averages.

@@ -60,6 +60,24 @@ export function getGeoOptions(
   return [...s].sort();
 }
 
+/** Get sorted unique values + sample counts for a geo level (for dropdown with n=xxx display). */
+export function getGeoOptionsWithCount(
+  records: Record<string, unknown>[],
+  config:  ViewConfig,
+  level:   GeoLevel,
+): { value: string; count: number }[] {
+  const key = geoKeyForLevel(config, level);
+  if (!key) return [];
+  const counter = new Map<string, number>();
+  for (const r of records) {
+    const v = String(r[key] ?? '').trim();
+    if (v) counter.set(v, (counter.get(v) ?? 0) + 1);
+  }
+  return [...counter.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0], 'zh-CN'))
+    .map(([value, count]) => ({ value, count }));
+}
+
 /** Get unique status values present in the records. */
 export function getStatusOptions(
   records: Record<string, unknown>[],

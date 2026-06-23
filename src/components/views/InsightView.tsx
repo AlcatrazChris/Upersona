@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { Loader2, RefreshCw, MapPin } from 'lucide-react';
 import { MarkdownContent } from '@/components/ui/MarkdownContent';
-import { filterRecords, getGeoOptions, type GeoLevel } from '@/lib/filterRecords';
+import { filterRecords, getGeoOptionsWithCount, type GeoLevel } from '@/lib/filterRecords';
 import { aggregateField } from '@/lib/dataAggregator';
 import { computeClusters } from '@/lib/clusterEngine';
 import { useDatasetStore } from '@/store/datasetStore';
@@ -113,12 +113,19 @@ function resolveDataPoint(
 
 // ── DataBar — compact bar row used everywhere ─────────────────
 
-function DataBar({ value, pct, bar, dimColor }: {
-  value:    string; pct: number; bar: string; dimColor?: boolean;
+function DataBar({ value, pct, bar, dimColor, wide }: {
+  value:    string; pct: number; bar: string; dimColor?: boolean; wide?: boolean;
 }) {
   return (
     <div className="flex items-center gap-1.5">
-      <div className={`text-[10px] w-[3.5rem] truncate flex-shrink-0 ${dimColor ? 'text-gray-500' : 'text-gray-700'}`}>
+      <div
+        title={value}
+        className={`text-[10px] shrink-0 leading-tight ${
+          wide
+            ? 'w-[5.5rem] break-words line-clamp-2'
+            : 'w-[3.5rem] truncate'
+        } ${dimColor ? 'text-gray-500' : 'text-gray-700'}`}
+      >
         {value}
       </div>
       <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${dimColor ? 'bg-gray-100' : 'bg-white/60'}`}>
@@ -222,18 +229,24 @@ function SegmentCard({
         )}
       </div>
 
-      {/* ── Body: left blue | center ── */}
+      {/* ── Body: left | right ── */}
       <div className="flex divide-x divide-gray-100">
 
-        {/* Left — 他们是谁 */}
-        <div className="flex-shrink-0 px-3 py-3 space-y-3" style={{ width: 200, background: c.bg }}>
-          {leftResolved.length > 0 ? leftResolved.map(r => (
+        {/* Left — 他们是谁（精简：最多3字段，每字段最多3值） */}
+        <div className="flex-shrink-0 px-3 py-3 space-y-2.5" style={{ width: 180, background: c.bg }}>
+          {seg.who_intro && (
+            <div className="text-[10px] text-gray-700 leading-snug border-b pb-2 mb-0.5"
+              style={{ borderColor: `${c.accent}22` }}>
+              {renderBold(seg.who_intro)}
+            </div>
+          )}
+          {leftResolved.length > 0 ? leftResolved.slice(0, 3).map(r => (
             <div key={r.name}>
-              <div className="text-[9px] font-bold tracking-wide mb-1" style={{ color: c.accent }}>
+              <div className="text-[9px] font-bold tracking-wide mb-0.5" style={{ color: c.accent }}>
                 {r.name}
               </div>
-              <div className="space-y-1">
-                {r.entries.map(e => (
+              <div className="space-y-0.5">
+                {r.entries.slice(0, 3).map(e => (
                   <DataBar key={e.value} value={e.value} pct={e.pct} bar={c.bar} />
                 ))}
               </div>
@@ -243,103 +256,91 @@ function SegmentCard({
           )}
         </div>
 
-        {/* Center — 消费心理 */}
-        <div className="flex-1 px-4 py-3 min-w-0">
-          {/* Header + pull quote */}
-          <div className="flex items-baseline gap-1.5 mb-2.5">
-            <div className="w-[3px] self-stretch rounded-sm flex-shrink-0" style={{ background: c.accent }} />
-            <span className="text-[10px] font-bold flex-shrink-0" style={{ color: c.accent }}>消费心理</span>
-            {seg.core_insight && (
-              <span className="text-[12px] font-semibold text-gray-800 leading-snug">
-                ：{seg.core_insight}
-              </span>
-            )}
-          </div>
+        {/* Right: 消费心理（上）+ 购车偏好（下） */}
+        <div className="flex-1 flex flex-col min-w-0 divide-y divide-gray-100">
 
-          {/* Insight sections table */}
-          {hasSections ? (
-            <div className="border border-gray-100 rounded-sm overflow-hidden">
-              {seg.insight_sections!.map((section, i) => {
-                const inlineData = section.data
-                  ? resolveDataPoint(section.data, chartable, filteredRecords, seg.clusterDist)
-                  : null;
-                return (
+          {/* 消费心理 */}
+          <div className="px-4 py-3">
+            <div className="flex items-baseline gap-1.5 mb-2.5">
+              <div className="w-[3px] self-stretch rounded-sm flex-shrink-0" style={{ background: c.accent }} />
+              <span className="text-[10px] font-bold flex-shrink-0" style={{ color: c.accent }}>消费心理</span>
+              {seg.core_insight && (
+                <span className="text-[12px] font-semibold text-gray-800 leading-snug">
+                  ：{seg.core_insight}
+                </span>
+              )}
+            </div>
+
+            {hasSections ? (
+              <div className="border border-gray-100 rounded-sm overflow-hidden">
+                {seg.insight_sections!.map((section, i) => (
                   <div key={i} className={`flex ${i > 0 ? 'border-t border-gray-100' : ''}`}>
-                    {/* Title cell */}
                     <div
                       className="flex-shrink-0 px-2.5 py-2 text-[10px] font-semibold flex items-start justify-center text-center leading-snug pt-2"
                       style={{ width: 70, background: `${c.accent}0d`, color: c.accent }}
                     >
                       {section.title}
                     </div>
-                    {/* Content cell */}
                     <div className="flex-1 px-3 py-2 text-[11px] text-gray-700 leading-snug">
-                      <div>{renderBold(section.text)}</div>
-                      {/* Inline supporting data bars */}
-                      {inlineData && (
-                        <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                          {inlineData.entries.map(e => (
-                            <div key={e.value} className="flex items-center gap-1.5 min-w-0">
-                              <div
-                                className="h-2 rounded-sm flex-shrink-0"
-                                style={{ width: Math.max(6, Math.round(e.pct * 0.6)), background: c.bar, opacity: 0.8 }}
-                              />
-                              <span className="text-[10px] text-gray-500 whitespace-nowrap">
-                                {e.value} <span className="font-semibold" style={{ color: c.accent }}>{e.pct.toFixed(0)}%</span>
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {renderBold(section.text)}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          ) : (seg.key_traits?.length ?? 0) > 0 ? (
-            <ol className="space-y-1.5">
-              {seg.key_traits!.map((t, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span
-                    className="w-3.5 h-3.5 rounded-sm text-[8px] font-bold text-white flex items-center justify-center flex-shrink-0 mt-0.5"
-                    style={{ background: c.accent }}
-                  >
-                    {i + 1}
-                  </span>
-                  <span className="text-[11px] text-gray-700 leading-snug">{t}</span>
-                </li>
-              ))}
-            </ol>
-          ) : null}
-        </div>
-      </div>
-
-      {/* ── Bottom — 购车偏好 ── */}
-      {hasBottom && (
-        <div className="border-t border-gray-100 px-4 py-3" style={{ background: '#fafafa' }}>
-          <div className="flex items-baseline gap-1.5 mb-2">
-            <div className="w-[3px] h-3.5 rounded-sm flex-shrink-0" style={{ background: c.accent }} />
-            <span className="text-[10px] font-bold" style={{ color: c.accent }}>购车偏好</span>
-            {seg.preference_intro && (
-              <span className="text-[11px] text-gray-600 leading-snug">：{seg.preference_intro}</span>
-            )}
+                ))}
+              </div>
+            ) : (seg.key_traits?.length ?? 0) > 0 ? (
+              <ol className="space-y-1.5">
+                {seg.key_traits!.map((t, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span
+                      className="w-3.5 h-3.5 rounded-sm text-[8px] font-bold text-white flex items-center justify-center flex-shrink-0 mt-0.5"
+                      style={{ background: c.accent }}
+                    >
+                      {i + 1}
+                    </span>
+                    <span className="text-[11px] text-gray-700 leading-snug">{t}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
           </div>
-          {prefResolved.length > 0 && (
-            <div className="grid gap-5" style={{ gridTemplateColumns: `repeat(${Math.min(prefResolved.length, 3)}, 1fr)` }}>
-              {prefResolved.map(r => (
-                <div key={r.name}>
-                  <div className="text-[9px] font-bold text-gray-400 tracking-wide mb-1.5">{r.name}</div>
-                  <div className="space-y-1.5">
-                    {r.entries.map(e => (
-                      <DataBar key={e.value} value={e.value} pct={e.pct} bar={c.bar} dimColor />
-                    ))}
-                  </div>
+
+          {/* 购车偏好 */}
+          {hasBottom && (
+            <div className="px-4 py-3" style={{ background: '#f9fafb' }}>
+              <div className="flex items-baseline gap-1.5 mb-1.5">
+                <div className="w-[3px] self-stretch rounded-sm flex-shrink-0" style={{ background: c.accent }} />
+                <span className="text-[10px] font-bold flex-shrink-0" style={{ color: c.accent }}>购车偏好</span>
+                {seg.preference_intro && (
+                  <span className="text-[12px] font-semibold text-gray-800 leading-snug">：{seg.preference_intro}</span>
+                )}
+              </div>
+              {seg.preference_detail && (
+                <p className="text-[10px] text-gray-600 leading-snug mb-2.5">
+                  {renderBold(seg.preference_detail)}
+                </p>
+              )}
+              {prefResolved.length > 0 && (
+                <div
+                  className="grid gap-x-6 gap-y-3"
+                  style={{ gridTemplateColumns: `repeat(${Math.min(prefResolved.length, 3)}, 1fr)` }}
+                >
+                  {prefResolved.map(r => (
+                    <div key={r.name}>
+                      <div className="text-[9px] font-bold text-gray-400 tracking-wide mb-1">{r.name}</div>
+                      <div className="space-y-1">
+                        {r.entries.map(e => (
+                          <DataBar key={e.value} value={e.value} pct={e.pct} bar={c.bar} dimColor wide />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
+
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -400,15 +401,23 @@ function GeoFilterInline({
   onChange:   (v: string[]) => void;
 }) {
   const options = useMemo(
-    () => getGeoOptions(dataset.records, viewConfig, geoLevel),
+    () => getGeoOptionsWithCount(dataset.records, viewConfig, geoLevel),
     [dataset, viewConfig, geoLevel],
   );
-  const [open, setOpen] = useState(false);
+  const [open,   setOpen]   = useState(false);
+  const [search, setSearch] = useState('');
+
   const levelLabel = geoLevel === 'region' ? '大区' : geoLevel === 'province' ? '省份' : '城市';
   const label =
     selected.length === 0 ? `选择${levelLabel}`
     : selected.length === 1 ? selected[0]
     : `${selected.length} 个${levelLabel}`;
+
+  const filtered = search
+    ? options.filter(o => o.value.includes(search))
+    : options;
+
+  function close() { setOpen(false); setSearch(''); }
 
   return (
     <div className="relative">
@@ -425,26 +434,45 @@ function GeoFilterInline({
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute z-50 top-9 left-0 bg-white border border-gray-200 shadow-xl p-2 w-40 max-h-56 overflow-y-auto rounded-sm">
-            <button
-              onClick={() => { onChange([]); setOpen(false); }}
-              className="w-full text-left text-xs px-2 py-1.5 hover:bg-gray-50 text-gray-500"
-            >
-              全部（不筛选）
-            </button>
-            {options.map(v => (
+          <div className="fixed inset-0 z-40" onClick={close} />
+          <div className="absolute z-50 top-9 left-0 bg-white border border-gray-200 shadow-xl rounded-sm" style={{ width: 220 }}>
+            {/* Search input */}
+            <div className="p-1.5 border-b border-gray-100">
+              <input
+                autoFocus
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => e.key === 'Escape' && close()}
+                onClick={e => e.stopPropagation()}
+                placeholder={`搜索${levelLabel}…`}
+                className="w-full text-xs px-2 py-1 border border-gray-200 rounded-sm focus:outline-none focus:border-blue-300"
+              />
+            </div>
+            <div className="max-h-52 overflow-y-auto p-1">
               <button
-                key={v}
-                onClick={() => onChange(selected.includes(v) ? selected.filter(s => s !== v) : [...selected, v])}
-                className={`w-full text-left text-xs px-2 py-1.5 hover:bg-gray-50 flex items-center gap-1.5 ${
-                  selected.includes(v) ? 'text-blue-700 font-semibold' : 'text-gray-700'
-                }`}
+                onClick={() => { onChange([]); close(); }}
+                className="w-full text-left text-xs px-2 py-1.5 hover:bg-gray-50 text-gray-500 rounded-sm"
               >
-                {selected.includes(v) && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />}
-                {v}
+                全部（不筛选）
               </button>
-            ))}
+              {filtered.map(({ value, count }) => (
+                <button
+                  key={value}
+                  onClick={() => onChange(selected.includes(value) ? selected.filter(s => s !== value) : [...selected, value])}
+                  className={`w-full text-left text-xs px-2 py-1.5 hover:bg-gray-50 flex items-center gap-1.5 rounded-sm ${
+                    selected.includes(value) ? 'text-blue-700 font-semibold' : 'text-gray-700'
+                  }`}
+                >
+                  {selected.includes(value) && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />}
+                  <span className="flex-1 truncate">{value}</span>
+                  <span className="text-[10px] text-gray-400 flex-shrink-0">n={count.toLocaleString()}</span>
+                </button>
+              ))}
+              {filtered.length === 0 && (
+                <div className="text-xs text-gray-400 px-2 py-2 text-center">无结果</div>
+              )}
+            </div>
           </div>
         </>
       )}

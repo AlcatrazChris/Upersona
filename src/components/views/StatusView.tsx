@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useRef } from 'react';
-import { Plus, X, ChevronDown, BarChart2, Layers } from 'lucide-react';
+import { Plus, X, ChevronDown, BarChart2, Layers, Search } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ResponsiveContainer,
 } from 'recharts';
@@ -63,6 +63,7 @@ function DatasetPicker({
   onSelect:   (id: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [dsSearch, setDsSearch] = useState('');
   const options  = datasets.filter(d => d.id !== currentId);
   const selected = options.find(d => d.id === selectedId);
 
@@ -91,17 +92,33 @@ function DatasetPicker({
       {open && options.length > 0 && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute z-50 top-9 left-0 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 min-w-[200px] max-h-60 overflow-y-auto">
-            {options.map(d => (
-              <button
-                key={d.id}
-                onClick={() => { onSelect(d.id); setOpen(false); }}
-                className="w-full text-left text-xs px-3 py-2 hover:bg-gray-50 text-gray-700"
-              >
-                <div className="font-medium truncate">{d.name}</div>
-                <div className="text-gray-400 mt-0.5">{d.rowCount.toLocaleString()} 行 · {d.fields.length} 字段</div>
-              </button>
-            ))}
+          <div className="absolute z-50 top-9 left-0 bg-white border border-gray-200 rounded-xl shadow-xl min-w-[200px] max-h-64 flex flex-col">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-gray-100">
+              <Search size={10} className="text-gray-400 flex-shrink-0" />
+              <input
+                autoFocus
+                value={dsSearch}
+                onChange={e => setDsSearch(e.target.value)}
+                placeholder="搜索数据集…"
+                className="w-full text-xs bg-transparent outline-none placeholder:text-gray-300"
+                onClick={e => e.stopPropagation()}
+              />
+            </div>
+            <div className="overflow-y-auto flex-1 py-1.5">
+              {(dsSearch
+                ? options.filter(d => d.name.toLowerCase().includes(dsSearch.toLowerCase()))
+                : options
+              ).map(d => (
+                <button
+                  key={d.id}
+                  onClick={() => { onSelect(d.id); setOpen(false); }}
+                  className="w-full text-left text-xs px-3 py-2 hover:bg-gray-50 text-gray-700"
+                >
+                  <div className="font-medium truncate">{d.name}</div>
+                  <div className="text-gray-400 mt-0.5">{d.rowCount.toLocaleString()} 行 · {d.fields.length} 字段</div>
+                </button>
+              ))}
+            </div>
           </div>
         </>
       )}
