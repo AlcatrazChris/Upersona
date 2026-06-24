@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Loader2, RefreshCw, MapPin } from 'lucide-react';
+import { Loader2, RefreshCw, MapPin, ChevronDown } from 'lucide-react';
 import { MarkdownContent } from '@/components/ui/MarkdownContent';
 import { filterRecords, getGeoOptionsWithCount, type GeoLevel } from '@/lib/filterRecords';
 import { aggregateField } from '@/lib/dataAggregator';
-import { computeClusters } from '@/lib/clusterEngine';
+import { computeClusters, CLUSTER_METHODS, type ClusterMethod } from '@/lib/clusterEngine';
 import { useDatasetStore } from '@/store/datasetStore';
 import type { ViewConfig, ClusterInsightResult, ClusterSegment, DataPoint } from '@/lib/viewConfig';
 import type { Dataset, Field } from '@/types/dataSchema';
@@ -489,11 +489,11 @@ interface Props {
 
 export function InsightView({ dataset, viewConfig }: Props) {
   const { updateViewConfig } = useDatasetStore();
-
-  const [geoLevel,    setGeoLevel]    = useState<GeoLevel>('region');
-  const [selectedGeo, setSelectedGeo] = useState<string[]>([]);
-  const [loading,     setLoading]     = useState(false);
-  const [error,       setError]       = useState('');
+  const [geoLevel,      setGeoLevel]      = useState<GeoLevel>('region');
+  const [selectedGeo,   setSelectedGeo]   = useState<string[]>([]);
+  const [clusterMethod, setClusterMethod] = useState<ClusterMethod>('kmeans');
+  const [loading,       setLoading]       = useState(false);
+  const [error,         setError]         = useState('');
 
   const geoLevels = ([
     { key: 'region'   as GeoLevel, label: '大区',  fieldKey: viewConfig.geoRegionKey   },
@@ -502,8 +502,8 @@ export function InsightView({ dataset, viewConfig }: Props) {
   ] as const).filter(l => l.fieldKey);
 
   const cacheKey = useMemo(
-    () => `${geoLevel}_${selectedGeo.join(',')}_r${dataset.rowCount}`,
-    [geoLevel, selectedGeo, dataset.rowCount],
+    () => `${geoLevel}_${selectedGeo.join(',')}_r${dataset.rowCount}_m${clusterMethod}`,
+    [geoLevel, selectedGeo, dataset.rowCount, clusterMethod],
   );
 
   const cachedResult: ClusterInsightResult | undefined = viewConfig.clusterResults?.[cacheKey];
@@ -532,6 +532,8 @@ export function InsightView({ dataset, viewConfig }: Props) {
         filteredRecords,
         clusterFields,
         supplementFields.slice(0, 6),
+        2, 5,
+        clusterMethod,
       );
 
       let body: Record<string, unknown>;
@@ -543,6 +545,7 @@ export function InsightView({ dataset, viewConfig }: Props) {
           optimalK:     clusterResult.optimalK,
           clusters:     clusterResult.clusters,
           fieldOptions: clusterResult.fieldOptions,
+          clusterMethod,
         };
       } else {
         // Fallback: distribution-based (insufficient data or missing cluster fields)
@@ -624,6 +627,33 @@ export function InsightView({ dataset, viewConfig }: Props) {
 
         <div className="flex-1" />
 
+        {/* Cluster method selector */}
+        <div className="relative group/method">
+          <button
+            className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-sm border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 transition-all"
+            title={CLUSTER_METHODS.find(m => m.value === clusterMethod)?.desc}
+          >
+            {CLUSTER_METHODS.find(m => m.value === clusterMethod)?.label}
+            <ChevronDown size={10} />
+          </button>
+          <div className="absolute z-50 top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[200px] hidden group-hover/method:block">
+            {CLUSTER_METHODS.map(m => (
+              <button
+                key={m.value}
+                onClick={() => setClusterMethod(m.value)}
+                className={`w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors ${
+                  clusterMethod === m.value ? 'bg-indigo-50' : ''
+                }`}
+              >
+                <div className={`text-xs font-medium ${clusterMethod === m.value ? 'text-indigo-700' : 'text-gray-700'}`}>
+                  {m.label}
+                </div>
+                <div className="text-[10px] text-gray-400 mt-0.5">{m.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <button
           onClick={generate}
           disabled={loading}
@@ -647,7 +677,9 @@ export function InsightView({ dataset, viewConfig }: Props) {
           <Loader2 size={22} className="animate-spin" style={{ color: '#003087' }} />
           <div className="text-center">
             <p className="text-sm font-medium text-gray-700">正在分析人群特征</p>
-            <p className="text-xs text-gray-400 mt-1">已完成统计聚类（Calinski-Harabasz 指数），AI 正在撰写群体洞察，通常需要 20-40 秒</p>
+            <p className="text-xs text-gray-400 mt-1">
+              已完成统计聚类{clusterMethod === 'twostage' ? '（两阶段职业锚定）' : '（Calinski-Harabasz 指数）'}，AI 正在撰写群体洞察，通常需要 {clusterMethod === 'twostage' ? '30-60' : '20-40'} 秒
+            </p>
           </div>
         </div>
       )}

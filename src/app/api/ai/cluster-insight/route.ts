@@ -23,6 +23,7 @@ interface ReqBodyV2 {
   optimalK:     number;
   clusters:     ClusterProfile[];
   fieldOptions: Record<string, string[]>; // fieldName → valid values
+  clusterMethod?: 'kmeans' | 'twostage';
 }
 
 // V1: legacy distribution-based (fallback when clustering fails)
@@ -101,6 +102,20 @@ function fmtFieldOptions(fieldOptions: Record<string, string[]>): string {
 }
 
 function buildPromptV2(body: ReqBodyV2): string {
+  const isTwoStage = body.clusterMethod === 'twostage';
+
+  const methodDesc = isTwoStage
+    ? `两阶段职业锚定聚类：先按从事行业/工作单位类型规则分组（体制内/制造工程/商贸服务/科技互联网/教育医疗/金融等），再在组内按收入水平 K-Means 细分。因此每个群体天然具有明确的行业身份，行业/单位类型字段的高集中度是分组设计的结果，不是偶然特征。`
+    : `K-means + Calinski-Harabasz × 均衡惩罚，最优 k=${body.optimalK}`;
+
+  const namingRule = isTwoStage
+    ? `**群体名称（name）必须以该群体的主导行业/单位类型开头**，格式为「行业身份 + 收入/岗位特征」。
+     示例：「政府事业单位·中高收入科级干部」「制造/建筑业·个体经营者」「商贸服务·批发零售中层」
+     禁止使用与行业无关的抽象标签（如"品质升级型""首购族""新中产"）作为群体名称。`
+    : `**群体名称（name）和 who_data 的字段选择，只能基于标注了 ▲ 的字段取值**；未标 ▲ 的取值不得作为命名依据或 who_data 核心特征`;
+
+  const consistencyRule = `7. **内部一致性**：name/who_intro/core_insight/preference_detail 中的判断必须互相一致，不得出现自相矛盾（例如 name 写"首购"但 preference_detail 写"增购/换购动因"）。撰写前先通读该群体全部数据，确定是"首购为主"还是"增换购为主"，然后在所有字段中保持统一口径`;
+
   return `你是麦肯锡资深市场研究专家，专注汽车行业用户细分研究。
 
 核心原则：**所有数据都是为结论服务的**——先形成洞察，再选择最能支撑结论的数据点展示，不要罗列数据。
@@ -110,13 +125,15 @@ function buildPromptV2(body: ReqBodyV2): string {
 - 分析范围：${body.label}
 - 有效样本：${body.totalCount.toLocaleString()} 份
 
-**统计聚类结果**（K-means + Calinski-Harabasz × 均衡惩罚，最优 k=${body.optimalK}）
+**聚类方法**：${methodDesc}
 以下占比和样本量均为服务端精确计算值，**不要在输出中包含或改写这些数字**。
 
 数据格式说明：XX%（全体YY%，+Zpp ▲）
 - "+Zpp" = 该取值在此群体中比全体均值高出 Z 个百分点
 - ▲ = delta ≥ +5pp，即该取值在此群体中显著突出，是区分此群体的关键特征
 - 未标 ▲、delta 接近 0 或为负数的取值不代表此群体的区分性特征
+${isTwoStage ? '- ⚠️ 两阶段聚类中，行业/单位类型字段的高集中度是**分组规则的结果**，请同时关注该群体在收入/岗位/学历等维度上的区分性特征（标 ▲ 的取值）' : ''}
+
 
 ${fmtClusters(body.clusters)}
 
@@ -126,18 +143,19 @@ ${fmtFieldOptions(body.fieldOptions)}
 
 ---
 
-**任务**：为上述 ${body.optimalK} 个统计群体撰写洞察。
+**任务**：为上述 ${body.optimalK} 个群体撰写洞察。
 约束：
 1. segments 数组顺序必须与上方群体顺序完全一致（群体1→群体2→…）
 2. 不要输出 pct_estimate 字段（占比由系统自动注入）
-3. **群体名称（name）和 who_data 的字段选择，只能基于标注了 ▲ 的字段取值**；未标 ▲ 的取值不得作为命名依据或 who_data 核心特征
+3. ${namingRule}
 4. who_data / preference_data 的 values 中每个值必须与上方合法取值列表完全一致
 5. **禁止在任何 text 字段中出现 "+Xpp"、"pp"、"高出X个百分点"、"差值" 等比较性写法**；只写绝对百分比（如"67%从事制造业"）
-6. **职业/岗位/行业必须体现在 who_data 中**，描述精确到能帮助寻找相似受众（如"制造/建筑行业中层管理者"而非泛泛的"企业员工"）
+6. **职业/岗位/行业必须体现在 who_data 中**，描述精确到能帮助终端营销人员按行业+岗位定向寻找目标客户（如"制造/建筑行业中层管理者"而非泛泛的"企业员工"）
+${consistencyRule}
 
 **写作风格要求**：
-- who_intro：**数据驱动型身份速写**，用绝对百分比直接勾勒人群面貌。
-  示例：「从事制造业占25%、建筑业14%，以大专及以下学历为主（50%），家庭年收入集中在20-30万元（38%）。」
+- who_intro：**数据驱动型身份速写**，用绝对百分比直接勾勒人群面貌。${isTwoStage ? '必须以行业/单位身份开头。' : ''}
+  示例：「从事制造业占60%、建筑业33%，以个体工商户为主（62%），家庭年收入集中在20-30万元（38%）。」
   格式：列出2-3个最能刻画该群体身份的维度和对应百分比，让读者一眼建立画面。
 - core_insight：直指深层逻辑，有画面感。示例：「买车本质上是一次资产配置决策。他们长期处在制造业、建筑业，见惯营销套路，反感溢价，希望被当聪明的买主。」
 - insight text：每条引用**≥2个不同维度的数据点**构建论证链（如学历+消费观→结论，行业+岗位→结论），不用同一维度的单一数据撑大结论。≤85字，可**加粗**关键词。
@@ -145,7 +163,11 @@ ${fmtFieldOptions(body.fieldOptions)}
 
 **A. 他们是谁**
   - who_intro：数据驱动型描述（2-3个维度 + 绝对百分比），≤60字
-  - who_data：选3-5个字段，**从事行业必须包含≥3个行业值**以充分佐证群体的职业集中度；优先选行业/职业/岗位/收入/学历，每字段填1-4个最能说明"谁在买车"的取值
+  - who_data：选3个字段，**必须覆盖3个不同维度类别**，从以下类别中各选1个最能区分该群体的字段：
+    - 职业维度（从事行业 / 工作单位类型 / 岗位级别 / 职业类型，选1个最突出的）
+    - 经济维度（家庭年收入 / 学历，选1个）
+    - 生活维度（年龄段 / 工作生活状态 / 婚育情况，选1个与该群体最相关的）
+    每字段填2-4个该群体最突出（delta ▲）的取值。**禁止3个字段全选职业相关维度**
 **B. 为什么买** core_insight + insight_sections（3条）
   - 工作生活状态：工作性质 + 生活节奏 → 购车如何契合其生活场景
   - 消费/汽车价值观：消费理念 + 对车的态度 → 影响决策的核心价值取向。**必须交叉引用≥2个维度的数据**（如学历+消费观、收入+价值观），不能只用单一维度推导
@@ -162,12 +184,13 @@ keywords：4个3-5字的判断性标签，高度概括消费心理特质
 {
   "segments": [
     {
-      "name": "群体描述名（精准，禁用人群A/B）",
+      "name": "${isTwoStage ? '行业身份·收入/岗位特征（如：政府事业单位·中高收入科级干部）' : '群体描述名（精准，禁用人群A/B）'}",
       "keywords": ["关键词1", "关键词2", "关键词3", "关键词4"],
       "who_intro": "从事XX占A%、YY占B%，以ZZ学历为主（C%），家庭年收入集中在D-E万元（F%）",
       "who_data": [
-        { "field": "从事行业", "values": ["行业1", "行业2", "行业3"] },
-        { "field": "其他维度", "values": ["取值A", "取值B"] }
+        { "field": "从事行业", "values": ["行业1", "行业2", "行业3"], "label": "职业维度" },
+        { "field": "家庭年收入", "values": ["收入段1", "收入段2"], "label": "经济维度" },
+        { "field": "年龄段/婚育情况", "values": ["取值1", "取值2"], "label": "生活维度" }
       ],
       "core_insight": "消费动机核心引言（直指深层逻辑，有画面感）",
       "insight_sections": [
@@ -228,7 +251,7 @@ ${body.supplementFields.length > 0 ? fmtDist(body.supplementFields) : '（无）
 
 **A. 他们是谁**
   - who_intro：数据驱动型描述（2-3个维度+绝对百分比），≤60字
-  - who_data：选3-5个字段，从事行业必须含≥3个行业值，优先行业/职业/岗位/收入/学历
+  - who_data：选3个字段，必须覆盖3个不同维度类别（职业维度选1 + 经济维度选1 + 生活维度选1），禁止3个字段全选职业相关
 **B. 为什么买** core_insight + insight_sections（3条：工作生活状态 / 消费/汽车价值观 / 增换购/前车品牌）
   - 每条 text 引用≥2个不同维度数据点构建论证链，含绝对百分比，≤85字，可**加粗**关键判断
   - 消费/汽车价值观必须交叉引用≥2个维度数据
@@ -249,8 +272,9 @@ keywords：4个3-5字的判断性标签，高度概括消费心理特质
       "keywords": ["关键词1", "关键词2", "关键词3", "关键词4"],
       "who_intro": "从事XX占A%、YY占B%，以ZZ学历为主（C%），家庭年收入集中在D-E万元（F%）",
       "who_data": [
-        { "field": "从事行业", "values": ["行业1", "行业2", "行业3"] },
-        { "field": "其他维度", "values": ["取值A", "取值B"] }
+        { "field": "从事行业", "values": ["行业1", "行业2", "行业3"], "label": "职业维度" },
+        { "field": "家庭年收入", "values": ["收入段1", "收入段2"], "label": "经济维度" },
+        { "field": "年龄段/婚育情况", "values": ["取值1", "取值2"], "label": "生活维度" }
       ],
       "core_insight": "消费动机核心引言",
       "insight_sections": [
@@ -295,11 +319,35 @@ function validateDataPoints(
 
 function extractJson(raw: string): string {
   const m = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (m) return m[1].trim();
-  const start = raw.indexOf('{');
-  const end   = raw.lastIndexOf('}');
-  if (start !== -1 && end !== -1) return raw.slice(start, end + 1);
-  return raw.trim();
+  let json = '';
+  if (m) {
+    json = m[1].trim();
+  } else {
+    const start = raw.indexOf('{');
+    const end   = raw.lastIndexOf('}');
+    if (start !== -1 && end !== -1) json = raw.slice(start, end + 1);
+    else json = raw.trim();
+  }
+  // Try parse as-is first
+  try { JSON.parse(json); return json; } catch { /* fall through to repair */ }
+  // Attempt to repair truncated JSON by closing open brackets/braces
+  let repaired = json;
+  const opens: string[] = [];
+  let inStr = false, escaped = false;
+  for (const ch of repaired) {
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\') { escaped = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '{' || ch === '[') opens.push(ch);
+    if (ch === '}' || ch === ']') opens.pop();
+  }
+  if (inStr) repaired += '"';
+  while (opens.length) {
+    const o = opens.pop()!;
+    repaired += o === '{' ? '}' : ']';
+  }
+  return repaired;
 }
 
 // ── Route handler ──────────────────────────────────────────────
@@ -314,8 +362,12 @@ export async function POST(req: NextRequest) {
     const v2   = isV2(body);
     const prompt = v2 ? buildPromptV2(body as ReqBodyV2) : buildPromptV1(body as ReqBodyV1);
 
+    const clusterCount = v2 ? (body as ReqBodyV2).optimalK : 3;
+    const maxTokens = Math.min(8000, 800 * clusterCount + 500);
+    const timeoutMs = Math.min(120_000, 15_000 * clusterCount + 10_000);
+
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 55_000);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     let res: Response;
     try {
@@ -325,7 +377,7 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           model:       AI_MODEL,
           messages:    [{ role: 'user', content: prompt }],
-          max_tokens:  2500,
+          max_tokens:  maxTokens,
           temperature: 0.1,
         }),
         signal: controller.signal,

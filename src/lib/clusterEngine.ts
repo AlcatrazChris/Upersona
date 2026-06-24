@@ -294,6 +294,158 @@ function computeFieldDist(
   return { fieldName: field.name, fieldKey: field.key, topValues, allOptions };
 }
 
+// ── Cluster method types ─────────────────────────────────────
+
+export type ClusterMethod = 'kmeans' | 'twostage';
+
+export const CLUSTER_METHODS: { value: ClusterMethod; label: string; desc: string }[] = [
+  { value: 'kmeans',   label: 'K-Means',         desc: '全字段统计聚类，自动选择最优 k' },
+  { value: 'twostage', label: '两阶段(职业锚定)', desc: '先按行业/单位规则分组，再按收入细分，职业纯度更高' },
+];
+
+// ── Industry macro-group classification ──────────────────────
+
+const IND_GROUPS: [string, string[]][] = [
+  ['体制内',     ['政府', '事业', '国有', '国企', '公务', '军']],
+  ['科技互联网', ['IT', '互联网', '信息', '科技', '通信', '电子', '软件']],
+  ['金融',       ['金融', '银行', '保险', '证券', '投资', '基金']],
+  ['制造工程',   ['制造', '工业', '建筑', '工程', '能源', '化工', '矿', '电力']],
+  ['教育医疗',   ['教育', '培训', '医疗', '卫生', '保健', '福利']],
+  ['商贸服务',   ['贸易', '批发', '零售', '商业', '餐饮', '住宿', '旅游', '物流', '运输']],
+];
+
+function classifyIndustry(record: Record<string, unknown>, industryKeys: string[]): string {
+  const combined = industryKeys.map(k => String(record[k] ?? '')).join('');
+  for (const [group, kws] of IND_GROUPS) {
+    if (kws.some(kw => combined.includes(kw))) return group;
+  }
+  return '其他';
+}
+
+function findFieldByKeyword(fields: Field[], keywords: string[]): Field | undefined {
+  return fields.find(f => keywords.some(kw => f.name.includes(kw)));
+}
+
+// ── Two-stage clustering ─────────────────────────────────────
+
+function computeClusters2Stage(
+  records:          Record<string, unknown>[],
+  clusterFields:    Field[],
+  supplementFields: Field[],
+): ClusteringResult | null {
+  if (records.length < 40 || clusterFields.length === 0) return null;
+
+  // Dynamic thresholds based on dataset size
+  const minGroupSize   = Math.max(15, Math.min(50, Math.floor(records.length * 0.12)));
+  const minSubCluster  = Math.max(8,  Math.min(20, Math.floor(records.length * 0.06)));
+  const subClusterAt   = Math.max(30, Math.min(50, Math.floor(records.length * 0.10)));
+
+  const industryField = findFieldByKeyword(clusterFields, ['行业']);
+  const unitField     = findFieldByKeyword(clusterFields, ['单位类型']);
+  const incomeField   = findFieldByKeyword(clusterFields, ['收入']);
+
+  const industryKeys = [industryField, unitField].filter(Boolean).map(f => f!.key);
+  if (industryKeys.length === 0) return null;
+
+  // Stage 1: classify records into macro industry groups
+  const groupMap = new Map<string, number[]>();
+  for (let i = 0; i < records.length; i++) {
+    const g = classifyIndustry(records[i], industryKeys);
+    if (!groupMap.has(g)) groupMap.set(g, []);
+    groupMap.get(g)!.push(i);
+  }
+
+  // Stage 2: within each group, sub-cluster by income (if large enough)
+  const subClusterFields = [incomeField, findFieldByKeyword(clusterFields, ['岗位', '级别'])]
+    .filter(Boolean) as Field[];
+
+  const seed = dataSeed(records, clusterFields);
+  const segmentIndices: number[][] = [];
+
+  for (const [, indices] of groupMap) {
+    if (indices.length < subClusterAt || subClusterFields.length === 0) {
+      segmentIndices.push(indices);
+      continue;
+    }
+    const subRecords = indices.map(i => records[i]);
+    const cols = buildEncoding(subClusterFields, subRecords);
+    if (cols.length === 0) { segmentIndices.push(indices); continue; }
+    const X = subRecords.map(r => encodeRecord(r, cols));
+
+    const subK = indices.length >= 200 ? 3 : 2;
+    const rand = makePRNG(seed + indices.length * 7919);
+    const { labels } = runKMeans(X, subK, rand);
+
+    const subSizes = new Array(subK).fill(0);
+    labels.forEach(l => subSizes[l]++);
+    const tooSmall = subSizes.some(s => s < minSubCluster);
+
+    if (tooSmall) {
+      segmentIndices.push(indices);
+    } else {
+      for (let s = 0; s < subK; s++) {
+        segmentIndices.push(indices.filter((_, j) => labels[j] === s));
+      }
+    }
+  }
+
+  // Merge groups smaller than minGroupSize
+  const merged: number[][] = [];
+  const small: number[][] = [];
+  for (const seg of segmentIndices) {
+    if (seg.length >= minGroupSize) merged.push(seg);
+    else small.push(seg);
+  }
+
+  if (small.length > 0) {
+    const otherIndices = small.flat();
+    if (otherIndices.length >= minGroupSize) {
+      merged.push(otherIndices);
+    } else if (merged.length > 0) {
+      merged.sort((a, b) => a.length - b.length);
+      merged[0] = [...merged[0], ...otherIndices];
+    } else {
+      merged.push(otherIndices);
+    }
+  }
+
+  // Sort by size descending
+  merged.sort((a, b) => b.length - a.length);
+
+  // Build profiles
+  const total = records.length;
+  const allFields = [...clusterFields, ...supplementFields];
+  const overallDistMaps = new Map<string, Map<string, number>>();
+  for (const f of allFields) overallDistMaps.set(f.key, computeOverallDist(records, f));
+  const optionsMap = new Map<string, string[]>();
+  for (const f of allFields) optionsMap.set(f.key, getEffectiveOptions(f, records));
+
+  const clusters: ClusterProfile[] = merged.map((indices, id) => {
+    const memberRecords = indices.map(i => records[i]);
+    return {
+      id,
+      size: memberRecords.length,
+      pct:  parseFloat((memberRecords.length / total * 100).toFixed(1)),
+      clusterFieldDist: clusterFields.map(f =>
+        computeFieldDist(memberRecords, f, optionsMap.get(f.key) ?? [], overallDistMaps.get(f.key) ?? new Map())
+      ),
+      supplementFieldDist: supplementFields.map(f =>
+        computeFieldDist(memberRecords, f, optionsMap.get(f.key) ?? [], overallDistMaps.get(f.key) ?? new Map())
+      ),
+    };
+  });
+
+  const fieldOptions: Record<string, string[]> = {};
+  for (const f of allFields) fieldOptions[f.name] = optionsMap.get(f.key) ?? [];
+
+  return {
+    optimalK: clusters.length,
+    chScore:  0,
+    clusters,
+    fieldOptions,
+  };
+}
+
 // ── Main entry ────────────────────────────────────────────────
 
 const MAX_TRAIN = 3000;
@@ -304,7 +456,11 @@ export function computeClusters(
   supplementFields: Field[],
   minK = 2,
   maxK = 5,
+  method: ClusterMethod = 'kmeans',
 ): ClusteringResult | null {
+  if (method === 'twostage') {
+    return computeClusters2Stage(records, clusterFields, supplementFields);
+  }
   if (records.length < minK * 10 || clusterFields.length === 0) return null;
 
   const seed = dataSeed(records, clusterFields);

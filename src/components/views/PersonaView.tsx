@@ -309,11 +309,11 @@ export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
   const [editingName,   setEditingName]   = useState(false);
   const [nameInput,     setNameInput]     = useState('');
 
-  // 配置完成后自动进入看板模式
+  // 配置完成后自动进入看板模式（id 变化 = 新建/切换；updatedAt 变化 = 编辑器保存后返回）
   useEffect(() => {
     if (activeConfig) setDashMode(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConfig?.id]);
+  }, [activeConfig?.id, activeConfig?.updatedAt]);
   const [geoLevel,      setGeoLevel]      = useState<GeoLevel>('all');
   const [selectedGeo,   setSelectedGeo]   = useState<string[]>([]);
   const [selStatus,     setSelStatus]     = useState<string[]>(['__all']);

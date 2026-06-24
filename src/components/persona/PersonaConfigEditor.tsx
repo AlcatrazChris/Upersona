@@ -619,7 +619,6 @@ export function PersonaConfigEditor({ dataset, onClose }: PersonaConfigEditorPro
   const [localColumns,   setLocalColumns]   = useState<1 | 2 | 3>(activeConfig?.layout?.columns ?? 2);
   const [localSegments,  setLocalSegments]  = useState<SegmentDef[]>(activeConfig?.segments ?? []);
   const [isDirty,        setIsDirty]        = useState(false);
-  const [syncHint,       setSyncHint]       = useState(false);
   const [editorTab,      setEditorTab]      = useState<'blocks' | 'segments'>('blocks');
 
   useEffect(() => {
@@ -676,12 +675,14 @@ export function PersonaConfigEditor({ dataset, onClose }: PersonaConfigEditorPro
 
   function syncToChartMode() {
     if (!activeConfig) return;
+    // Save current changes first
+    if (isDirty) saveCurrent();
     const keys = localBlocks
       .filter(b => b.visible && b.sourceFieldKey)
       .map(b => b.sourceFieldKey);
     updateViewConfig(dataset.id, { personaFieldKeys: keys });
-    setSyncHint(true);
-    setTimeout(() => setSyncHint(false), 2500);
+    // Close editor → PersonaView will auto-enter dashboard mode
+    onClose?.();
   }
 
   // ── Block-level actions ──────────────────────────────────────────
@@ -774,14 +775,10 @@ export function PersonaConfigEditor({ dataset, onClose }: PersonaConfigEditorPro
 
         {activeConfig && (
           <button onClick={syncToChartMode}
-            title="将此画像配置的字段顺序同步到图表模式"
-            className={cn(
-              'ml-auto flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border transition-all flex-shrink-0',
-              syncHint
-                ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200',
-            )}>
-            {syncHint ? <><Check size={11} />已同步到图表模式</> : <><RefreshCw size={11} />同步到图表模式</>}
+            title="保存配置并切换到画像看板预览"
+            className="ml-auto flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border transition-all flex-shrink-0 bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
+          >
+            <RefreshCw size={11} />应用并预览看板
           </button>
         )}
       </div>
