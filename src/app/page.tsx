@@ -15,6 +15,7 @@ import { InsightView }          from '@/components/views/InsightView';
 import { RegionalFeatureView }  from '@/components/views/RegionalFeatureView';
 import { DataCenterPanel }      from '@/components/views/DataCenterPanel';
 import { PersonaConfigEditor }  from '@/components/persona/PersonaConfigEditor';
+import { CloudDatasetSelector } from '@/components/shared/CloudDatasetSelector';
 import { cn } from '@/lib/utils';
 
 // ── View definitions ──────────────────────────────────────────────
@@ -45,11 +46,14 @@ function EmptyState({ onOpenDC, isAdmin }: { onOpenDC: () => void; isAdmin: bool
         <BarChart2 size={28} className="text-blue-400" />
       </div>
       <h2 className="text-lg font-semibold text-gray-700 mb-2">还没有数据集</h2>
-      {isAdmin ? (
-        <>
-          <p className="text-sm text-gray-400 mb-6 max-w-xs leading-relaxed">
-            在数据中心上传 Excel / CSV 文件，即可自动识别字段并开始画像分析
-          </p>
+      <p className="text-sm text-gray-400 mb-6 max-w-xs leading-relaxed">
+        {isAdmin
+          ? '在数据中心上传 Excel / CSV 文件，或从云端选择已有数据集'
+          : '从云端选择一个已有数据集开始分析'}
+      </p>
+      <div className="flex items-center gap-3">
+        <CloudDatasetSelector />
+        {isAdmin && (
           <button
             onClick={onOpenDC}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-all shadow-sm"
@@ -57,12 +61,8 @@ function EmptyState({ onOpenDC, isAdmin }: { onOpenDC: () => void; isAdmin: bool
             <Database size={15} />
             打开数据中心
           </button>
-        </>
-      ) : (
-        <p className="text-sm text-gray-400 max-w-xs leading-relaxed">
-          当前暂无可用数据，请联系管理员上传数据集后刷新页面
-        </p>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -250,13 +250,7 @@ export default function MainPage() {
                 </button>
               )}
               <div className="flex items-center gap-2 text-xs text-gray-400">
-                <span
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-blue-600 font-medium"
-                  style={{ background: '#eff6ff' }}
-                >
-                  <Database size={11} />
-                  {dataset.name}
-                </span>
+                <CloudDatasetSelector currentDataset={dataset} />
                 <span>{dataset.rowCount.toLocaleString()} 条数据</span>
                 <span className="text-gray-200">·</span>
                 <span>{dataset.fields.length} 字段</span>
