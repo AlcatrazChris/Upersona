@@ -6,19 +6,18 @@ import {
   CalendarDays, Bookmark, BookmarkCheck, MousePointerClick, Layers, X,
 } from 'lucide-react';
 import { ChartCard } from './ChartCard';
-import { ChartSettingsPanel } from './ChartSettingsPanel';
+import { ChartSettingsPanel, useStoredChartConfig } from './ChartSettingsPanel';
 import { ComparePanel } from './ComparePanel';
-import { GroupedBarChartEngine } from './engine/GroupedBarChartEngine';
-import { StackedBarChartEngine } from './engine/StackedBarChartEngine';
+import { GroupChartRenderer } from './engine/ChartRenderer';
 import { RankingHeatmapEngine } from './engine/RankingHeatmapEngine';
 import { useDatasetStore } from '@/store/datasetStore';
 import { aggregateField, aggregateFieldGrouped, aggregateRanking, inferDateGran } from '@/lib/dataAggregator';
 import type { RankingData } from '@/lib/dataAggregator';
-import { loadChartConfig, saveChartConfig } from '@/lib/chartConfig';
 import { cn } from '@/lib/utils';
 import type { Dataset, Field, FieldType } from '@/types/dataSchema';
 import type { ChartType } from '@/components/charts/engine/types';
 import type { ChartConfig } from '@/lib/chartConfig';
+import { detectTimeField } from '@/lib/timeStatus';
 
 // ── Constants ─────────────────────────────────────────────────
 
@@ -70,13 +69,14 @@ function isChartable(f: Field): boolean {
 // ── Component ─────────────────────────────────────────────────
 
 export function ChartBuilder({ dataset }: { dataset: Dataset }) {
-  const defaultField = dataset.fields.find(isChartable) ?? null;
+  const timeField = detectTimeField(dataset);
+  const defaultField = dataset.fields.find(field => isChartable(field) && field.key !== timeField?.key) ?? null;
 
   const [activeKey,  setActiveKey]  = useState<string | null>(defaultField?.key ?? null);
   const [chartType,  setChartType]  = useState<NormalType>(() =>
     defaultField ? getSupportedTypes(defaultField)[0] : 'bar'
   );
-  const [config,     setConfig]     = useState<ChartConfig>(() => loadChartConfig('builder'));
+  const [config, handleConfigChange] = useStoredChartConfig('builder');
   const [dateGran,   setDateGran]   = useState<DateGran>('month');
   const [chartTitle, setChartTitle] = useState<string>(() => defaultField?.name ?? '');
   const [justSaved,  setJustSaved]  = useState(false);
@@ -133,11 +133,6 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
     return aggregateFieldGrouped(dataset.records, activeField, gf, selectedGroups);
   }, [compareMode, activeField, groupFieldKey, selectedGroups, dataset.records, dataset.fields]);
 
-  const handleConfigChange = useCallback((c: ChartConfig) => {
-    setConfig(c);
-    saveChartConfig('builder', c);
-  }, []);
-
   function toggleCompare() {
     setCompareMode(v => !v);
     if (!compareMode) {
@@ -171,7 +166,9 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
     setTimeout(() => setJustSaved(false), 2000);
   }
 
-  const chartableFields = dataset.fields.filter(isChartable);
+  const chartableFields = dataset.fields.filter(
+    field => isChartable(field) && field.key !== timeField?.key,
+  );
   const textFieldCount  = dataset.fields.length - chartableFields.length;
   const validSamples    = chartData.reduce((s, d) => s + d.count, 0);
   const canSave = isRankingField
@@ -395,20 +392,12 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
                     </span>
                   </div>
                   <div className="overflow-y-auto" style={{ maxHeight: Math.max(config.chartHeight * 1.5, 480) }}>
-                    {compareType === 'grouped' ? (
-                      <GroupedBarChartEngine
-                        data={groupedData}
-                        mode="grouped"
-                        config={config}
-                        height={config.chartHeight}
-                      />
-                    ) : (
-                      <StackedBarChartEngine
-                        data={groupedData}
-                        config={config}
-                        height={config.chartHeight}
-                      />
-                    )}
+                    <GroupChartRenderer
+                      type={compareType}
+                      data={groupedData}
+                      config={config}
+                      height={config.chartHeight}
+                    />
                   </div>
                 </div>
               ) : (

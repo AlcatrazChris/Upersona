@@ -169,7 +169,7 @@ export function AIPanel({ dataset }: { dataset: Dataset }) {
         ))}
 
         {loading && (
-          <div className="flex gap-3 items-start">
+          <div role="status" aria-live="polite" className="flex gap-3 items-start">
             <div className="flex-shrink-0 w-7 h-7 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center">
               <Bot size={14} className="text-white" />
             </div>
@@ -187,7 +187,7 @@ export function AIPanel({ dataset }: { dataset: Dataset }) {
 
       {/* Error banner */}
       {error && (
-        <div className="mx-5 mb-2 flex items-center gap-2 bg-red-50 border border-red-100 text-red-600 text-xs px-3 py-2 rounded-xl flex-shrink-0">
+        <div role="alert" aria-live="assertive" className="mx-5 mb-2 flex flex-shrink-0 items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">
           <AlertCircle size={13} className="flex-shrink-0" />
           <span className="flex-1">{error}</span>
           <button onClick={() => setError('')} className="text-red-400 hover:text-red-600">✕</button>

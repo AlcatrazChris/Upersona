@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Shield, Eye, Loader2, RefreshCw, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useModalA11y } from '@/hooks/useModalA11y';
 
 interface UserRecord {
   id:        string;
@@ -21,6 +22,7 @@ interface UserRecord {
 }
 
 export function UserManageModal({ onClose }: { onClose: () => void }) {
+  const dialogRef = useModalA11y<HTMLDivElement>(onClose);
   const [users,    setUsers]    = useState<UserRecord[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -41,13 +43,6 @@ export function UserManageModal({ onClose }: { onClose: () => void }) {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
-
-  // 关闭：点击遮罩或按 Esc
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   async function toggleRole(user: UserRecord) {
     const newRole = user.role === 'admin' ? 'viewer' : 'admin';
@@ -77,7 +72,14 @@ export function UserManageModal({ onClose }: { onClose: () => void }) {
       />
 
       {/* Panel */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden flex flex-col max-h-[85vh]">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="user-manage-title"
+        tabIndex={-1}
+        className="relative mx-4 flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden overscroll-contain rounded-2xl bg-white shadow-2xl"
+      >
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
@@ -86,7 +88,7 @@ export function UserManageModal({ onClose }: { onClose: () => void }) {
               <Users size={14} className="text-blue-600" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">用户权限管理</h2>
+              <h2 id="user-manage-title" className="text-sm font-semibold text-gray-900">用户权限管理</h2>
               <p className="text-[11px] text-gray-400 mt-0.5">
                 {loading ? '加载中…' : `共 ${users.length} 名用户`}
               </p>
@@ -94,6 +96,7 @@ export function UserManageModal({ onClose }: { onClose: () => void }) {
           </div>
           <div className="flex items-center gap-1.5">
             <button
+              aria-label="刷新用户列表"
               onClick={() => void load()}
               disabled={loading}
               className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all"
@@ -102,6 +105,7 @@ export function UserManageModal({ onClose }: { onClose: () => void }) {
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             </button>
             <button
+              aria-label="关闭用户权限管理"
               onClick={onClose}
               className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all"
             >

@@ -88,6 +88,34 @@ export function getColors(scheme: ColorScheme): string[] {
   return COLOR_SCHEMES[scheme].colors;
 }
 
+export function getContrastingColors(scheme: ColorScheme, count: number): string[] {
+  const colors = getColors(scheme);
+  if (count <= 0 || colors.length === 0) return [];
+
+  const rgb = colors.map(color => {
+    const value = Number.parseInt(color.slice(1), 16);
+    return [value >> 16, value >> 8 & 255, value & 255];
+  });
+  const distance = (a: number, b: number) =>
+    rgb[a].reduce((sum, channel, index) => sum + (channel - rgb[b][index]) ** 2, 0);
+
+  const selected = [0];
+  while (selected.length < Math.min(count, colors.length)) {
+    const candidates = colors
+      .map((_, index) => index)
+      .filter(index => !selected.includes(index));
+    selected.push(candidates.reduce((best, candidate) => {
+      const minDistance = Math.min(...selected.map(index => distance(candidate, index)));
+      const bestDistance = Math.min(...selected.map(index => distance(best, index)));
+      return minDistance > bestDistance ? candidate : best;
+    }));
+  }
+
+  return Array.from({ length: count }, (_, index) =>
+    colors[selected[index % selected.length]]
+  );
+}
+
 export function isSingleColorScheme(scheme: ColorScheme): boolean {
   return !!COLOR_SCHEMES[scheme].singleColor;
 }

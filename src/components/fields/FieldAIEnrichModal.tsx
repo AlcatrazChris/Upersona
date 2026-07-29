@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useDatasetStore } from '@/store/datasetStore';
 import type { Field } from '@/types/dataSchema';
+import { useModalA11y } from '@/hooks/useModalA11y';
 
 interface Props {
   datasetId: string;
@@ -56,6 +57,7 @@ function SavePromptPanel({
 // ── Main modal ────────────────────────────────────────────────
 
 export function FieldAIEnrichModal({ datasetId, field, onClose }: Props) {
+  const dialogRef = useModalA11y<HTMLDivElement>(onClose);
   const { savedPrompts, removeSavedPrompt, addAIDerivedField } = useDatasetStore();
 
   // Get unique values for this field (up to 200)
@@ -126,7 +128,14 @@ export function FieldAIEnrichModal({ datasetId, field, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 w-full max-w-lg flex flex-col max-h-[90vh]">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="field-enrich-title"
+        tabIndex={-1}
+        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden overscroll-contain rounded-2xl border border-gray-100 bg-white shadow-2xl"
+      >
 
         {/* Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 flex-shrink-0">
@@ -134,13 +143,13 @@ export function FieldAIEnrichModal({ datasetId, field, onClose }: Props) {
             <Sparkles size={15} className="text-indigo-500" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-gray-800">AI 字段归类</h2>
+            <h2 id="field-enrich-title" className="text-sm font-semibold text-gray-800">AI 字段归类</h2>
             <p className="text-xs text-gray-400 truncate">
               来源：<span className="font-medium text-gray-600">{field.name}</span>
               {' · '}{uniqueVals.length} 个唯一取值
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+          <button aria-label="关闭 AI 字段归类" onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
             <X size={14} />
           </button>
         </div>

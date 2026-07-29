@@ -1,18 +1,21 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { MapPin, Plus, X, ChevronDown } from 'lucide-react';
 import { aggregateFieldGrouped } from '@/lib/dataAggregator';
 import { filterRecords, getGeoOptions, getStatusOptions, type GeoLevel } from '@/lib/filterRecords';
-import { GroupedBarChartEngine } from '@/components/charts/engine/GroupedBarChartEngine';
-import { StackedBarChartEngine } from '@/components/charts/engine/StackedBarChartEngine';
-import { ChartSettingsPanel }    from '@/components/charts/ChartSettingsPanel';
+import { GroupChartRenderer } from '@/components/charts/engine/ChartRenderer';
+import { ChartTypeSwitcher, useResizableChartHeight } from '@/components/charts/engine/shared';
+import { ChartSettingsPanel, useStoredChartConfig } from '@/components/charts/ChartSettingsPanel';
 import { AIInsightPanel }        from '@/components/shared/AIInsightPanel';
-import { DEFAULT_CHART_CONFIG, loadChartConfig, saveChartConfig, type ChartConfig } from '@/lib/chartConfig';
+import { DEFAULT_CHART_CONFIG, type ChartConfig } from '@/lib/chartConfig';
 import { cn } from '@/lib/utils';
 import { useDatasetStore } from '@/store/datasetStore';
 import type { Dataset } from '@/types/dataSchema';
 import type { ViewConfig } from '@/lib/viewConfig';
+import { StatusFilterGroups } from '@/components/shared/StatusFilterGroups';
+import { detectTimeField, filterByMonths, getMonthOptions } from '@/lib/timeStatus';
+import { useUrlArrayState, useUrlStringState } from '@/hooks/useUrlParamState';
 
 // ── Region chip ────────────────────────────────────────────────
 
@@ -101,26 +104,8 @@ interface RegionalChartCardProps {
 function RegionalChartCard({
   title, subtitle, mode, onModeChange, config, children,
 }: RegionalChartCardProps) {
-  // manualH: 用户拖拽覆盖；null 时跟随全局 config.chartHeight
-  const [manualH, setManualH] = useState<number | null>(null);
-  const chartH = manualH ?? config.chartHeight;
-
-  const resizeRef = useRef<{ startY: number; startH: number } | null>(null);
-  const handleResizeStart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    resizeRef.current = { startY: e.clientY, startH: chartH };
-    const onMove = (ev: MouseEvent) => {
-      if (!resizeRef.current) return;
-      setManualH(Math.max(200, resizeRef.current.startH + (ev.clientY - resizeRef.current.startY)));
-    };
-    const onUp = () => {
-      resizeRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
+  const { height: chartH, onResizeStart, onResizeKeyDown } =
+    useResizableChartHeight(config.chartHeight, 200);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-6 relative group select-none">
@@ -133,22 +118,11 @@ function RegionalChartCard({
 
         <div className="flex items-center gap-2">
           {/* Chart mode toggle */}
-          <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
-            {(['stacked', 'grouped'] as ChartMode[]).map(m => (
-              <button
-                key={m}
-                onClick={() => onModeChange(m)}
-                className={cn(
-                  'text-xs px-2.5 py-1 rounded-md transition-all',
-                  mode === m
-                    ? 'bg-white text-gray-800 shadow-sm font-medium'
-                    : 'text-gray-500 hover:text-gray-700',
-                )}
-              >
-                {m === 'stacked' ? '堆积' : '簇状'}
-              </button>
-            ))}
-          </div>
+          <ChartTypeSwitcher
+            value={mode}
+            options={['stacked', 'grouped'] as const}
+            onChange={onModeChange}
+          />
         </div>
       </div>
 
@@ -156,13 +130,15 @@ function RegionalChartCard({
       {children({ config, chartH })}
 
       {/* Resize handle */}
-      <div
-        onMouseDown={handleResizeStart}
-        className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-16 h-4 flex items-center justify-center cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity"
-        title="拖动调整高度"
+      <button
+        type="button"
+        onMouseDown={onResizeStart}
+        onKeyDown={onResizeKeyDown}
+        className="absolute bottom-1.5 left-1/2 flex h-4 w-16 -translate-x-1/2 cursor-ns-resize items-center justify-center opacity-40 transition-opacity hover:opacity-100 focus:opacity-100"
+        aria-label="调整图表高度；使用上下方向键微调，Home 恢复默认"
       >
         <div className="w-10 h-1 bg-gray-200 rounded-full hover:bg-blue-300 transition-colors" />
-      </div>
+      </button>
     </div>
   );
 }
@@ -175,27 +151,27 @@ interface Props {
 }
 
 export function RegionalView({ dataset, viewConfig }: Props) {
-  const [geoLevel,     setGeoLevel]     = useState<GeoLevel>('region');
-  const [selectedGeo,  setSelectedGeo]  = useState<string[]>([]);
-  const { updateViewConfig, personaConfigs, activePersonaConfigId } = useDatasetStore();
-  const [selStatus,    setSelStatus]    = useState<string[]>(['__all']);
-  const [dimOpen,      setDimOpen]      = useState(false);
-  const [chartMode,    setChartMode]    = useState<ChartMode>('stacked');
-  const [globalConfig, setGlobalConfig] = useState<ChartConfig>(
-    () => ({ ...DEFAULT_CHART_CONFIG, ...loadChartConfig('regional') }),
+  const [geoLevel, setGeoLevel] = useUrlStringState<GeoLevel>(
+    'regional_geo_level', 'region', ['region', 'province', 'city'],
   );
+  const [selectedGeo, setSelectedGeo] = useUrlArrayState('regional_geo');
+  const { updateViewConfig, personaConfigs, activePersonaConfigId } = useDatasetStore();
+  const [selStatus, setSelStatus] = useUrlArrayState('regional_order', ['__all']);
+  const [selMonths, setSelMonths] = useUrlArrayState('regional_month', ['__all']);
+  const [dimOpen,      setDimOpen]      = useState(false);
+  const [chartMode, setChartMode] = useUrlStringState<ChartMode>(
+    'regional_chart', 'stacked', ['stacked', 'grouped'],
+  );
+  const [globalConfig, handleConfigChange] =
+    useStoredChartConfig('regional', DEFAULT_CHART_CONFIG);
 
   const activeConfig = (personaConfigs[dataset.id] ?? []).find(c => c.id === activePersonaConfigId);
+  const timeField = useMemo(() => detectTimeField(dataset), [dataset]);
 
   const firstFieldKey = activeConfig
     ? (activeConfig.blocks.find(b => b.visible && b.sourceFieldKey)?.sourceFieldKey ?? viewConfig.personaFieldKeys?.[0] ?? '')
     : (viewConfig.personaFieldKeys?.[0] ?? '');
   const [dimKey, setDimKey] = useState<string>(firstFieldKey);
-
-  const handleConfigChange = (c: ChartConfig) => {
-    setGlobalConfig(c);
-    saveChartConfig('regional', c);
-  };
 
   const geoLevels = ([
     { key: 'region'   as GeoLevel, label: '大区', fieldKey: viewConfig.geoRegionKey   },
@@ -205,10 +181,15 @@ export function RegionalView({ dataset, viewConfig }: Props) {
 
   const geoOptions    = useMemo(() => getGeoOptions(dataset.records, viewConfig, geoLevel),   [dataset, viewConfig, geoLevel]);
   const statusOptions = useMemo(() => getStatusOptions(dataset.records, viewConfig), [dataset, viewConfig]);
+  const monthOptions = useMemo(() => getMonthOptions(dataset, timeField), [dataset, timeField]);
 
   const statusFiltered = useMemo(
-    () => filterRecords(dataset.records, viewConfig, 'all', [], selStatus),
-    [dataset.records, viewConfig, selStatus],
+    () => filterByMonths(
+      filterRecords(dataset.records, viewConfig, 'all', [], selStatus),
+      timeField,
+      selMonths,
+    ),
+    [dataset.records, viewConfig, selStatus, timeField, selMonths],
   );
 
   const dimensionField = dataset.fields.find(f => f.key === dimKey);
@@ -225,12 +206,18 @@ export function RegionalView({ dataset, viewConfig }: Props) {
       return activeConfig.blocks
         .filter(b => b.visible && b.sourceFieldKey)
         .map(b => dataset.fields.find(f => f.key === b.sourceFieldKey))
-        .filter(Boolean) as NonNullable<typeof dataset.fields[0]>[];
+        .filter((field): field is NonNullable<typeof field> => !!field && field.key !== timeField?.key);
     }
     return (viewConfig.personaFieldKeys ?? [])
       .map(k => dataset.fields.find(f => f.key === k))
-      .filter(Boolean) as NonNullable<typeof dataset.fields[0]>[];
-  }, [dataset.fields, viewConfig.personaFieldKeys, activeConfig]);
+      .filter((field): field is NonNullable<typeof field> => !!field && field.key !== timeField?.key);
+  }, [dataset.fields, viewConfig.personaFieldKeys, activeConfig, timeField]);
+
+  useEffect(() => {
+    if (timeField?.key === dimKey || !personaFields.some(field => field.key === dimKey)) {
+      setDimKey(personaFields[0]?.key ?? '');
+    }
+  }, [dimKey, personaFields, timeField]);
 
   const groupedData = useMemo(() => {
     if (!dimensionField || !geoField || selectedGeo.length === 0) return null;
@@ -361,37 +348,14 @@ export function RegionalView({ dataset, viewConfig }: Props) {
           )}
         </div>
 
-        {/* Row 3: Status filter */}
-        {viewConfig.statusFieldKey && statusOptions.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-400 flex-shrink-0">订单状态</span>
-            <button
-              onClick={() => setSelStatus(['__all'])}
-              className={cn(
-                'text-xs px-3 py-1 rounded-full transition-all',
-                selStatus.includes('__all')
-                  ? 'bg-gray-800 text-white font-medium'
-                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
-              )}
-            >
-              全部
-            </button>
-            {statusOptions.map(v => (
-              <button
-                key={v}
-                onClick={() => setSelStatus([v])}
-                className={cn(
-                  'text-xs px-3 py-1 rounded-full transition-all',
-                  selStatus.includes(v)
-                    ? 'bg-blue-600 text-white font-medium'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
-                )}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        )}
+        <StatusFilterGroups
+          orderOptions={statusOptions}
+          selectedOrders={selStatus}
+          onOrdersChange={setSelStatus}
+          monthOptions={monthOptions}
+          selectedMonths={selMonths}
+          onMonthsChange={setSelMonths}
+        />
       </div>
 
       {/* ── AI Insight ───────────────────────────────── */}
@@ -435,10 +399,13 @@ export function RegionalView({ dataset, viewConfig }: Props) {
         >
           {({ config, chartH }) => {
             const cfg = { ...config, showSampleCount: true, chartHeight: chartH };
-            return chartMode === 'stacked' ? (
-              <StackedBarChartEngine data={groupedData} config={cfg} height={chartH} />
-            ) : (
-              <GroupedBarChartEngine data={groupedData} mode="grouped" config={cfg} height={chartH} />
+            return (
+              <GroupChartRenderer
+                type={chartMode}
+                data={groupedData}
+                config={cfg}
+                height={chartH}
+              />
             );
           }}
         </RegionalChartCard>

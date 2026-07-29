@@ -5,6 +5,7 @@
  */
 
 import type { Dataset } from '@/types/dataSchema';
+import { detectTimeField } from '@/lib/timeStatus';
 
 // ── Status groups ─────────────────────────────────────────────
 
@@ -141,6 +142,7 @@ export const DEFAULT_INSIGHT_PROMPT = `你是资深汽车行业用户研究分�
 
 export function autoDetectViewConfig(dataset: Dataset): ViewConfig {
   const config: ViewConfig = {};
+  const timeField = detectTimeField(dataset);
 
   // Status field
   const statusKw = ['状态', '意向', '订单', '阶段', 'status'];
@@ -170,7 +172,7 @@ export function autoDetectViewConfig(dataset: Dataset): ViewConfig {
   // Note: type detector already ensures single_choice/multi_choice have reasonable cardinality,
   // so we simply exclude 'text' fields and the special-purpose geo/status fields.
   const exclude = new Set(
-    [config.statusFieldKey, config.geoRegionKey, config.geoProvinceKey, config.geoCityKey]
+    [config.statusFieldKey, config.geoRegionKey, config.geoProvinceKey, config.geoCityKey, timeField?.key]
       .filter(Boolean) as string[]
   );
   config.personaFieldKeys = dataset.fields

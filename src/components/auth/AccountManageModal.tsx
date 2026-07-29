@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
+import { useModalA11y } from '@/hooks/useModalA11y';
 
 // ── 类型 ─────────────────────────────────────────────────────
 
@@ -182,6 +183,7 @@ function ResetPasswordForm({ accountId, onDone }: { accountId: string; onDone: (
 
 export function AccountManageModal({ onClose }: { onClose: () => void }) {
   const { user: currentUser } = useAuth();
+  const dialogRef = useModalA11y<HTMLDivElement>(onClose);
 
   const [accounts,    setAccounts]    = useState<Account[]>([]);
   const [loading,     setLoading]     = useState(true);
@@ -205,11 +207,6 @@ export function AccountManageModal({ onClose }: { onClose: () => void }) {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => {
-    const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', fn);
-    return () => window.removeEventListener('keydown', fn);
-  }, [onClose]);
 
   async function toggleRole(acc: Account) {
     const newRole = acc.role === 'admin' ? 'viewer' : 'admin';
@@ -252,7 +249,14 @@ export function AccountManageModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl mx-4 flex flex-col max-h-[88vh] overflow-hidden">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="account-manage-title"
+        tabIndex={-1}
+        className="relative mx-4 flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden overscroll-contain rounded-2xl bg-white shadow-2xl"
+      >
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
@@ -261,7 +265,7 @@ export function AccountManageModal({ onClose }: { onClose: () => void }) {
               <Users size={14} className="text-blue-600" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">账号管理</h2>
+              <h2 id="account-manage-title" className="text-sm font-semibold text-gray-900">账号管理</h2>
               <p className="text-[11px] text-gray-400 mt-0.5">
                 {loading ? '加载中…' : `共 ${accounts.length} 个账号`}
               </p>
@@ -275,10 +279,10 @@ export function AccountManageModal({ onClose }: { onClose: () => void }) {
               <UserPlus size={12} />
               新建账号
             </button>
-            <button onClick={() => void load()} disabled={loading} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-all">
+            <button aria-label="刷新账号列表" onClick={() => void load()} disabled={loading} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-all">
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             </button>
-            <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-all">
+            <button aria-label="关闭账号管理" onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-all">
               <X size={15} />
             </button>
           </div>

@@ -16,6 +16,8 @@ export interface GroupedBarChartEngineProps {
   className?: string;
   /** Optional per-series colour overrides (indexed same as seriesKeys). */
   seriesColors?: string[];
+  /** Disable content-driven expansion when the caller provides a resizable height. */
+  autoHeight?: boolean;
 }
 
 interface TooltipEntry { name: string; value: number; color: string }
@@ -56,7 +58,7 @@ function TooltipContent({
 }
 
 export function GroupedBarChartEngine({
-  data, mode, config, height = 320, className, seriesColors,
+  data, mode, config, height = 320, className, seriesColors, autoHeight = true,
 }: GroupedBarChartEngineProps) {
   const { items, seriesKeys, groupTotals } = data;
   const isStacked = mode === 'stacked';
@@ -71,7 +73,8 @@ export function GroupedBarChartEngine({
   const barsPerCat   = isStacked ? 1 : seriesKeys.length;
   const categoryGap  = Math.round(minBarH * 0.6);
   const requiredH    = items.length * (barsPerCat * minBarH + categoryGap) + 60;
-  const actualHeight = Math.max(config.chartHeight ?? height, requiredH);
+  const requestedHeight = config.chartHeight ?? height;
+  const actualHeight = autoHeight ? Math.max(requestedHeight, requiredH) : requestedHeight;
 
   // Right margin: leave room for bar-end labels when showLabel is on
   const rightMargin = config.showLabel && !isStacked ? 46 : 12;

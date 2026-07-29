@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 export default function SignInPage() {
   const router   = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   const [username,   setUsername]   = useState('');
   const [password,   setPassword]   = useState('');
@@ -18,7 +19,16 @@ export default function SignInPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!username.trim() || !password) return;
+    if (!username.trim()) {
+      setError('请输入用户名后再登录。');
+      inputRef.current?.focus();
+      return;
+    }
+    if (!password) {
+      setError('请输入密码后再登录。');
+      passwordRef.current?.focus();
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -49,7 +59,7 @@ export default function SignInPage() {
   }
 
   return (
-    <div className="flex h-screen">
+    <main id="main-content" className="flex min-h-dvh">
 
       {/* ── 左侧品牌面板 ── */}
       <div
@@ -59,7 +69,7 @@ export default function SignInPage() {
         {/* Logo */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center flex-shrink-0 shadow-md">
-            <svg viewBox="0 0 24 24" fill="white" className="w-5 h-5">
+            <svg viewBox="0 0 24 24" fill="white" className="w-5 h-5" aria-hidden="true">
               <rect x="3"  y="3"  width="7" height="7" rx="1.5" />
               <rect x="14" y="3"  width="7" height="7" rx="1.5" />
               <rect x="3"  y="14" width="7" height="7" rx="1.5" />
@@ -78,9 +88,9 @@ export default function SignInPage() {
             <BarChart2 size={24} className="text-blue-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white leading-snug mb-3">
+            <h2 className="text-2xl font-bold text-white leading-snug mb-3 text-balance">
               数据驱动的<br />用户洞察
-            </h1>
+            </h2>
             <p className="text-sm leading-relaxed" style={{ color: '#7a9ab8' }}>
               上传任意表格数据，自动识别字段类型，即时生成用户画像、地域对比、状态分析图表。
             </p>
@@ -96,7 +106,7 @@ export default function SignInPage() {
         </div>
 
         <p className="text-[11px]" style={{ color: '#3d5066' }}>
-          © 2025 Upersona · 通用数据洞察工具
+          © {new Date().getFullYear()} Upersona · 通用数据洞察工具
         </p>
       </div>
 
@@ -107,7 +117,7 @@ export default function SignInPage() {
           {/* 移动端 Logo */}
           <div className="flex items-center gap-3 mb-8 lg:hidden">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
-              <svg viewBox="0 0 24 24" fill="white" className="w-[18px] h-[18px]">
+              <svg viewBox="0 0 24 24" fill="white" className="w-[18px] h-[18px]" aria-hidden="true">
                 <rect x="3"  y="3"  width="7" height="7" rx="1.5" />
                 <rect x="14" y="3"  width="7" height="7" rx="1.5" />
                 <rect x="3"  y="14" width="7" height="7" rx="1.5" />
@@ -118,7 +128,7 @@ export default function SignInPage() {
           </div>
 
           <div className="mb-7">
-            <h2 className="text-2xl font-bold text-gray-900">欢迎回来</h2>
+            <h1 className="text-2xl font-bold text-gray-900 text-balance">欢迎回来</h1>
             <p className="text-sm text-gray-500 mt-1.5">请输入账号信息登录系统</p>
           </div>
 
@@ -126,24 +136,26 @@ export default function SignInPage() {
 
             {/* 错误提示 */}
             {error && (
-              <div className="flex items-start gap-2.5 px-4 py-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600">
-                <AlertCircle size={15} className="flex-shrink-0 mt-0.5" />
+              <div role="alert" aria-live="assertive" className="flex items-start gap-2.5 px-4 py-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600">
+                <AlertCircle size={15} className="flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <span>{error}</span>
               </div>
             )}
 
             {/* 用户名 */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-gray-600">用户名</label>
+              <label htmlFor="username" className="text-xs font-medium text-gray-600">用户名</label>
               <input
+                id="username"
+                name="username"
                 ref={inputRef}
                 type="text"
                 value={username}
-                onChange={e => setUsername(e.target.value)}
+                onChange={e => { setUsername(e.target.value); if (error) setError(''); }}
                 autoComplete="username"
-                autoFocus
+                spellCheck={false}
                 disabled={loading}
-                placeholder="请输入用户名"
+                placeholder="例如：admin…"
                 className={cn(
                   'w-full px-4 py-2.5 rounded-xl border text-sm outline-none transition-all bg-white',
                   'border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100',
@@ -154,15 +166,18 @@ export default function SignInPage() {
 
             {/* 密码 */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-gray-600">密码</label>
+              <label htmlFor="password" className="text-xs font-medium text-gray-600">密码</label>
               <div className="relative">
                 <input
+                  id="password"
+                  name="password"
+                  ref={passwordRef}
                   type={showPwd ? 'text' : 'password'}
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={e => { setPassword(e.target.value); if (error) setError(''); }}
                   autoComplete="current-password"
                   disabled={loading}
-                  placeholder="请输入密码"
+                  placeholder="请输入密码…"
                   className={cn(
                     'w-full pl-4 pr-10 py-2.5 rounded-xl border text-sm outline-none transition-all bg-white',
                     'border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100',
@@ -173,31 +188,31 @@ export default function SignInPage() {
                   type="button"
                   onClick={() => setShowPwd(v => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  tabIndex={-1}
+                  aria-label={showPwd ? '隐藏密码' : '显示密码'}
+                  aria-pressed={showPwd}
                 >
-                  {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
+                  {showPwd ? <EyeOff size={15} aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}
                 </button>
               </div>
             </div>
 
             {/* 记住我 */}
             <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <div
-                onClick={() => setRememberMe(v => !v)}
-                className={cn(
-                  'w-4 h-4 rounded border flex items-center justify-center transition-all flex-shrink-0',
-                  rememberMe ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white',
-                )}
-              >
-                {rememberMe && <span className="text-white text-[9px] font-bold leading-none">✓</span>}
-              </div>
+              <input
+                type="checkbox"
+                name="rememberMe"
+                checked={rememberMe}
+                onChange={event => setRememberMe(event.target.checked)}
+                disabled={loading}
+                className="h-4 w-4 rounded border-gray-300 accent-blue-600"
+              />
               <span className="text-xs text-gray-500">30 天内免登录</span>
             </label>
 
             {/* 提交 */}
             <button
               type="submit"
-              disabled={loading || !username.trim() || !password}
+              disabled={loading}
               className={cn(
                 'w-full py-2.5 rounded-xl text-sm font-medium transition-all',
                 'bg-blue-600 text-white hover:bg-blue-700',
@@ -205,12 +220,12 @@ export default function SignInPage() {
                 'flex items-center justify-center gap-2',
               )}
             >
-              {loading && <Loader2 size={14} className="animate-spin" />}
+              {loading && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
               {loading ? '登录中…' : '登 录'}
             </button>
           </form>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

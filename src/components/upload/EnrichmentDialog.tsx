@@ -5,6 +5,7 @@ import { Sparkles, MapPin, Building2, Briefcase, Check, Loader2, X } from 'lucid
 import { cn } from '@/lib/utils';
 import type { Dataset } from '@/types/dataSchema';
 import type { EnrichableField } from '@/lib/fieldEnricher';
+import { useModalA11y } from '@/hooks/useModalA11y';
 
 interface EnrichmentDialogProps {
   dataset: Dataset;
@@ -37,6 +38,7 @@ const TYPE_META: Record<string, { label: string; icon: React.ReactNode; color: s
 export function EnrichmentDialog({
   dataset, enrichments, onConfirm, onCancel,
 }: EnrichmentDialogProps) {
+  const dialogRef = useModalA11y<HTMLDivElement>(onCancel);
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(enrichments.map(e => e.newFieldKey)),
   );
@@ -61,19 +63,26 @@ export function EnrichmentDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 w-full max-w-md">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="enrichment-title"
+        tabIndex={-1}
+        className="w-full max-w-md overscroll-contain rounded-2xl border border-gray-100 bg-white shadow-2xl"
+      >
         {/* Header */}
         <div className="flex items-center gap-3 p-5 border-b border-gray-100">
           <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center flex-shrink-0">
             <Sparkles size={16} className="text-purple-500" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-gray-800">检测到可派生字段</h2>
+            <h2 id="enrichment-title" className="text-sm font-semibold text-gray-800">检测到可派生字段</h2>
             <p className="text-xs text-gray-500 mt-0.5">
               以下字段可自动生成分析维度，添加到「{dataset.name}」
             </p>
           </div>
-          <button onClick={onCancel} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+          <button aria-label="关闭派生字段建议" onClick={onCancel} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
             <X size={14} />
           </button>
         </div>

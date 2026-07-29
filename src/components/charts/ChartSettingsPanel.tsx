@@ -1,13 +1,29 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Settings2, Palette, LayoutGrid, Type, Maximize2, ArrowUpDown, ListFilter } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { COLOR_SCHEMES, DEFAULT_CHART_CONFIG } from '@/lib/chartConfig';
+import {
+  COLOR_SCHEMES,
+  DEFAULT_CHART_CONFIG,
+  loadChartConfig,
+  saveChartConfig,
+} from '@/lib/chartConfig';
 import { ManualOrderModal } from '@/components/fields/ManualOrderModal';
 import type { ChartConfig, ColorScheme } from '@/lib/chartConfig';
 import type { Field } from '@/types/dataSchema';
+
+export function useStoredChartConfig(page: string, defaults = DEFAULT_CHART_CONFIG) {
+  const [config, setConfig] = useState<ChartConfig>(
+    () => ({ ...defaults, ...loadChartConfig(page) }),
+  );
+  const onChange = useCallback((next: ChartConfig) => {
+    setConfig(next);
+    saveChartConfig(page, next);
+  }, [page]);
+  return [config, onChange] as const;
+}
 
 interface ChartSettingsPanelProps {
   config: ChartConfig;
@@ -16,10 +32,11 @@ interface ChartSettingsPanelProps {
   field?: Field;
   onUpdateOrdering?: (isOrdered: boolean, orderedValues: string[]) => void;
   className?: string;
+  iconOnly?: boolean;
 }
 
 export function ChartSettingsPanel({
-  config, onChange, field, onUpdateOrdering, className,
+  config, onChange, field, onUpdateOrdering, className, iconOnly = false,
 }: ChartSettingsPanelProps) {
   const [open,          setOpen]          = useState(false);
   const [panelStyle,    setPanelStyle]    = useState<React.CSSProperties>({});
@@ -50,8 +67,23 @@ export function ChartSettingsPanel({
         setOpen(false);
       }
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    const onViewportChange = () => updatePosition();
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onViewportChange);
+    window.addEventListener('scroll', onViewportChange, true);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('scroll', onViewportChange, true);
+    };
   }, [open]);
 
   function update<K extends keyof ChartConfig>(key: K, val: ChartConfig[K]) {
@@ -62,7 +94,12 @@ export function ChartSettingsPanel({
     <>
       <button
         ref={triggerRef}
+        type="button"
         onClick={() => setOpen(p => !p)}
+        aria-label="图表设置"
+        aria-expanded={open}
+        aria-controls="chart-settings-panel"
+        title={iconOnly ? '图表设置' : undefined}
         className={cn(
           'flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs transition-all',
           open
@@ -72,14 +109,17 @@ export function ChartSettingsPanel({
         )}
       >
         <Settings2 size={13} />
-        图表设置
+        {!iconOnly && '图表设置'}
       </button>
 
       {open && typeof window !== 'undefined' && createPortal(
         <div
+          id="chart-settings-panel"
           ref={panelRef}
+          role="dialog"
+          aria-label="图表设置"
           style={panelStyle}
-          className="bg-white rounded-2xl border border-gray-100 shadow-2xl overflow-hidden"
+          className="max-w-[calc(100vw-24px)] overflow-hidden overscroll-contain rounded-2xl border border-gray-100 bg-white shadow-2xl"
         >
           {/* Header */}
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
@@ -98,8 +138,10 @@ export function ChartSettingsPanel({
               <div className="grid grid-cols-2 gap-1.5">
                 {(Object.entries(COLOR_SCHEMES) as [ColorScheme, typeof COLOR_SCHEMES[ColorScheme]][]).map(([key, scheme]) => (
                   <button
+                    type="button"
                     key={key}
                     onClick={() => update('colorScheme', key)}
+                    aria-pressed={config.colorScheme === key}
                     className={cn(
                       'flex items-center gap-2 px-2.5 py-2 rounded-xl text-left transition-all',
                       config.colorScheme === key
@@ -152,6 +194,7 @@ export function ChartSettingsPanel({
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-gray-500 w-14 flex-shrink-0">项目数</span>
                   <input
+                    aria-label="显示项目数"
                     type="range" min={0} max={15} step={1}
                     value={config.topN ?? 0}
                     onChange={e => update('topN', parseInt(e.target.value))}
@@ -172,8 +215,10 @@ export function ChartSettingsPanel({
               <div className="flex gap-1.5">
                 {(['pct', 'count', 'both'] as const).map(t => (
                   <button
+                    type="button"
                     key={t}
                     onClick={() => update('labelType', t)}
+                    aria-pressed={config.labelType === t}
                     className={cn(
                       'flex-1 py-1.5 rounded-xl text-xs transition-all',
                       config.labelType === t
@@ -197,6 +242,7 @@ export function ChartSettingsPanel({
                   <div key={key} className="flex items-center gap-3">
                     <span className="text-xs text-gray-500 w-14 flex-shrink-0">{label}</span>
                     <input
+                      aria-label={label}
                       type="range" min={min} max={max} step={step}
                       value={config[key] as number}
                       onChange={e => update(key, parseFloat(e.target.value) as ChartConfig[typeof key])}
@@ -221,6 +267,7 @@ export function ChartSettingsPanel({
                   <div key={key} className="flex items-center gap-3">
                     <span className="text-xs text-gray-500 w-14 flex-shrink-0">{label}</span>
                     <input
+                      aria-label={label}
                       type="range" min={min} max={max} step={step}
                       value={config[key] as number}
                       onChange={e => update(key, parseFloat(e.target.value) as ChartConfig[typeof key])}
@@ -304,7 +351,9 @@ function Section({ icon, label, children }: { icon: React.ReactNode; label: stri
 function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
+      type="button"
       onClick={() => onChange(!value)}
+      aria-pressed={value}
       className={cn(
         'flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs transition-all text-left',
         value ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-50'

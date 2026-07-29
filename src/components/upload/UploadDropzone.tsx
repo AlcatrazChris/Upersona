@@ -7,13 +7,21 @@ import { cn } from '@/lib/utils';
 interface UploadDropzoneProps {
   onFile: (file: File) => void | Promise<void>;
   loading?: boolean;
+  status?: string;
+  onCancel?: () => void;
   className?: string;
 }
 
 const ACCEPTED = ['.xlsx', '.xls', '.csv', '.json'];
 const MAX_SIZE_MB = 50;
 
-export function UploadDropzone({ onFile, loading = false, className }: UploadDropzoneProps) {
+export function UploadDropzone({
+  onFile,
+  loading = false,
+  status = '正在解析文件…',
+  onCancel,
+  className,
+}: UploadDropzoneProps) {
   const [dragging, setDragging]       = useState(false);
   const [sizeWarning, setSizeWarning] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -45,7 +53,17 @@ export function UploadDropzone({ onFile, loading = false, className }: UploadDro
   return (
     <div className={cn('space-y-2', className)}>
       <div
+        role="button"
+        tabIndex={loading ? -1 : 0}
+        aria-disabled={loading}
+        aria-busy={loading}
         onClick={() => !loading && inputRef.current?.click()}
+        onKeyDown={event => {
+          if (!loading && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
@@ -59,7 +77,18 @@ export function UploadDropzone({ onFile, loading = false, className }: UploadDro
         {loading ? (
           <div className="flex flex-col items-center gap-3">
             <Loader2 size={36} className="text-blue-500 animate-spin" />
-            <p className="text-sm text-gray-500 font-medium">解析中，请稍候…</p>
+            <p className="text-sm text-gray-600 font-medium" role="status" aria-live="polite">
+              {status}
+            </p>
+            {onCancel && (
+              <button
+                type="button"
+                onClick={event => { event.stopPropagation(); onCancel(); }}
+                className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200"
+              >
+                取消处理
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex flex-col items-center gap-3">
@@ -87,6 +116,7 @@ export function UploadDropzone({ onFile, loading = false, className }: UploadDro
           type="file"
           accept={ACCEPTED.join(',')}
           onChange={onInputChange}
+          aria-label="选择要上传的数据文件"
           className="hidden"
         />
       </div>

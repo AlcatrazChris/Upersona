@@ -1,5 +1,96 @@
+import { useEffect, useRef, useState } from 'react';
 import type { ChartDataItem } from './types';
 import type { ChartConfig, LabelType } from '@/lib/chartConfig';
+import { cn } from '@/lib/utils';
+
+const CHART_TYPE_LABELS: Record<string, string> = {
+  bar: '条形',
+  pie: '饼图',
+  donut: '环形',
+  line: '折线',
+  area: '面积',
+  grouped: '簇状',
+  stacked: '堆积',
+};
+
+export function ChartTypeSwitcher<T extends string>({
+  value,
+  options,
+  onChange,
+  labels = CHART_TYPE_LABELS,
+  className,
+}: {
+  value: T;
+  options: readonly T[];
+  onChange: (value: T) => void;
+  labels?: Record<string, string>;
+  className?: string;
+}) {
+  return (
+    <div role="group" aria-label="图表类型" className={cn('flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5', className)}>
+      {options.map(option => (
+        <button
+          type="button"
+          key={option}
+          onClick={() => onChange(option)}
+          aria-pressed={value === option}
+          className={cn(
+            'whitespace-nowrap rounded-md px-2 py-1 text-xs transition-all',
+            value === option
+              ? 'bg-white text-gray-800 shadow-sm font-medium'
+              : 'text-gray-600 hover:text-gray-900',
+          )}
+        >
+          {labels[option] ?? option}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function useResizableChartHeight(baseHeight: number, minHeight = 120) {
+  const [manualHeight, setManualHeight] = useState<number | null>(null);
+  const height = manualHeight ?? baseHeight;
+  const resizeRef = useRef<{ y: number; height: number } | null>(null);
+  const cleanupRef = useRef<() => void>(() => {});
+
+  useEffect(() => () => cleanupRef.current(), []);
+
+  const onResizeStart = (event: React.MouseEvent) => {
+    event.preventDefault();
+    cleanupRef.current();
+    resizeRef.current = { y: event.clientY, height };
+    const onMove = (moveEvent: MouseEvent) => {
+      if (!resizeRef.current) return;
+      setManualHeight(Math.max(
+        minHeight,
+        resizeRef.current.height + moveEvent.clientY - resizeRef.current.y,
+      ));
+    };
+    const cleanup = () => {
+      resizeRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', cleanup);
+      cleanupRef.current = () => {};
+    };
+    cleanupRef.current = cleanup;
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', cleanup);
+  };
+
+  const onResizeKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'Home') {
+      event.preventDefault();
+      setManualHeight(null);
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      const direction = event.key === 'ArrowUp' ? -1 : 1;
+      setManualHeight(Math.max(minHeight, height + direction * 20));
+    }
+  };
+
+  return { height, onResizeStart, onResizeKeyDown, resetHeight: () => setManualHeight(null) };
+}
 
 // Keeps the first topN items (by existing order) and aggregates the rest as "其他".
 export function applyTopN(data: ChartDataItem[], topN: number | undefined): ChartDataItem[] {

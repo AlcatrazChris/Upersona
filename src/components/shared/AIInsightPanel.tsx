@@ -287,11 +287,11 @@ export function AIInsightPanel({
           )}
 
           {error && (
-            <div className="text-xs text-red-500 bg-red-50 rounded-xl px-4 py-3">{error}</div>
+            <div role="alert" aria-live="assertive" className="rounded-xl bg-red-50 px-4 py-3 text-xs text-red-700">{error}</div>
           )}
 
           {loading && (
-            <div className="flex flex-col items-center gap-2 py-8 text-gray-400">
+            <div role="status" aria-live="polite" className="flex flex-col items-center gap-2 py-8 text-gray-500">
               <Loader2 size={20} className="animate-spin text-blue-400" />
               <p className="text-xs">AI 正在分析数据…</p>
             </div>

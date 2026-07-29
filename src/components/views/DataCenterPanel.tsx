@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Table2, BarChart2, Bookmark, Sparkles,
   Database, Trash2, ChevronRight, CloudUpload,
@@ -22,6 +22,7 @@ import {
   applyCityTierEnrichment, applyOccupationEnrichment,
 } from '@/lib/fieldEnricher';
 import { cn } from '@/lib/utils';
+import { useModalA11y } from '@/hooks/useModalA11y';
 import type { Dataset, Field, FieldDiff } from '@/types/dataSchema';
 import type { EnrichableField }           from '@/lib/fieldEnricher';
 
@@ -77,6 +78,9 @@ function DataManagementTab() {
 
   // Local upload state
   const [uploading,     setUploading]     = useState(false);
+  const [uploadStatus,  setUploadStatus]  = useState('');
+  const [uploadError,   setUploadError]   = useState('');
+  const cancelParseRef = useRef<(() => void) | null>(null);
   const [pendingData,   setPendingData]   =
     useState<{ dataset: Dataset; diff: FieldDiff; targetId: string } | null>(null);
   const [pendingEnrich, setPendingEnrich] =
@@ -117,14 +121,41 @@ function DataManagementTab() {
 
   function finalizeDataset(ds: Dataset) { addDataset(ds); }
 
+  function parseInWorker(buffer: ArrayBuffer, filename: string): Promise<Dataset> {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(
+        new URL('../../workers/dataParser.worker.ts', import.meta.url),
+      );
+      const finish = () => {
+        worker.terminate();
+        cancelParseRef.current = null;
+      };
+      cancelParseRef.current = () => {
+        finish();
+        reject(new DOMException('用户取消了文件处理', 'AbortError'));
+      };
+      worker.onmessage = (event: MessageEvent<{ dataset?: Dataset; error?: string }>) => {
+        finish();
+        if (event.data.error) reject(new Error(event.data.error));
+        else if (event.data.dataset) resolve(event.data.dataset);
+        else reject(new Error('解析器未返回有效数据'));
+      };
+      worker.onerror = event => {
+        finish();
+        reject(new Error(event.message || '文件解析失败'));
+      };
+      worker.postMessage({ buffer, filename }, [buffer]);
+    });
+  }
+
   async function handleFile(file: File) {
     setUploading(true);
+    setUploadError('');
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await fetch('/api/parse', { method: 'POST', body: fd });
-      if (!res.ok) throw new Error(((await res.json()) as { error?: string }).error ?? '解析失败');
-      const newDs: Dataset = await res.json() as Dataset;
+      setUploadStatus('正在读取文件…');
+      const buffer = await file.arrayBuffer();
+      setUploadStatus('正在后台解析，页面仍可正常操作…');
+      const newDs = await parseInWorker(buffer, file.name);
 
       const existing = datasets.find(d => d.name === newDs.name);
       if (existing) {
@@ -137,10 +168,18 @@ function DataManagementTab() {
       }
       runEnrichStep(newDs);
     } catch (e) {
-      alert(`上传失败: ${(e as Error).message}`);
+      if ((e as Error).name !== 'AbortError') {
+        setUploadError(`上传失败：${(e as Error).message}`);
+      }
     } finally {
       setUploading(false);
+      setUploadStatus('');
     }
+  }
+
+  function cancelUpload() {
+    cancelParseRef.current?.();
+    cancelParseRef.current = null;
   }
 
   function confirmUpdate() {
@@ -276,7 +315,21 @@ function DataManagementTab() {
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
           上传新数据集
         </h3>
-        <UploadDropzone onFile={handleFile} loading={uploading} />
+        <UploadDropzone
+          onFile={handleFile}
+          loading={uploading}
+          status={uploadStatus}
+          onCancel={uploading ? cancelUpload : undefined}
+        />
+        {uploadError && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="mt-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-xs text-red-700"
+          >
+            {uploadError}
+          </div>
+        )}
       </div>
 
       {/* ── Local datasets ── */}
@@ -326,7 +379,7 @@ function DataManagementTab() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                   {/* Push / re-sync to DB (admin only) */}
                   {isAdmin && (
                     <button
@@ -335,6 +388,7 @@ function DataManagementTab() {
                         const full = getDataset(ds.id);
                         if (full) setPushingDs(full);
                       }}
+                      aria-label={ds.source === 'supabase' ? `同步数据集 ${ds.name}` : `推送数据集 ${ds.name}`}
                       title={ds.source === 'supabase' ? '同步最新修改到 Supabase（覆盖）' : '推送到 Supabase 数据库'}
                       className={cn(
                         'flex items-center gap-1 p-1.5 rounded-lg transition-all',
@@ -354,6 +408,7 @@ function DataManagementTab() {
                       e.stopPropagation();
                       if (confirm(`删除本地「${ds.name}」？`)) removeDataset(ds.id);
                     }}
+                    aria-label={`删除本地数据集 ${ds.name}`}
                     className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-all"
                   >
                     <Trash2 size={13} />
@@ -482,7 +537,8 @@ function DataManagementTab() {
                     {isAdmin && (
                       <button
                         onClick={() => handleDeleteDB(meta)}
-                        className="p-1.5 rounded-lg hover:bg-red-50 text-gray-200 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                        aria-label={`删除云端数据集 ${meta.name}`}
+                        className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
                       >
                         <Trash2 size={13} />
                       </button>
@@ -508,6 +564,7 @@ interface Props {
 
 export function DataCenterPanel({ dataset, onClose }: Props) {
   const [tab, setTab] = useState<TabId>('data');
+  const dialogRef = useModalA11y<HTMLDivElement>(onClose);
 
   return (
     <>
@@ -515,20 +572,27 @@ export function DataCenterPanel({ dataset, onClose }: Props) {
       <div className="fixed inset-0 z-50 bg-black/25 backdrop-blur-sm" onClick={onClose} />
 
       {/* Panel */}
-      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-5xl bg-gray-50 flex flex-col shadow-2xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="data-center-title"
+        tabIndex={-1}
+        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-5xl flex-col overflow-hidden overscroll-contain bg-gray-50 shadow-2xl"
+      >
 
         {/* Header */}
-        <div className="flex items-center gap-3 px-6 py-4 bg-white border-b border-gray-100 flex-shrink-0">
-          <div className="w-7 h-7 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+        <div className="flex items-center gap-2 border-b border-gray-100 bg-white px-3 py-3 sm:gap-3 sm:px-6 sm:py-4">
+          <div className="hidden h-7 w-7 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 sm:flex">
             <Database size={14} className="text-blue-500" />
           </div>
-          <span className="text-sm font-semibold text-gray-800">数据中心</span>
+          <h2 id="data-center-title" className="text-sm font-semibold text-gray-800">数据中心</h2>
           {dataset && (
-            <span className="text-xs text-gray-400 truncate">— {dataset.name}</span>
+            <span className="hidden truncate text-xs text-gray-500 lg:inline">— {dataset.name}</span>
           )}
 
           {/* Tabs */}
-          <div className="flex items-center gap-0.5 ml-4 overflow-x-auto flex-1">
+          <div className="ml-1 flex flex-1 items-center gap-0.5 overflow-x-auto sm:ml-4">
             {TABS.map(t => {
               const Icon     = t.icon;
               const disabled = t.needsDataset && !dataset;
@@ -555,6 +619,7 @@ export function DataCenterPanel({ dataset, onClose }: Props) {
 
           <button
             onClick={onClose}
+            aria-label="关闭数据中心"
             className="flex-shrink-0 p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all"
           >
             <X size={16} />
@@ -562,7 +627,7 @@ export function DataCenterPanel({ dataset, onClose }: Props) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+        <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5">
           {tab === 'data'    && <DataManagementTab />}
           {tab === 'fields'  && dataset && <FieldList      dataset={dataset} />}
           {tab === 'builder' && dataset && <ChartBuilder   dataset={dataset} />}

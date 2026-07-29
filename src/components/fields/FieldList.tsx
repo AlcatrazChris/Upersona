@@ -7,6 +7,7 @@ import { useIsAdmin } from '@/lib/auth';
 import { autoDetectViewConfig } from '@/lib/viewConfig';
 import { ManualOrderModal } from './ManualOrderModal';
 import { FieldAIEnrichModal } from './FieldAIEnrichModal';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { cn } from '@/lib/utils';
 import { isSkipValue } from '@/lib/skipPatterns';
 import type { Dataset, Field, FieldType } from '@/types/dataSchema';
@@ -392,7 +393,14 @@ export function FieldList({ dataset }: { dataset: Dataset }) {
                   {isAdmin && !field.derived && (
                     <button
                       disabled={skipCount === 0}
-                      onClick={() => skipCount > 0 && cleanSkipValues(dataset.id, field.key)}
+                      onClick={() => {
+                        if (
+                          skipCount > 0 &&
+                          window.confirm(`确认清除「${field.name}」中的 ${skipCount} 条跳过类答案？此操作不可撤销。`)
+                        ) {
+                          cleanSkipValues(dataset.id, field.key);
+                        }
+                      }}
                       title={
                         skipCount > 0
                           ? `将 ${skipCount} 条"跳过"类答案清空（不可撤销）`
@@ -482,17 +490,13 @@ export function FieldList({ dataset }: { dataset: Dataset }) {
       {deletingKey && (() => {
         const f = dataset.fields.find(x => x.key === deletingKey);
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 p-6 w-[400px] space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
-                  <Trash2 size={16} className="text-red-500" />
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-gray-800">删除字段</div>
-                  <div className="text-xs text-gray-400 mt-0.5">此操作会从所有记录中移除该列，且不可恢复</div>
-                </div>
-              </div>
+          <ConfirmDialog
+            title="删除字段"
+            description="此操作会从所有记录中移除该列，且不可恢复。"
+            onCancel={() => setDeletingKey(null)}
+            onConfirm={() => { removeField(dataset.id, deletingKey); setDeletingKey(null); }}
+            details={
+              <div className="space-y-2">
               <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm">
                 <span className="font-medium text-gray-700">{f?.name}</span>
                 <span className="text-gray-400 ml-2 font-mono text-xs">{f?.key}</span>
@@ -500,22 +504,9 @@ export function FieldList({ dataset }: { dataset: Dataset }) {
               <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
                 将从 <strong>{dataset.rowCount.toLocaleString()}</strong> 条记录中删除此字段列
               </div>
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  onClick={() => setDeletingKey(null)}
-                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-all"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={() => { removeField(dataset.id, deletingKey); setDeletingKey(null); }}
-                  className="px-4 py-2 text-sm text-white bg-red-500 hover:bg-red-600 rounded-xl transition-all font-medium"
-                >
-                  确认删除
-                </button>
               </div>
-            </div>
-          </div>
+            }
+          />
         );
       })()}
     </>

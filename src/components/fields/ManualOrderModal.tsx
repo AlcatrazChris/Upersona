@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { GripVertical, Sparkles, ArrowUpDown, RotateCcw, X } from 'lucide-react';
 import type { Field } from '@/types/dataSchema';
+import { useModalA11y } from '@/hooks/useModalA11y';
 
 interface Props {
   field: Field;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function ManualOrderModal({ field, onClose, onSave }: Props) {
+  const dialogRef = useModalA11y<HTMLDivElement>(onClose);
   // options can be undefined if dataset was loaded from cloud without recomputing;
   // fall back to topValues (count-sorted) or orderedValues as last resort
   const original =
@@ -68,17 +70,22 @@ export function ManualOrderModal({ field, onClose, onSave }: Props) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-sm flex flex-col"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="manual-order-title"
+        tabIndex={-1}
+        className="flex w-full max-w-sm flex-col overscroll-contain rounded-2xl bg-white shadow-xl"
         style={{ maxHeight: '85vh' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b border-gray-100 flex-shrink-0">
           <div>
-            <h3 className="text-sm font-semibold text-gray-800">排列顺序 · {field.name}</h3>
+            <h2 id="manual-order-title" className="text-sm font-semibold text-gray-800">排列顺序 · {field.name}</h2>
             <p className="text-xs text-gray-400 mt-0.5">拖拽调整；列表顶部 = 图表顶部</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-0.5 -mr-0.5 -mt-0.5">
+          <button aria-label="关闭排列顺序" onClick={onClose} className="text-gray-400 hover:text-gray-600 p-0.5 -mr-0.5 -mt-0.5">
             <X size={15} />
           </button>
         </div>

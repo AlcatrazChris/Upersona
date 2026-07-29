@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { X, Plus, Search } from 'lucide-react';
 import type { StatusGroup } from '@/lib/viewConfig';
+import { useModalA11y } from '@/hooks/useModalA11y';
 
 // ── Add-value dropdown ────────────────────────────────────────
 
@@ -89,6 +90,7 @@ interface Props {
 }
 
 export function StatusGroupEditor({ allValues, groups, onSave, onClose }: Props) {
+  const dialogRef = useModalA11y<HTMLDivElement>(onClose);
   const [local, setLocal] = useState<StatusGroup[]>(
     () => groups.map(g => ({ ...g, values: [...g.values] })),
   );
@@ -130,15 +132,23 @@ export function StatusGroupEditor({ allValues, groups, onSave, onClose }: Props)
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xl mx-4 max-h-[88vh] flex flex-col">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="status-groups-title"
+        tabIndex={-1}
+        className="mx-4 flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden overscroll-contain rounded-2xl bg-white p-6 shadow-2xl"
+      >
 
         {/* Header */}
         <div className="flex items-start justify-between mb-5 flex-shrink-0">
           <div>
-            <h2 className="text-base font-semibold text-gray-800">配置状态分组</h2>
+            <h2 id="status-groups-title" className="text-base font-semibold text-gray-800">配置状态分组</h2>
             <p className="text-xs text-gray-400 mt-0.5">可将多个订单状态合并到同一意向分组中</p>
           </div>
           <button
+            aria-label="关闭状态分组配置"
             onClick={onClose}
             className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all"
           >

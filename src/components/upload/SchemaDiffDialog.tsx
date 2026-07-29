@@ -2,6 +2,7 @@
 
 import { X, Plus, Minus, RefreshCw } from 'lucide-react';
 import type { FieldDiff, FieldType } from '@/types/dataSchema';
+import { useModalA11y } from '@/hooks/useModalA11y';
 
 const TYPE_LABELS: Record<FieldType, string> = {
   single_choice: '单选', multi_choice: '多选', ranking: '排序',
@@ -16,19 +17,27 @@ interface SchemaDiffDialogProps {
 }
 
 export function SchemaDiffDialog({ diff, datasetName, onConfirm, onCancel }: SchemaDiffDialogProps) {
+  const dialogRef = useModalA11y<HTMLDivElement>(onCancel);
   const hasChanges = diff.added.length > 0 || diff.removed.length > 0 || diff.changed.length > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="schema-diff-title"
+        tabIndex={-1}
+        className="relative mx-4 w-full max-w-md overflow-hidden overscroll-contain rounded-2xl bg-white shadow-2xl"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div>
-            <h2 className="font-semibold text-gray-800">字段变化检测</h2>
+            <h2 id="schema-diff-title" className="font-semibold text-gray-800">字段变化检测</h2>
             <p className="text-xs text-gray-500 mt-0.5">更新「{datasetName}」</p>
           </div>
-          <button onClick={onCancel} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all">
+          <button aria-label="关闭字段变化检测" onClick={onCancel} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all">
             <X size={16} />
           </button>
         </div>

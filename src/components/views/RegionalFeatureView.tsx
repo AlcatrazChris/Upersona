@@ -13,6 +13,9 @@ import { filterRecords, getStatusOptions, type GeoLevel } from '@/lib/filterReco
 import { useDatasetStore } from '@/store/datasetStore';
 import { useIsAdmin } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import { StatusFilterGroups } from '@/components/shared/StatusFilterGroups';
+import { detectTimeField, filterByMonths, getMonthOptions } from '@/lib/timeStatus';
+import { useUrlArrayState, useUrlStringState } from '@/hooks/useUrlParamState';
 import type { Dataset, Field } from '@/types/dataSchema';
 import type { ViewConfig } from '@/lib/viewConfig';
 
@@ -445,12 +448,12 @@ function AISummaryTable({ profiles, fields, datasetName, cachedResult, onCache, 
       )}
 
       {error && (
-        <div className="px-5 py-3 text-xs text-red-500 bg-red-50">{error}</div>
+        <div role="alert" aria-live="assertive" className="bg-red-50 px-5 py-3 text-xs text-red-700">{error}</div>
       )}
 
       {/* Content */}
       {loading ? (
-        <div className="flex items-center justify-center gap-2 py-12 text-gray-400">
+        <div role="status" aria-live="polite" className="flex items-center justify-center gap-2 py-12 text-gray-500">
           <Loader2 size={16} className="animate-spin text-blue-400" />
           <span className="text-sm">AI 正在分析各地区差异特征…</span>
         </div>
@@ -510,9 +513,12 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
   const { updateViewConfig, personaConfigs, activePersonaConfigId } = useDatasetStore();
   const activeConfig = (personaConfigs[dataset.id] ?? []).find(c => c.id === activePersonaConfigId);
 
-  const [geoLevel,         setGeoLevel]         = useState<GeoLevel>('region');
-  const [selStatus,        setSelStatus]        = useState<string[]>(['__all']);
-  const [selectedRegions,  setSelectedRegions]  = useState<string[]>([]);
+  const [geoLevel, setGeoLevel] = useUrlStringState<GeoLevel>(
+    'feature_geo_level', 'region', ['region', 'province', 'city'],
+  );
+  const [selStatus, setSelStatus] = useUrlArrayState('feature_order', ['__all']);
+  const [selMonths, setSelMonths] = useUrlArrayState('feature_month', ['__all']);
+  const [selectedRegions, setSelectedRegions] = useUrlArrayState('feature_regions');
 
   // Available geo levels (only those with a configured field key)
   const geoLevels = ([
@@ -531,10 +537,19 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
     () => getStatusOptions(dataset.records, viewConfig),
     [dataset.records, viewConfig],
   );
+  const timeField = useMemo(() => detectTimeField(dataset), [dataset]);
+  const monthOptions = useMemo(
+    () => getMonthOptions(dataset, timeField),
+    [dataset, timeField],
+  );
 
   const filteredRecords = useMemo(
-    () => filterRecords(dataset.records, viewConfig, 'all', [], selStatus),
-    [dataset.records, viewConfig, selStatus],
+    () => filterByMonths(
+      filterRecords(dataset.records, viewConfig, 'all', [], selStatus),
+      timeField,
+      selMonths,
+    ),
+    [dataset.records, viewConfig, selStatus, timeField, selMonths],
   );
 
   const allRegions = useMemo(() => {
@@ -553,12 +568,12 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
       return activeConfig.blocks
         .filter(b => b.visible && b.sourceFieldKey)
         .map(b => dataset.fields.find(f => f.key === b.sourceFieldKey))
-        .filter(Boolean) as Field[];
+        .filter((field): field is Field => !!field && field.key !== timeField?.key);
     }
     return (viewConfig.personaFieldKeys ?? [])
       .map(k => dataset.fields.find(f => f.key === k))
-      .filter(Boolean) as Field[];
-  }, [dataset.fields, viewConfig.personaFieldKeys, activeConfig]);
+      .filter((field): field is Field => !!field && field.key !== timeField?.key);
+  }, [dataset.fields, viewConfig.personaFieldKeys, activeConfig, timeField]);
 
   // selectedRegions empty = show all regions (auto mode)
   // selectedRegions non-empty = explicit selection only
@@ -575,7 +590,7 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
   );
 
   // AI cache key
-  const aiCacheKey = `rfeat_${geoLevel}_${selStatus.join(',')}_${displayedRegions.join(',')}_${personaFields.map(f => f.key).join(',')}`;
+  const aiCacheKey = `rfeat_${geoLevel}_${selStatus.join(',')}_${selMonths.join(',')}_${displayedRegions.join(',')}_${personaFields.map(f => f.key).join(',')}`;
   const cachedAI   = viewConfig.insightResults?.[aiCacheKey];
 
   if (!geoFieldKey) {
@@ -669,41 +684,14 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
           )}
         </div>
 
-        {/* Row 3: Status filter */}
-        {viewConfig.statusFieldKey && statusOptions.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-400 flex-shrink-0">用户类型</span>
-            <button
-              onClick={() => setSelStatus(['__all'])}
-              className={cn(
-                'text-xs px-3 py-1 rounded-full transition-all',
-                selStatus.includes('__all')
-                  ? 'bg-blue-600 text-white font-medium'
-                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
-              )}
-            >
-              全部用户
-            </button>
-            {statusOptions.map(v => (
-              <button
-                key={v}
-                onClick={() => setSelStatus(prev =>
-                  prev.includes(v)
-                    ? prev.filter(x => x !== v && x !== '__all')
-                    : [...prev.filter(x => x !== '__all'), v]
-                )}
-                className={cn(
-                  'text-xs px-3 py-1 rounded-full transition-all',
-                  selStatus.includes(v)
-                    ? 'bg-blue-600 text-white font-medium'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
-                )}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        )}
+        <StatusFilterGroups
+          orderOptions={statusOptions}
+          selectedOrders={selStatus}
+          onOrdersChange={setSelStatus}
+          monthOptions={monthOptions}
+          selectedMonths={selMonths}
+          onMonthsChange={setSelMonths}
+        />
       </div>
 
       {/* ── Legend ── */}

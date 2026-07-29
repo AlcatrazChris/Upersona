@@ -1,56 +1,40 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
-import { Plus, X, ChevronDown, BarChart2, Layers, Search } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Plus, X, ChevronDown, BarChart2, Layers, Search, Check } from 'lucide-react';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, Cell, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import {
   aggregateField,
   aggregateByStatusGroups,
   aggregateCrossDatasetByStatus,
 } from '@/lib/dataAggregator';
-import { filterRecords }            from '@/lib/filterRecords';
-import { ChartRenderer }            from '@/components/charts/engine/ChartRenderer';
-import { GroupedBarChartEngine }    from '@/components/charts/engine/GroupedBarChartEngine';
+import { ChartRenderer, GroupChartRenderer } from '@/components/charts/engine/ChartRenderer';
+import { ChartTypeSwitcher, useResizableChartHeight } from '@/components/charts/engine/shared';
 import { ChartSettingsPanel }       from '@/components/charts/ChartSettingsPanel';
 import { AIInsightPanel }           from '@/components/shared/AIInsightPanel';
-import { DEFAULT_CHART_CONFIG, loadChartConfig, saveChartConfig, getColors, type ChartConfig } from '@/lib/chartConfig';
+import { StatusFilterGroups }       from '@/components/shared/StatusFilterGroups';
+import { filterRecords, getStatusOptions } from '@/lib/filterRecords';
+import {
+  DEFAULT_CHART_CONFIG,
+  loadChartConfig,
+  saveChartConfig,
+  getColors,
+  getContrastingColors,
+  type ChartConfig,
+} from '@/lib/chartConfig';
 import { useDatasetStore }          from '@/store/datasetStore';
-import { useIsAdmin }               from '@/lib/auth';
-import { StatusGroupEditor }        from './StatusGroupEditor';
 import { cn } from '@/lib/utils';
 import type { Dataset, Field } from '@/types/dataSchema';
 import type { ViewConfig, StatusGroup } from '@/lib/viewConfig';
-import type { ChartType } from '@/components/charts/engine/ChartRenderer';
+import type { FlatChartType } from '@/components/charts/engine/ChartRenderer';
+import { detectTimeField, monthLabel, recordMonth } from '@/lib/timeStatus';
+import { useUrlArrayState, useUrlStringState } from '@/hooks/useUrlParamState';
+
+const MONTH_FIELD_KEY = '__upersona_month';
 
 // ── Intent styling ─────────────────────────────────────────────
-
-const INTENT_ACTIVE: Record<StatusGroup['intent'], string> = {
-  strong:  'bg-emerald-500 text-white border-emerald-500',
-  neutral: 'bg-blue-500   text-white border-blue-500',
-  weak:    'bg-red-400    text-white border-red-400',
-};
-const INTENT_GHOST: Record<StatusGroup['intent'], string> = {
-  strong:  'bg-emerald-50  text-emerald-700 border-emerald-200',
-  neutral: 'bg-blue-50     text-blue-700    border-blue-200',
-  weak:    'bg-red-50      text-red-600     border-red-200',
-};
-const INTENT_DOT: Record<StatusGroup['intent'], string> = {
-  strong:  'bg-emerald-500',
-  neutral: 'bg-blue-500',
-  weak:    'bg-red-400',
-};
-const INTENT_HEX_PRIMARY: Record<StatusGroup['intent'], string> = {
-  strong:  '#10b981',
-  neutral: '#3b82f6',
-  weak:    '#f87171',
-};
-const INTENT_HEX_COMPARE: Record<StatusGroup['intent'], string> = {
-  strong:  '#6ee7b7',
-  neutral: '#93c5fd',
-  weak:    '#fca5a5',
-};
 
 // ── Dataset picker ─────────────────────────────────────────────
 
@@ -140,10 +124,7 @@ interface StatusChartCardProps {
 function StatusChartCard({
   field, dataset, statusFieldKey, selectedGroups, config, compareDataset,
 }: StatusChartCardProps) {
-  const [chartType, setChartType] = useState<ChartType>('bar');
-  // manualH: 用户拖拽覆盖；null 时跟随全局 config.chartHeight
-  const [manualH,   setManualH]   = useState<number | null>(null);
-  const resizeRef = useRef<{ startY: number; startH: number } | null>(null);
+  const [chartType, setChartType] = useState<FlatChartType | null>(null);
 
   const isCross  = !!compareDataset;
   const isSingle = selectedGroups.length === 1 && !isCross;
@@ -172,45 +153,44 @@ function StatusChartCard({
     return aggregateByStatusGroups(dataset.records, field, statusFieldKey, selectedGroups);
   }, [isSingle, isCross, dataset.records, field, statusFieldKey, selectedGroups]);
 
+  const monthDonutData = useMemo(() => {
+    if (isCross || (chartType !== 'pie' && chartType !== 'donut')) return [];
+    return selectedGroups.map(group => {
+      const records = dataset.records.filter(record =>
+        group.values.includes(String(record[statusFieldKey] ?? '')),
+      );
+      return { group, records, items: aggregateField(records, field) };
+    });
+  }, [chartType, dataset.records, field, isCross, selectedGroups, statusFieldKey]);
+
   // ── Height ──
   // Use global config.chartHeight; if that's too small for the data, expand automatically
   const rowCount  = isSingle ? (singleData?.items.length ?? 0)
                  : isCross  ? (crossData?.items.length  ?? 0)
                  :             (multiData?.items.length  ?? 0);
   const seriesCnt = isSingle ? 1 : isCross ? selectedGroups.length * 2 : selectedGroups.length;
-  const dataH     = Math.max(240, Math.min(rowCount * (seriesCnt * 26 + 10) + 80, 700));
-  const chartH    = manualH ?? Math.max(config.chartHeight, dataH);
+  const dataH     = Math.max(180, Math.min(rowCount * (seriesCnt * 14 + 8) + 54, 420));
+  const { height: chartH, onResizeStart, onResizeKeyDown } = useResizableChartHeight(
+    Math.max(Math.min(config.chartHeight, 240), dataH),
+    160,
+  );
+  const resolvedChartType: FlatChartType = chartType ?? 'bar';
+  const useCircularCharts = !isCross && (resolvedChartType === 'pie' || resolvedChartType === 'donut');
 
   // ── Colors ──
-  // 使用配色方案颜色，同时保留 intent 点状指示（语义化）
-  const schemeColors  = getColors(config.colorScheme);
-  const crossColors   = selectedGroups.flatMap((_, i) => [
-    schemeColors[i * 2 % schemeColors.length],
-    schemeColors[(i * 2 + 1) % schemeColors.length],
-  ]);
-  const multiColors   = selectedGroups.map((_, i) => schemeColors[i % schemeColors.length]);
-
-  // ── Resize ──
-  const handleResizeStart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    resizeRef.current = { startY: e.clientY, startH: chartH };
-    const onMove = (ev: MouseEvent) => {
-      if (!resizeRef.current) return;
-      setManualH(Math.max(160, resizeRef.current.startH + (ev.clientY - resizeRef.current.startY)));
-    };
-    const onUp = () => {
-      resizeRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
+  const crossColors = getContrastingColors(
+    config.colorScheme,
+    selectedGroups.length * 2,
+  );
+  const multiColors = getContrastingColors(
+    config.colorScheme,
+    selectedGroups.length,
+  );
 
   // ── Subtitle ──
   const subtitle = isSingle ? (
     <span className="flex items-center gap-1.5">
-      <span className={cn('w-1.5 h-1.5 rounded-full', INTENT_DOT[selectedGroups[0].intent])} />
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: multiColors[0] }} />
       {selectedGroups[0].label}
       <span className="text-gray-300">·</span>
       有效样本 n={(singleData?.n ?? 0).toLocaleString()}
@@ -220,18 +200,18 @@ function StatusChartCard({
       <span className="text-violet-500 font-medium">{dataset.name}</span>
       <span className="text-gray-300">vs</span>
       <span className="text-violet-500 font-medium">{compareDataset!.name}</span>
-      {selectedGroups.map(g => (
+      {selectedGroups.map((g, index) => (
         <span key={g.key} className="flex items-center gap-1">
-          <span className={cn('w-1.5 h-1.5 rounded-full', INTENT_DOT[g.intent])} />
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: crossColors[index * 2] }} />
           {g.label}
         </span>
       ))}
     </span>
   ) : (
     <span className="flex items-center gap-2 flex-wrap">
-      {selectedGroups.map(g => (
+      {selectedGroups.map((g, index) => (
         <span key={g.key} className="flex items-center gap-1">
-          <span className={cn('w-1.5 h-1.5 rounded-full', INTENT_DOT[g.intent])} />
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: multiColors[index] }} />
           {g.label}
           <span className="text-gray-300">
             n={(multiData?.groupTotals[g.label] ?? 0).toLocaleString()}
@@ -245,7 +225,7 @@ function StatusChartCard({
   const multiCfg  = { ...config, showSampleCount: true,  chartHeight: chartH };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-5 relative group select-none">
+    <div className="bg-white rounded-2xl border border-gray-100 p-4 relative group select-none">
 
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
@@ -254,33 +234,43 @@ function StatusChartCard({
           <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>
         </div>
 
-        {/* Chart type toggle (single-group only) — visible on hover */}
-        {isSingle && (
-          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
-              {(['bar', 'pie', 'donut'] as ChartType[]).map(t => (
-                <button
-                  key={t}
-                  onClick={() => setChartType(t)}
-                  className={cn(
-                    'text-[10px] px-2 py-1 rounded-md transition-all',
-                    chartType === t
-                      ? 'bg-white text-gray-800 shadow-sm font-medium'
-                      : 'text-gray-400 hover:text-gray-600',
-                  )}
-                >
-                  {t === 'bar' ? '条' : t === 'pie' ? '饼' : '环'}
-                </button>
-              ))}
-            </div>
-          </div>
+        {/* Each card can independently switch chart type. */}
+        {!isCross && (
+          <ChartTypeSwitcher
+            value={resolvedChartType}
+            options={['bar', 'pie', 'donut'] as const}
+            onChange={setChartType}
+          />
         )}
       </div>
 
       {/* Chart */}
-      {isSingle && singleData ? (
+      {useCircularCharts ? (
+        <div className={cn(
+          'grid gap-2',
+          selectedGroups.length === 1 ? 'grid-cols-1' : 'grid-cols-2',
+        )}>
+          {monthDonutData.map(({ group, records, items }) => (
+            <div key={group.key} className="min-w-0">
+              {selectedGroups.length > 1 && (
+                <div className="mb-1 text-center text-[11px] font-medium text-gray-500">
+                  {group.label} · n={records.length.toLocaleString()}
+                </div>
+              )}
+              <ChartRenderer
+                type={resolvedChartType}
+                data={items}
+                config={{ ...singleCfg, chartHeight: chartH }}
+                isMultiSelect={field.type === 'multi_choice'}
+                totalSamples={records.length}
+                height={chartH}
+              />
+            </div>
+          ))}
+        </div>
+      ) : isSingle && singleData ? (
         <ChartRenderer
-          type={chartType}
+          type={resolvedChartType}
           data={singleData.items.slice(0, 10)}
           config={singleCfg}
           isMultiSelect={field.type === 'multi_choice'}
@@ -288,31 +278,35 @@ function StatusChartCard({
           height={chartH}
         />
       ) : isCross && crossData ? (
-        <GroupedBarChartEngine
+        <GroupChartRenderer
+          type="grouped"
           data={crossData}
-          mode="grouped"
           config={multiCfg}
           height={chartH}
           seriesColors={crossColors}
+          autoHeight={false}
         />
       ) : multiData ? (
-        <GroupedBarChartEngine
+        <GroupChartRenderer
+          type="grouped"
           data={multiData}
-          mode="grouped"
           config={multiCfg}
           height={chartH}
           seriesColors={multiColors}
+          autoHeight={false}
         />
       ) : null}
 
       {/* Resize handle */}
-      <div
-        onMouseDown={handleResizeStart}
-        className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-16 h-4 flex items-center justify-center cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity"
-        title="拖动调整高度"
+      <button
+        type="button"
+        onMouseDown={onResizeStart}
+        onKeyDown={onResizeKeyDown}
+        className="absolute bottom-1.5 left-1/2 flex h-4 w-16 -translate-x-1/2 cursor-ns-resize items-center justify-center opacity-40 transition-opacity hover:opacity-100 focus:opacity-100"
+        aria-label="调整图表高度；使用上下方向键微调，Home 恢复默认"
       >
         <div className="w-10 h-1 bg-gray-200 rounded-full hover:bg-blue-300 transition-colors" />
-      </div>
+      </button>
     </div>
   );
 }
@@ -415,7 +409,7 @@ function ProportionStackedCard({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-5 col-span-2">
+    <div className="bg-white rounded-2xl border border-gray-100 p-4 col-span-2">
       <div className="mb-3">
         <h3 className="text-sm font-semibold text-gray-800">{field.name}</h3>
         <p className="text-xs text-gray-400 mt-0.5">各状态群体占比分布</p>
@@ -460,20 +454,124 @@ function ProportionStackedCard({
   );
 }
 
+function DimensionMultiSelect({
+  fields,
+  selectedKeys,
+  availableKeys,
+  onToggle,
+}: {
+  fields: Field[];
+  selectedKeys: string[];
+  availableKeys: Set<string> | null;
+  onToggle: (key: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const visibleFields = fields.filter(field =>
+    !search || field.name.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        className="flex min-w-[180px] items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 hover:border-blue-300"
+      >
+        <span>
+          {selectedKeys.length > 0 ? `已选择 ${selectedKeys.length} 个维度` : '选择对比维度'}
+        </span>
+        <ChevronDown size={12} className={cn('transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-9 z-50 flex max-h-80 min-w-[280px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
+            <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2">
+              <Search size={12} className="text-gray-400" />
+              <input
+                autoFocus
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+                placeholder="搜索维度…"
+                className="w-full bg-transparent text-xs outline-none placeholder:text-gray-300"
+              />
+            </div>
+            <div className="overflow-y-auto py-1">
+              {visibleFields.map(field => {
+                const available = !availableKeys || availableKeys.has(field.key);
+                const selected = selectedKeys.includes(field.key);
+                return (
+                  <button
+                    type="button"
+                    key={field.key}
+                    disabled={!available}
+                    onClick={() => available && onToggle(field.key)}
+                    className={cn(
+                      'flex w-full items-center gap-2 px-3 py-2 text-left text-xs',
+                      available ? 'text-gray-700 hover:bg-blue-50' : 'cursor-not-allowed text-gray-300',
+                    )}
+                  >
+                    <span className={cn(
+                      'flex h-4 w-4 items-center justify-center rounded border',
+                      selected
+                        ? 'border-blue-600 bg-blue-600 text-white'
+                        : 'border-gray-300 bg-white',
+                    )}>
+                      {selected && <Check size={11} />}
+                    </span>
+                    <span className="flex-1 truncate">{field.name}</span>
+                    {!available && <span className="text-[10px]">对比数据集缺失</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2 text-[11px] text-gray-400">
+              <span>可连续勾选多个维度</span>
+              <button type="button" onClick={() => setOpen(false)} className="text-blue-600">
+                完成
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── StatusView ─────────────────────────────────────────────────
 
 interface Props {
   dataset:    Dataset;
   viewConfig: ViewConfig;
+  onOpenDataCenter?: () => void;
 }
 
-export function StatusView({ dataset, viewConfig }: Props) {
+export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
   const { updateViewConfig, datasets: allDatasets, personaConfigs, activePersonaConfigId } = useDatasetStore();
-  const isAdmin  = useIsAdmin();
-  const groups   = viewConfig.statusGroups ?? [];
 
   const configs      = personaConfigs[dataset.id] ?? [];
   const activeConfig = configs.find(c => c.id === activePersonaConfigId);
+  const timeField = useMemo(() => detectTimeField(dataset), [dataset]);
+  const monthOptions = useMemo(() => {
+    if (!timeField) return [];
+    const values = new Set<string>();
+    dataset.records.forEach(record => {
+      const month = recordMonth(record[timeField.key]);
+      if (month) values.add(month);
+    });
+    return [...values].sort((a, b) => b.localeCompare(a));
+  }, [dataset.records, timeField]);
+  const groups = useMemo<StatusGroup[]>(
+    () => monthOptions.map(month => ({
+      key: month,
+      label: monthLabel(month),
+      values: [month],
+      color: 'blue',
+      intent: 'neutral',
+    })),
+    [monthOptions],
+  );
 
   // Derive the initial field keys respecting persona config order
   const initFieldKeys = (() => {
@@ -486,28 +584,90 @@ export function StatusView({ dataset, viewConfig }: Props) {
     return (viewConfig.personaFieldKeys ?? []).slice(0, 6);
   })();
 
-  const [selectedGroupKeys, setSelectedGroupKeys] = useState<string[]>(groups.map(g => g.key));
-  const [selectedDimKeys,   setSelectedDimKeys]   = useState<string[]>(initFieldKeys);
+  const [selectedGroupKeys, setSelectedGroupKeys] = useUrlArrayState('status_month');
+  const [selectedOrderStatuses, setSelectedOrderStatuses] =
+    useUrlArrayState('status_order', ['__all']);
+  const [selectedDimKeys, setSelectedDimKeys] =
+    useUrlArrayState('status_dimensions', initFieldKeys);
   const [compareDatasetId,  setCompareDatasetId]  = useState<string | null>(null);
-  const [editorOpen,        setEditorOpen]        = useState(false);
-  const [chartMode,         setChartMode]         = useState<'dimension' | 'proportion'>('dimension');
-  const [globalConfig,      setGlobalConfig]      = useState<ChartConfig>(
-    () => ({ ...DEFAULT_CHART_CONFIG, ...loadChartConfig('status') }),
+  const [chartMode, setChartMode] = useUrlStringState<'dimension' | 'proportion'>(
+    'status_mode', 'dimension', ['dimension', 'proportion'],
   );
+  const [globalConfig,      setGlobalConfig]      = useState<ChartConfig>(
+    () => {
+      const saved = loadChartConfig('status');
+      return {
+        ...DEFAULT_CHART_CONFIG,
+        ...saved,
+        chartHeight: Math.min(saved.chartHeight, 220),
+        compact: true,
+      };
+    },
+  );
+
+  useEffect(() => {
+    setSelectedGroupKeys(current => {
+      const valid = current.filter(month => monthOptions.includes(month));
+      return valid.length > 0 ? valid : monthOptions.slice(0, 2);
+    });
+  }, [dataset.id, monthOptions]);
 
   const handleConfigChange = (c: ChartConfig) => {
     setGlobalConfig(c);
     saveChartConfig('status', c);
   };
 
-  const statusField     = dataset.fields.find(f => f.key === viewConfig.statusFieldKey);
-  const allStatusValues = statusField?.options ?? [];
+  const orderOptions = useMemo(
+    () => getStatusOptions(dataset.records, viewConfig),
+    [dataset.records, viewConfig],
+  );
   const selectedGroups  = groups.filter(g => selectedGroupKeys.includes(g.key));
+  const analysisDataset = useMemo<Dataset>(() => {
+    const filtered = filterRecords(
+      dataset.records,
+      viewConfig,
+      'all',
+      [],
+      selectedOrderStatuses,
+    );
+    return {
+      ...dataset,
+      records: filtered.map(record => ({
+        ...record,
+        [MONTH_FIELD_KEY]: timeField ? recordMonth(record[timeField.key]) ?? '' : '',
+      })),
+      rowCount: filtered.length,
+    };
+  }, [dataset, timeField, viewConfig, selectedOrderStatuses]);
 
-  const compareDataset = useMemo(
+  const selectedDataset = useMemo(
     () => compareDatasetId ? allDatasets.find(d => d.id === compareDatasetId) : undefined,
     [compareDatasetId, allDatasets],
   );
+
+  const compareDataset = useMemo<Dataset | undefined>(() => {
+    if (!selectedDataset) return undefined;
+    const compareTimeField = detectTimeField(selectedDataset);
+    const orderFiltered = filterRecords(
+      selectedDataset.records,
+      viewConfig,
+      'all',
+      [],
+      selectedOrderStatuses,
+    );
+    if (!compareTimeField) {
+      return { ...selectedDataset, records: orderFiltered, rowCount: orderFiltered.length };
+    }
+    const records = orderFiltered.map(record => ({
+      ...record,
+      [MONTH_FIELD_KEY]: recordMonth(record[compareTimeField.key]) ?? '',
+    }));
+    return {
+      ...selectedDataset,
+      records,
+      rowCount: records.length,
+    };
+  }, [selectedDataset, selectedOrderStatuses, viewConfig]);
 
   const commonFieldKeys = useMemo(() => {
     if (!compareDataset) return null;
@@ -520,70 +680,82 @@ export function StatusView({ dataset, viewConfig }: Props) {
       return activeConfig.blocks
         .filter(b => b.visible && b.sourceFieldKey)
         .map(b => dataset.fields.find(f => f.key === b.sourceFieldKey))
-        .filter(Boolean) as Field[];
+        .filter((field): field is Field =>
+          !!field && field.key !== timeField?.key && field.key !== viewConfig.statusFieldKey
+        );
     }
     return (viewConfig.personaFieldKeys ?? [])
       .map(k => dataset.fields.find(f => f.key === k))
-      .filter(Boolean) as Field[];
-  }, [dataset.fields, viewConfig.personaFieldKeys, activeConfig]);
+      .filter((field): field is Field =>
+        !!field && field.key !== timeField?.key && field.key !== viewConfig.statusFieldKey
+      );
+  }, [dataset.fields, viewConfig.personaFieldKeys, viewConfig.statusFieldKey, activeConfig, timeField]);
 
   const personaFields = useMemo(
     () => selectedDimKeys
       .filter(k => !commonFieldKeys || commonFieldKeys.has(k))
       .map(k => dataset.fields.find(f => f.key === k))
-      .filter(Boolean) as Field[],
-    [dataset.fields, selectedDimKeys, commonFieldKeys],
+      .filter((field): field is Field =>
+        !!field && field.key !== timeField?.key && field.key !== viewConfig.statusFieldKey
+      ),
+    [dataset.fields, selectedDimKeys, commonFieldKeys, timeField, viewConfig.statusFieldKey],
   );
 
   const filteredRecords = useMemo(() => {
-    const vals = selectedGroups.flatMap(g => g.values);
-    return filterRecords(dataset.records, viewConfig, 'all', [], vals);
-  }, [dataset.records, viewConfig, selectedGroups]);
-
-  const toggleGroup = (key: string) =>
-    setSelectedGroupKeys(prev =>
-      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key],
+    const selected = new Set(selectedGroupKeys);
+    return analysisDataset.records.filter(record =>
+      selected.has(String(record[MONTH_FIELD_KEY] ?? '')),
     );
+  }, [analysisDataset.records, selectedGroupKeys]);
 
   const toggleDim = (key: string) =>
     setSelectedDimKeys(prev =>
       prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key],
     );
 
-  const handleSaveGroups = (newGroups: StatusGroup[]) =>
-    updateViewConfig(dataset.id, { statusGroups: newGroups });
-
   // ── AI Insight helpers ─────────────────────────────
-  const insightCacheKey = `status_${selectedGroupKeys.join(',')}_${selectedDimKeys.join(',')}_${compareDatasetId ?? ''}`;
+  const insightCacheKey = `status_month_${selectedGroupKeys.join(',')}_${selectedDimKeys.join(',')}_${compareDatasetId ?? ''}`;
   const insightLabel = selectedGroups.length === 0
-    ? '（请先选择状态组）'
+    ? '（请先选择月份）'
     : `${selectedGroups.map(g => g.label).join(' vs ')} · ${personaFields.map(f => f.name).join('、').slice(0, 30)}`;
 
-  const STATUS_DEFAULT_PROMPT = `分析上方数据，找出驱动购车转化的决定性因素。禁止开场白、总结段落、套话。
+  const STATUS_DEFAULT_PROMPT = `分析上方各月份数据，找出用户特征与偏好的月度变化。禁止开场白、总结段落、套话。
 
-## 转化信号（≤3条）
-格式：[维度]——强意向【XX%】vs弱意向【XX%】，差距XX%→[判断]
+## 月度变化（≤3条）
+格式：[维度]——[月份A]【XX%】vs[月份B]【XX%】，变化XX%→[判断]
 
-## 流失画像与建议（≤2条）
-格式：[流失特征]——[具体行动建议]
+## 趋势与建议（≤2条）
+格式：[变化趋势]——[具体行动建议]
 
 只引用上方真实数据，每条≤40字，不输出其他任何内容。`;
 
   function buildStatusContext() {
     return {
-      analysisType:  'status_comparison',
+      analysisType:  'month_comparison',
       dataset:       dataset.name,
-      statusGroups:  selectedGroups.map(g => ({ label: g.label, intent: g.intent })),
+      months:        selectedGroups.map(g => g.label),
       dimensions:    personaFields.map(f => f.name),
       totalSamples:  filteredRecords.length,
-      note:          compareDataset ? `与对比数据集「${compareDataset.name}」（${compareDataset.rowCount} 行）进行跨数据集对比` : undefined,
+      timeField:     timeField?.name,
+      note:          compareDataset
+        ? `与对比数据集「${compareDataset.name}」（${compareDataset.rowCount} 行）进行跨数据集月份对比`
+        : undefined,
     };
   }
 
-  if (!statusField || groups.length === 0) {
+  if (!timeField || groups.length === 0) {
     return (
-      <div className="text-center py-16 text-gray-400 text-sm bg-white rounded-2xl border border-gray-100">
-        请先在数据中心配置订单状态字段，此视图将自动生成状态对比图表
+      <div className="rounded-2xl border border-gray-100 bg-white px-6 py-16 text-center text-sm text-gray-500">
+        <p>未识别到有效的时间字段。请上传包含日期时间列的数据，系统会自动按月份生成对比图表。</p>
+        {onOpenDataCenter && (
+          <button
+            type="button"
+            onClick={onOpenDataCenter}
+            className="mt-4 rounded-xl bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700"
+          >
+            打开数据中心
+          </button>
+        )}
       </div>
     );
   }
@@ -596,35 +768,20 @@ export function StatusView({ dataset, viewConfig }: Props) {
       {/* ── Filter bar ── */}
       <div className="bg-white rounded-2xl border border-gray-100 px-5 py-4 space-y-3">
 
-        {/* Row 1: Status group pills + chart settings */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-gray-400 flex-shrink-0">对比状态</span>
-
-          {groups.map(g => {
-            const active = selectedGroupKeys.includes(g.key);
-            return (
-              <button
-                key={g.key}
-                onClick={() => toggleGroup(g.key)}
-                className={cn(
-                  'inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium transition-all',
-                  active ? INTENT_ACTIVE[g.intent] : INTENT_GHOST[g.intent],
-                )}
-              >
-                <span className={cn(
-                  'w-1.5 h-1.5 rounded-full',
-                  active ? 'bg-white' : `${INTENT_DOT[g.intent]} opacity-60`,
-                )} />
-                {g.label}
-                {g.values.length > 1 && (
-                  <span className={cn('text-[10px]', active ? 'text-white/70' : 'opacity-50')}>
-                    {g.values.length} 项
-                  </span>
-                )}
-              </button>
-            );
-          })}
-
+        {/* Row 1: Unified selectable status groups + chart settings */}
+        <div className="flex items-start gap-2 flex-wrap">
+          <div className="flex-1 min-w-0">
+            <StatusFilterGroups
+              orderOptions={orderOptions}
+              selectedOrders={selectedOrderStatuses}
+              onOrdersChange={setSelectedOrderStatuses}
+              monthOptions={monthOptions}
+              selectedMonths={selectedGroupKeys}
+              onMonthsChange={values =>
+                setSelectedGroupKeys(values.includes('__all') ? monthOptions : values)
+              }
+            />
+          </div>
           <span className="text-xs text-gray-400">
             {filteredRecords.length.toLocaleString()} 个样本
           </span>
@@ -663,16 +820,13 @@ export function StatusView({ dataset, viewConfig }: Props) {
               config={globalConfig}
               onChange={handleConfigChange}
             />
-
-            {isAdmin && (
-              <button
-                onClick={() => setEditorOpen(true)}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600 transition-all"
-              >
-                编辑分组
-              </button>
-            )}
           </div>
+        </div>
+
+        <div className="flex items-center gap-2 text-[11px] text-gray-400">
+          <span>时间字段</span>
+          <span className="rounded-md bg-blue-50 px-2 py-1 text-blue-600">{timeField.name}</span>
+          <span>仅作为时间状态筛选，不参与图表维度</span>
         </div>
 
         {/* Row 2: Cross-dataset picker */}
@@ -684,42 +838,31 @@ export function StatusView({ dataset, viewConfig }: Props) {
             selectedId={compareDatasetId}
             onSelect={setCompareDatasetId}
           />
-          {compareDataset && (
+          {selectedDataset && (
             <span className="text-[11px] text-gray-400">
               共 {commonCount} 个相同字段
               {commonCount === 0 && <span className="text-amber-500 ml-1">（无可对比字段）</span>}
             </span>
           )}
-          {compareDataset && commonCount > 0 && (
+          {selectedDataset && commonCount > 0 && (
             <span className="text-[10px] text-gray-300 ml-1">百分比 = 各数据集总量占比</span>
           )}
         </div>
 
-        {/* Row 3: Dimension chips */}
+        {/* Row 3: Dimension multi-select */}
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-xs text-gray-400 flex-shrink-0">对比维度</span>
-          {allPersonaFields.map(f => {
-            const active    = selectedDimKeys.includes(f.key);
-            const available = !commonFieldKeys || commonFieldKeys.has(f.key);
-            return (
-              <button
-                key={f.key}
-                onClick={() => available && toggleDim(f.key)}
-                disabled={!available}
-                title={!available ? '该字段在对比数据集中不存在' : undefined}
-                className={cn(
-                  'text-xs px-2.5 py-1 rounded-lg border transition-all',
-                  !available
-                    ? 'opacity-30 cursor-not-allowed bg-gray-50 text-gray-400 border-gray-200'
-                    : active
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300',
-                )}
-              >
-                {f.name}
-              </button>
-            );
-          })}
+          <DimensionMultiSelect
+            fields={allPersonaFields}
+            selectedKeys={selectedDimKeys}
+            availableKeys={commonFieldKeys}
+            onToggle={toggleDim}
+          />
+          {selectedDimKeys.length > 0 && (
+            <span className="text-[11px] text-gray-400">
+              可保持下拉框打开并连续选择
+            </span>
+          )}
         </div>
       </div>
 
@@ -748,7 +891,7 @@ export function StatusView({ dataset, viewConfig }: Props) {
       {/* ── Charts grid ── */}
       {selectedGroupKeys.length === 0 ? (
         <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-gray-100">
-          请选择至少一个状态
+          请选择至少一个月份
         </div>
       ) : compareDataset && commonCount === 0 ? (
         <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-gray-100">
@@ -759,42 +902,32 @@ export function StatusView({ dataset, viewConfig }: Props) {
           请选择要对比的维度
         </div>
       ) : chartMode === 'proportion' ? (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
           {personaFields.map(field => (
             <ProportionStackedCard
               key={field.key}
               field={field}
-              dataset={dataset}
-              statusFieldKey={viewConfig.statusFieldKey!}
+              dataset={analysisDataset}
+              statusFieldKey={MONTH_FIELD_KEY}
               selectedGroups={selectedGroups}
               config={globalConfig}
             />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
           {personaFields.map(field => (
             <StatusChartCard
               key={field.key}
               field={field}
-              dataset={dataset}
-              statusFieldKey={viewConfig.statusFieldKey!}
+              dataset={analysisDataset}
+              statusFieldKey={MONTH_FIELD_KEY}
               selectedGroups={selectedGroups}
               config={globalConfig}
               compareDataset={compareDataset}
             />
           ))}
         </div>
-      )}
-
-      {/* Group editor */}
-      {editorOpen && (
-        <StatusGroupEditor
-          allValues={allStatusValues}
-          groups={groups}
-          onSave={handleSaveGroups}
-          onClose={() => setEditorOpen(false)}
-        />
       )}
     </div>
   );

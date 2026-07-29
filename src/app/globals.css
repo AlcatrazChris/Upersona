@@ -16,10 +16,49 @@
   .rounded-ios {
     @apply rounded-xl;
   }
+
+  .content-auto {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 72px;
+  }
 }
 
 @layer utilities {
   .font-500 { font-weight: 500; }
   .font-600 { font-weight: 600; }
-  .no-tap { -webkit-tap-highlight-color: transparent; }
+  .no-tap {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Keep legacy class names while avoiding transition-property: all. */
+  .transition-all {
+    transition-property: color, background-color, border-color, opacity, box-shadow, transform;
+  }
+}
+
+@layer base {
+  :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+  }
+
+  html {
+    background: #f8fafc;
+  }
+
+  body {
+    min-width: 320px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

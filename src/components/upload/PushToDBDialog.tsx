@@ -15,6 +15,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { Dataset } from '@/types/dataSchema';
 import type { ViewConfig } from '@/lib/viewConfig';
+import { useModalA11y } from '@/hooks/useModalA11y';
 
 interface Props {
   dataset:        Dataset;
@@ -48,6 +49,7 @@ export function PushToDBDialog({
   dataset, viewConfig, personaConfigs, savedCharts, canvasElements,
   onClose, onSuccess,
 }: Props) {
+  const dialogRef = useModalA11y<HTMLDivElement>(onClose);
   const [phase,   setPhase]   = useState<'preview' | 'pushing' | 'done' | 'error'>('preview');
   const [error,   setError]   = useState('');
   const [progress, setProgress] = useState('');
@@ -96,7 +98,14 @@ export function PushToDBDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 w-[560px] max-h-[85vh] flex flex-col">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="push-db-title"
+        tabIndex={-1}
+        className="mx-4 flex max-h-[85vh] w-[560px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden overscroll-contain rounded-2xl border border-gray-100 bg-white shadow-2xl"
+      >
 
         {/* Header */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
@@ -104,11 +113,11 @@ export function PushToDBDialog({
             <CloudUpload size={16} className="text-blue-500" />
           </div>
           <div className="flex-1">
-            <div className="text-sm font-semibold text-gray-800">推送到数据库</div>
+            <h2 id="push-db-title" className="text-sm font-semibold text-gray-800">推送到数据库</h2>
             <div className="text-xs text-gray-400 mt-0.5">将本地数据集上传至 Supabase 云端</div>
           </div>
           {phase === 'preview' && (
-            <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400">
+            <button aria-label="关闭数据库推送" onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400">
               <X size={15} />
             </button>
           )}

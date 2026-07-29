@@ -2,17 +2,15 @@
 
 import { useState, useRef, useCallback } from 'react';
 import {
-  Trash2, Pencil, Check, BarChart2, Layers, Settings2, GripVertical,
-  ArrowUpDown, Plus, Type, LayoutGrid, X, Download,
+  Trash2, Pencil, Check, BarChart2, Layers, GripVertical,
+  Plus, Type, LayoutGrid, X, Download,
 } from 'lucide-react';
 import { useDatasetStore } from '@/store/datasetStore';
 import type { CanvasTextElement, SavedChart } from '@/store/datasetStore';
 import { aggregateField, aggregateFieldGrouped } from '@/lib/dataAggregator';
 import type { GroupedChartData } from '@/lib/dataAggregator';
-import { ChartRenderer } from './engine/ChartRenderer';
-import { GroupedBarChartEngine } from './engine/GroupedBarChartEngine';
-import { StackedBarChartEngine } from './engine/StackedBarChartEngine';
-import { ManualOrderModal } from '@/components/fields/ManualOrderModal';
+import { ChartRenderer, GroupChartRenderer } from './engine/ChartRenderer';
+import { ChartSettingsPanel } from './ChartSettingsPanel';
 import type { Dataset, Field } from '@/types/dataSchema';
 import type { ChartDataItem } from './engine/types';
 import type { ChartConfig } from '@/lib/chartConfig';
@@ -90,65 +88,6 @@ function ResizeHandle({
 }
 
 // ── Inline card settings ──────────────────────────────────────────
-
-function CardSettings({
-  chart, field, datasetId, onPatch,
-}: {
-  chart: SavedChart;
-  field?: Field;
-  datasetId: string;
-  onPatch: (p: Partial<SavedChart>) => void;
-}) {
-  const updateFieldOrdering = useDatasetStore(s => s.updateFieldOrdering);
-  const [showOrderModal, setShowOrderModal] = useState(false);
-
-  const height = chart.config.chartHeight ?? 200;
-  const canOrder = field
-    && (field.type === 'single_choice' || field.type === 'multi_choice')
-    && (field.options?.length ?? 0) >= 3;
-
-  return (
-    <>
-      <div className="bg-gray-50 rounded-xl px-3 py-2 mb-3 space-y-2 text-xs">
-        <div className="flex items-center gap-3">
-          <span className="text-gray-500 w-8 flex-shrink-0">高度</span>
-          <input
-            type="range" min={120} max={700} step={10} value={height}
-            onChange={e => onPatch({ config: { ...chart.config, chartHeight: Number(e.target.value) } })}
-            className="flex-1 accent-blue-500 h-1.5"
-          />
-          <span className="text-gray-400 tabular-nums w-12 text-right">{height}px</span>
-        </div>
-        {canOrder && field && (
-          <div className="flex items-center gap-3">
-            <span className="text-gray-500 w-8 flex-shrink-0">排序</span>
-            <button
-              onClick={() => setShowOrderModal(true)}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border transition-colors ${
-                field.isOrdered
-                  ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                  : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300 hover:text-indigo-600'
-              }`}
-            >
-              <ArrowUpDown size={9} />
-              {field.isOrdered ? '已排序' : '设置顺序'}
-            </button>
-          </div>
-        )}
-      </div>
-      {showOrderModal && field && (
-        <ManualOrderModal
-          field={field}
-          onClose={() => setShowOrderModal(false)}
-          onSave={(isOrdered, orderedValues) => {
-            updateFieldOrdering(datasetId, field.key, isOrdered, orderedValues);
-            setShowOrderModal(false);
-          }}
-        />
-      )}
-    </>
-  );
-}
 
 // ── Chart export helpers ─────────────────────────────────────────
 
@@ -371,7 +310,7 @@ function ChartCard({
 }) {
   const [editing,      setEditing]      = useState(false);
   const [editValue,    setEditValue]    = useState(chart.title);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const updateFieldOrdering = useDatasetStore(s => s.updateFieldOrdering);
 
   const cardW  = chart.canvasWidth  ?? DEFAULT_W;
   const chartH = chart.config.chartHeight ?? 200;
@@ -431,13 +370,17 @@ function ChartCard({
         )}
 
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-2 flex-shrink-0">
-          <button
-            onClick={() => setSettingsOpen(o => !o)}
-            className={`p-1.5 rounded-lg transition-all ${settingsOpen ? 'bg-blue-50 text-blue-500' : 'hover:bg-gray-100 text-gray-400'}`}
-            title="图表设置"
-          >
-            <Settings2 size={11} />
-          </button>
+          <ChartSettingsPanel
+            config={chart.config}
+            onChange={config => onPatch({ config })}
+            field={field}
+            onUpdateOrdering={field
+              ? (isOrdered, orderedValues) =>
+                  updateFieldOrdering(datasetId, field.key, isOrdered, orderedValues)
+              : undefined}
+            className="!px-1.5 !py-1"
+            iconOnly
+          />
           <button
             onClick={() => exportChartSVG(`ccard-${chart.id}`, chart.title)}
             className="flex items-center gap-0.5 px-1.5 py-1 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-500 transition-all text-[10px]"
@@ -471,17 +414,22 @@ function ChartCard({
         </div>
       </div>
 
-      {settingsOpen && <CardSettings chart={chart} field={field} datasetId={datasetId} onPatch={onPatch} />}
-
       {/* Chart content */}
       <div className="chart-content" style={{ height: chartH, minHeight: 120 }}>
         {isCompare && groupedData ? (
-          mode === 'stacked'
-            ? <StackedBarChartEngine data={groupedData} config={engineConfig} height={chartH} />
-            : <GroupedBarChartEngine data={groupedData} mode="grouped" config={engineConfig} height={chartH} />
+          <GroupChartRenderer
+            type={mode ?? 'grouped'}
+            data={groupedData}
+            config={engineConfig}
+            height={chartH}
+          />
         ) : data ? (
           <ChartRenderer
-            type={chart.chartType}
+            type={
+              chart.chartType === 'grouped-bar' || chart.chartType === 'stacked-bar'
+                ? 'bar'
+                : chart.chartType
+            }
             data={data}
             config={engineConfig}
             isMultiSelect={isMultiSelect}
@@ -858,7 +806,11 @@ export function SavedChartGrid({ dataset }: { dataset: Dataset }) {
                 totalSamples={dataset.rowCount}
                 datasetId={dataset.id}
                 onDragStart={e => startDrag(e, chart.id, 'chart', pos.x, pos.y)}
-                onDelete={() => removeSavedChart(dataset.id, chart.id)}
+                onDelete={() => {
+                  if (window.confirm(`确认删除图表「${chart.title}」？`)) {
+                    removeSavedChart(dataset.id, chart.id);
+                  }
+                }}
                 onTitleChange={t => updateSavedChart(dataset.id, chart.id, { title: t })}
                 onPatch={p => updateSavedChart(dataset.id, chart.id, p)}
               />
@@ -872,7 +824,11 @@ export function SavedChartGrid({ dataset }: { dataset: Dataset }) {
               el={el}
               onDragStart={e => startDrag(e, el.id, 'text', el.x, el.y)}
               onUpdate={p => updateCanvasText(dataset.id, el.id, p)}
-              onRemove={() => removeCanvasText(dataset.id, el.id)}
+              onRemove={() => {
+                if (window.confirm('确认删除这段文字？')) {
+                  removeCanvasText(dataset.id, el.id);
+                }
+              }}
             />
           ))}
         </div>

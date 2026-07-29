@@ -1,5 +1,6 @@
 # ── Dependencies ─────────────────────────────────────────────
 node_modules/
+.tools/
 .pnp
 .pnp.js
 
@@ -42,6 +43,14 @@ Thumbs.db
 # ── Testing ───────────────────────────────────────────────────
 coverage/
 .nyc_output/
+
+# ── Local datasets (never commit survey/user data) ────────────
+*.xlsx
+*.xls
+*.csv
+*.parquet
+data/
+uploads/
 
 # ── Cache ─────────────────────────────────────────────────────
 .cache/

@@ -1,19 +1,23 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Filter, MapPin, ChevronDown, Check, Settings2, Pencil, Search } from 'lucide-react';
 import { aggregateField, aggregateRanking } from '@/lib/dataAggregator';
 import { filterRecords, getGeoOptions, getStatusOptions, type GeoLevel } from '@/lib/filterRecords';
-import { ChartRenderer, type ChartType } from '@/components/charts/engine/ChartRenderer';
+import { ChartRenderer, type FlatChartType } from '@/components/charts/engine/ChartRenderer';
 import { RankingHeatmapEngine }          from '@/components/charts/engine/RankingHeatmapEngine';
-import { ChartSettingsPanel } from '@/components/charts/ChartSettingsPanel';
-import { DEFAULT_CHART_CONFIG, loadChartConfig, saveChartConfig, type ChartConfig } from '@/lib/chartConfig';
+import { ChartSettingsPanel, useStoredChartConfig } from '@/components/charts/ChartSettingsPanel';
+import { DEFAULT_CHART_CONFIG, type ChartConfig } from '@/lib/chartConfig';
 import type { Dataset, Field } from '@/types/dataSchema';
 import type { ViewConfig } from '@/lib/viewConfig';
 import { useDatasetStore } from '@/store/datasetStore';
 import { PersonaDashboard } from '@/components/persona/PersonaDashboard';
 import { useIsAdmin } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import { StatusFilterGroups } from '@/components/shared/StatusFilterGroups';
+import { detectTimeField, filterByMonths, getMonthOptions } from '@/lib/timeStatus';
+import { useUrlArrayState, useUrlStringState } from '@/hooks/useUrlParamState';
+import { ChartTypeSwitcher, useResizableChartHeight } from '@/components/charts/engine/shared';
 
 // ── Geo dropdown (multi-select) ───────────────────────────────
 
@@ -109,23 +113,19 @@ function GeoDropdown({
 
 const PERSONA_SUPPORTED_SET = new Set(['bar', 'pie', 'donut', 'line', 'area']);
 
-const CHART_TYPE_LABEL: Record<string, string> = {
-  bar: '条形', pie: '饼图', donut: '环形', line: '折线', area: '面积',
-};
-
-function isPersonaChartType(t: string): t is ChartType {
+function isPersonaChartType(t: string): t is FlatChartType {
   return PERSONA_SUPPORTED_SET.has(t);
 }
 
-function getDefaultChartType(field: Field): ChartType {
+function getDefaultChartType(field: Field): FlatChartType {
   if (field.type === 'ranking') return 'ranking-heatmap';
   const rec = field.recommendedCharts.find(t => isPersonaChartType(t));
-  return isPersonaChartType(rec ?? '') ? (rec as ChartType) : 'bar';
+  return rec ?? 'bar';
 }
 
-function getAvailableTypes(field: Field): ChartType[] {
+function getAvailableTypes(field: Field): FlatChartType[] {
   if (field.type === 'ranking') return [];
-  const types = field.recommendedCharts.filter(isPersonaChartType) as ChartType[];
+  const types = field.recommendedCharts.filter(isPersonaChartType);
   return types.length > 0 ? types : ['bar'];
 }
 
@@ -142,7 +142,7 @@ function PersonaChartCard({
   filteredRecords:   Record<string, unknown>[];
   config:            ChartConfig;   // global config (from filter bar)
   datasetId:         string;
-  initialChartType?: ChartType;
+  initialChartType?: FlatChartType;
 }) {
   const { updateFieldOrdering } = useDatasetStore();
   const isRanking = field.type === 'ranking';
@@ -162,32 +162,13 @@ function PersonaChartCard({
     ? (rankData?.N ?? 0)
     : data.reduce((s, d) => s + d.count, 0);
 
-  const [chartType, setChartType] = useState<ChartType>(() => initialChartType ?? getDefaultChartType(field));
+  const [chartType, setChartType] = useState<FlatChartType>(() => initialChartType ?? getDefaultChartType(field));
   const availableTypes = getAvailableTypes(field);
   // localCfg: null = follow global; non-null = card-level override
   const [localCfg, setLocalCfg] = useState<ChartConfig | null>(null);
-  // manualH: 用户拖拽覆盖；null 时跟随有效配置的 chartHeight
-  const [manualH,  setManualH]  = useState<number | null>(null);
-
   const effective = localCfg ?? config;
-  const cardH     = manualH ?? effective.chartHeight;
-
-  const resizeRef = useRef<{ startY: number; startH: number } | null>(null);
-  const handleResizeStart = (e: React.MouseEvent) => {
-    e.preventDefault();
-    resizeRef.current = { startY: e.clientY, startH: cardH };
-    const onMove = (ev: MouseEvent) => {
-      if (!resizeRef.current) return;
-      setManualH(Math.max(120, resizeRef.current.startH + (ev.clientY - resizeRef.current.startY)));
-    };
-    const onUp = () => {
-      resizeRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
+  const { height: cardH, onResizeStart, onResizeKeyDown, resetHeight } =
+    useResizableChartHeight(effective.chartHeight);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-5 relative group select-none">
@@ -210,28 +191,17 @@ function PersonaChartCard({
           <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
             {/* Chart type switcher — adapts to field's recommendedCharts */}
             {availableTypes.length > 1 && (
-              <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
-                {availableTypes.map(t => (
-                  <button
-                    key={t}
-                    onClick={() => setChartType(t)}
-                    className={cn(
-                      'text-[10px] px-2 py-1 rounded-md transition-all whitespace-nowrap',
-                      chartType === t
-                        ? 'bg-white text-gray-800 shadow-sm font-medium'
-                        : 'text-gray-400 hover:text-gray-600',
-                    )}
-                  >
-                    {CHART_TYPE_LABEL[t] ?? t}
-                  </button>
-                ))}
-              </div>
+              <ChartTypeSwitcher
+                value={chartType}
+                options={availableTypes}
+                onChange={setChartType}
+              />
             )}
 
             {/* Per-card chart settings (includes field ordering) */}
             <ChartSettingsPanel
               config={effective}
-              onChange={c => { setLocalCfg(c); setManualH(null); }}
+              onChange={c => { setLocalCfg(c); resetHeight(); }}
               field={field}
               onUpdateOrdering={(isOrdered, orderedValues) =>
                 updateFieldOrdering(datasetId, field.key, isOrdered, orderedValues)
@@ -241,7 +211,7 @@ function PersonaChartCard({
             {/* Reset local override back to global config */}
             {localCfg && (
               <button
-                onClick={() => { setLocalCfg(null); setManualH(null); }}
+                onClick={() => { setLocalCfg(null); resetHeight(); }}
                 title="恢复全局设置"
                 className="text-[10px] text-gray-400 hover:text-blue-500 px-1 leading-none"
               >
@@ -269,13 +239,15 @@ function PersonaChartCard({
 
       {/* Resize handle — only for non-ranking cards */}
       {!isRanking && (
-        <div
-          onMouseDown={handleResizeStart}
-          className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-16 h-4 flex items-center justify-center cursor-ns-resize opacity-0 group-hover:opacity-100 transition-opacity"
-          title="拖动调整高度"
+        <button
+          type="button"
+          onMouseDown={onResizeStart}
+          onKeyDown={onResizeKeyDown}
+          className="absolute bottom-1.5 left-1/2 flex h-4 w-16 -translate-x-1/2 cursor-ns-resize items-center justify-center opacity-40 transition-opacity hover:opacity-100 focus:opacity-100"
+          aria-label="调整图表高度；使用上下方向键微调，Home 恢复默认"
         >
           <div className="w-10 h-1 bg-gray-200 rounded-full hover:bg-blue-300 transition-colors" />
-        </div>
+        </button>
       )}
     </div>
   );
@@ -314,17 +286,14 @@ export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
     if (activeConfig) setDashMode(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConfig?.id, activeConfig?.updatedAt]);
-  const [geoLevel,      setGeoLevel]      = useState<GeoLevel>('all');
-  const [selectedGeo,   setSelectedGeo]   = useState<string[]>([]);
-  const [selStatus,     setSelStatus]     = useState<string[]>(['__all']);
-  const [globalConfig,  setGlobalConfig]  = useState<ChartConfig>(
-    () => ({ ...PERSONA_DEFAULT, ...loadChartConfig('persona') }),
+  const [geoLevel, setGeoLevel] = useUrlStringState<GeoLevel>(
+    'persona_geo_level', 'all', ['all', 'region', 'province', 'city'],
   );
-
-  const handleConfigChange = (c: ChartConfig) => {
-    setGlobalConfig(c);
-    saveChartConfig('persona', c);
-  };
+  const [selectedGeo, setSelectedGeo] = useUrlArrayState('persona_geo');
+  const [selStatus, setSelStatus] = useUrlArrayState('persona_order', ['__all']);
+  const [selMonths, setSelMonths] = useUrlArrayState('persona_month', ['__all']);
+  const [globalConfig, handleConfigChange] =
+    useStoredChartConfig('persona', PERSONA_DEFAULT);
 
   const geoOptions    = useMemo(
     () => getGeoOptions(dataset.records, viewConfig, geoLevel),
@@ -334,9 +303,18 @@ export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
     () => getStatusOptions(dataset.records, viewConfig),
     [dataset, viewConfig],
   );
+  const timeField = useMemo(() => detectTimeField(dataset), [dataset]);
+  const monthOptions = useMemo(
+    () => getMonthOptions(dataset, timeField),
+    [dataset, timeField],
+  );
   const filteredRecords = useMemo(
-    () => filterRecords(dataset.records, viewConfig, geoLevel, selectedGeo, selStatus),
-    [dataset.records, viewConfig, geoLevel, selectedGeo, selStatus],
+    () => filterByMonths(
+      filterRecords(dataset.records, viewConfig, geoLevel, selectedGeo, selStatus),
+      timeField,
+      selMonths,
+    ),
+    [dataset.records, viewConfig, geoLevel, selectedGeo, selStatus, timeField, selMonths],
   );
   const personaFields = useMemo(
     () => {
@@ -345,25 +323,25 @@ export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
         return activeConfig.blocks
           .filter(b => b.visible && b.sourceFieldKey)
           .map(b => dataset.fields.find(f => f.key === b.sourceFieldKey))
-          .filter(Boolean) as Field[];
+          .filter((field): field is Field => !!field && field.key !== timeField?.key);
       }
       return (viewConfig.personaFieldKeys ?? [])
         .map(k => dataset.fields.find(f => f.key === k))
-        .filter(Boolean) as Field[];
+        .filter((field): field is Field => !!field && field.key !== timeField?.key);
     },
-    [dataset.fields, viewConfig.personaFieldKeys, activeConfig],
+    [dataset.fields, viewConfig.personaFieldKeys, activeConfig, timeField],
   );
 
   // 从活跃画像配置中提取每个字段的图表类型偏好
   // 仅 distribution 块且配置了 chartType 才会覆盖默认类型
   const blockChartTypeMap = useMemo(() => {
-    if (!activeConfig) return {} as Record<string, ChartType>;
-    const map: Record<string, ChartType> = {};
+    if (!activeConfig) return {} as Record<string, FlatChartType>;
+    const map: Record<string, FlatChartType> = {};
     for (const b of activeConfig.blocks) {
       if (!b.visible || !b.sourceFieldKey) continue;
       if (b.blockType === 'distribution' && b.config?.chartType) {
         const ct = b.config.chartType;
-        if (isPersonaChartType(ct)) map[b.sourceFieldKey] = ct as ChartType;
+        if (isPersonaChartType(ct)) map[b.sourceFieldKey] = ct;
       }
     }
     return map;
@@ -550,37 +528,14 @@ export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
           </div>
         </div>
 
-        {/* Row 2: Status filter */}
-        {viewConfig.statusFieldKey && statusOptions.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-400 flex-shrink-0">订单状态</span>
-            <button
-              onClick={() => setSelStatus(['__all'])}
-              className={cn(
-                'text-xs px-3 py-1 rounded-full transition-all',
-                selStatus.includes('__all')
-                  ? 'bg-gray-800 text-white font-medium'
-                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
-              )}
-            >
-              全部
-            </button>
-            {statusOptions.map(v => (
-              <button
-                key={v}
-                onClick={() => setSelStatus([v])}
-                className={cn(
-                  'text-xs px-3 py-1 rounded-full transition-all',
-                  selStatus.includes(v)
-                    ? 'bg-blue-600 text-white font-medium'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
-                )}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        )}
+        <StatusFilterGroups
+          orderOptions={statusOptions}
+          selectedOrders={selStatus}
+          onOrdersChange={setSelStatus}
+          monthOptions={monthOptions}
+          selectedMonths={selMonths}
+          onMonthsChange={setSelMonths}
+        />
       </div>
 
       {/* ── Chart grid ─────────────────────────────────────── */}
@@ -589,7 +544,7 @@ export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
           暂无配置的人口维度字段。请在数据中心的字段概览中配置字段后返回。
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {personaFields.map(field => (
             <PersonaChartCard
               key={`${activeConfig?.id ?? 'default'}-${field.key}`}

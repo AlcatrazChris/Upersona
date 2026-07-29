@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Loader2, RefreshCw, MapPin, ChevronDown } from 'lucide-react';
+import { Loader2, RefreshCw, MapPin } from 'lucide-react';
 import { MarkdownContent } from '@/components/ui/MarkdownContent';
 import { filterRecords, getGeoOptionsWithCount, type GeoLevel } from '@/lib/filterRecords';
 import { aggregateField } from '@/lib/dataAggregator';
@@ -9,6 +9,8 @@ import { computeClusters, CLUSTER_METHODS, type ClusterMethod } from '@/lib/clus
 import { useDatasetStore } from '@/store/datasetStore';
 import type { ViewConfig, ClusterInsightResult, ClusterSegment, DataPoint } from '@/lib/viewConfig';
 import type { Dataset, Field } from '@/types/dataSchema';
+import { detectTimeField } from '@/lib/timeStatus';
+import { useUrlArrayState, useUrlStringState } from '@/hooks/useUrlParamState';
 
 // ── McKinsey palette (one per segment) ───────────────────────
 
@@ -28,8 +30,9 @@ const DISPLAY_EXCL_KW = ['大区', '省份', '城市', '地区', '意向', '订�
                           '号码', '姓名', '电话', '联系', '编号', 'ID', 'id'];
 
 function categorise(dataset: Dataset, vc: ViewConfig) {
+  const timeField = detectTimeField(dataset);
   const excluded = new Set(
-    [vc.geoRegionKey, vc.geoProvinceKey, vc.geoCityKey, vc.statusFieldKey].filter(Boolean) as string[],
+    [vc.geoRegionKey, vc.geoProvinceKey, vc.geoCityKey, vc.statusFieldKey, timeField?.key].filter(Boolean) as string[],
   );
   const chartable = dataset.fields.filter(f =>
     !excluded.has(f.key) &&
@@ -196,7 +199,7 @@ function SegmentCard({
   const hasBottom = prefResolved.length > 0 || !!seg.preference_intro;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-sm overflow-hidden"
+    <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white"
       style={{ borderLeft: `4px solid ${c.accent}` }}>
 
       {/* ── Header: compact, 1 row ── */}
@@ -365,11 +368,11 @@ function ReferenceCharts({
   if (showFields.length === 0) return null;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-sm p-6">
+    <div className="rounded-2xl border border-gray-100 bg-white p-6">
       <div className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.18em] mb-5">
         人群分布参考（AI 推荐维度 · 当前筛选范围）
       </div>
-      <div className="grid grid-cols-2 gap-x-10 gap-y-6">
+      <div className="grid grid-cols-1 gap-x-10 gap-y-6 lg:grid-cols-2">
         {showFields.map(f => {
           const dist = fieldDist(filteredRecords, f);
           if (!dist.length) return null;
@@ -489,9 +492,13 @@ interface Props {
 
 export function InsightView({ dataset, viewConfig }: Props) {
   const { updateViewConfig } = useDatasetStore();
-  const [geoLevel,      setGeoLevel]      = useState<GeoLevel>('region');
-  const [selectedGeo,   setSelectedGeo]   = useState<string[]>([]);
-  const [clusterMethod, setClusterMethod] = useState<ClusterMethod>('kmeans');
+  const [geoLevel, setGeoLevel] = useUrlStringState<GeoLevel>(
+    'insight_geo_level', 'region', ['region', 'province', 'city'],
+  );
+  const [selectedGeo, setSelectedGeo] = useUrlArrayState('insight_geo');
+  const [clusterMethod, setClusterMethod] = useUrlStringState<ClusterMethod>(
+    'insight_method', 'kmeans', ['kmeans', 'twostage'],
+  );
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState('');
 
@@ -627,32 +634,18 @@ export function InsightView({ dataset, viewConfig }: Props) {
 
         <div className="flex-1" />
 
-        {/* Cluster method selector */}
-        <div className="relative group/method">
-          <button
-            className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-sm border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 transition-all"
-            title={CLUSTER_METHODS.find(m => m.value === clusterMethod)?.desc}
-          >
-            {CLUSTER_METHODS.find(m => m.value === clusterMethod)?.label}
-            <ChevronDown size={10} />
-          </button>
-          <div className="absolute z-50 top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl py-1 min-w-[200px] hidden group-hover/method:block">
-            {CLUSTER_METHODS.map(m => (
-              <button
-                key={m.value}
-                onClick={() => setClusterMethod(m.value)}
-                className={`w-full text-left px-3 py-2 hover:bg-gray-50 transition-colors ${
-                  clusterMethod === m.value ? 'bg-indigo-50' : ''
-                }`}
-              >
-                <div className={`text-xs font-medium ${clusterMethod === m.value ? 'text-indigo-700' : 'text-gray-700'}`}>
-                  {m.label}
-                </div>
-                <div className="text-[10px] text-gray-400 mt-0.5">{m.desc}</div>
-              </button>
-            ))}
-          </div>
-        </div>
+        <label className="sr-only" htmlFor="cluster-method">聚类算法</label>
+        <select
+          id="cluster-method"
+          value={clusterMethod}
+          onChange={event => setClusterMethod(event.target.value as ClusterMethod)}
+          title={CLUSTER_METHODS.find(method => method.value === clusterMethod)?.desc}
+          className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-600 hover:border-indigo-300"
+        >
+          {CLUSTER_METHODS.map(method => (
+            <option key={method.value} value={method.value}>{method.label}</option>
+          ))}
+        </select>
 
         <button
           onClick={generate}
@@ -668,12 +661,12 @@ export function InsightView({ dataset, viewConfig }: Props) {
       </div>
 
       {error && (
-        <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-sm px-4 py-3">{error}</div>
+        <div role="alert" aria-live="assertive" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{error}</div>
       )}
 
       {/* ── Loading ── */}
       {loading && (
-        <div className="bg-white border border-gray-200 rounded-sm p-14 flex flex-col items-center gap-4 text-gray-400">
+        <div role="status" aria-live="polite" className="flex flex-col items-center gap-4 rounded-2xl border border-gray-100 bg-white p-14 text-gray-500">
           <Loader2 size={22} className="animate-spin" style={{ color: '#003087' }} />
           <div className="text-center">
             <p className="text-sm font-medium text-gray-700">正在分析人群特征</p>

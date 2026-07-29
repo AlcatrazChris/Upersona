@@ -5,13 +5,13 @@ import { Pencil, Check } from 'lucide-react';
 import { ChartRenderer } from './engine/ChartRenderer';
 import { cn } from '@/lib/utils';
 import type { ChartConfig } from '@/lib/chartConfig';
-import type { ChartDataItem, ChartType } from './engine/types';
+import type { ChartDataItem, FlatChartType } from './engine/types';
 
 interface ChartCardProps {
   title: string;
   data: ChartDataItem[];
   config: ChartConfig;
-  chartType?: ChartType;
+  chartType?: FlatChartType;
   isMultiSelect?: boolean;
   totalSamples?: number;
   validSamples?: number;

@@ -12,7 +12,7 @@
 import type { Field, FieldType, Dataset } from '@/types/dataSchema';
 import { recommendCharts } from '@/types/dataSchema';
 
-const DATE_RE = /^\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}$/;
+const DATE_RE = /^\d{4}(?:[-/.]\d{1,2}[-/.]\d{1,2}|年\d{1,2}月\d{1,2}日)(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?$/;
 const NUMBER_RE = /^-?\d+(\.\d+)?$/;
 
 export function detectFieldType(values: unknown[]): FieldType {
