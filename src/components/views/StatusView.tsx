@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, X, ChevronDown, BarChart2, Layers, Search, Check } from 'lucide-react';
+import { Plus, X, ChevronDown, BarChart2, Layers, Search, Check, MapPin } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
@@ -15,7 +15,12 @@ import { ChartTypeSwitcher, useResizableChartHeight } from '@/components/charts/
 import { ChartSettingsPanel }       from '@/components/charts/ChartSettingsPanel';
 import { AIInsightPanel }           from '@/components/shared/AIInsightPanel';
 import { StatusFilterGroups }       from '@/components/shared/StatusFilterGroups';
-import { filterRecords, getStatusOptions } from '@/lib/filterRecords';
+import {
+  filterRecords,
+  getGeoOptionsWithCount,
+  getStatusOptions,
+  type GeoLevel,
+} from '@/lib/filterRecords';
 import {
   DEFAULT_CHART_CONFIG,
   loadChartConfig,
@@ -539,6 +544,120 @@ function DimensionMultiSelect({
   );
 }
 
+function GeoMultiSelect({
+  dataset,
+  viewConfig,
+  geoLevel,
+  selected,
+  onChange,
+}: {
+  dataset: Dataset;
+  viewConfig: ViewConfig;
+  geoLevel: GeoLevel;
+  selected: string[];
+  onChange: (values: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const options = useMemo(
+    () => getGeoOptionsWithCount(dataset.records, viewConfig, geoLevel),
+    [dataset.records, viewConfig, geoLevel],
+  );
+  const levelLabel = geoLevel === 'region' ? '大区' : geoLevel === 'province' ? '省份' : '城市';
+  const visibleOptions = search
+    ? options.filter(option => option.value.includes(search))
+    : options;
+  const label = selected.length === 0
+    ? `全部${levelLabel}`
+    : selected.length === 1
+      ? selected[0]
+      : `${selected.length} 个${levelLabel}`;
+
+  function close() {
+    setOpen(false);
+    setSearch('');
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        className={cn(
+          'flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs transition-all',
+          selected.length > 0
+            ? 'border-blue-300 bg-blue-50 text-blue-700'
+            : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300',
+        )}
+      >
+        <MapPin size={11} />
+        {label}
+        <ChevronDown size={10} className={cn('transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={close} />
+          <div className="absolute left-0 top-9 z-50 flex max-h-72 w-60 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
+            <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2">
+              <Search size={11} className="text-gray-400" />
+              <input
+                autoFocus
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+                onKeyDown={event => event.key === 'Escape' && close()}
+                placeholder={`搜索${levelLabel}…`}
+                className="w-full bg-transparent text-xs outline-none placeholder:text-gray-300"
+              />
+            </div>
+            <div className="overflow-y-auto py-1">
+              <button
+                type="button"
+                onClick={() => {
+                  onChange([]);
+                  close();
+                }}
+                className="w-full px-3 py-2 text-left text-xs text-gray-500 hover:bg-gray-50"
+              >
+                全部（不筛选）
+              </button>
+              {visibleOptions.map(({ value, count }) => {
+                const checked = selected.includes(value);
+                return (
+                  <button
+                    type="button"
+                    key={value}
+                    onClick={() => onChange(
+                      checked
+                        ? selected.filter(item => item !== value)
+                        : [...selected, value],
+                    )}
+                    className={cn(
+                      'flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-blue-50',
+                      checked ? 'font-medium text-blue-700' : 'text-gray-700',
+                    )}
+                  >
+                    <span className={cn(
+                      'flex h-4 w-4 items-center justify-center rounded border',
+                      checked ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300',
+                    )}>
+                      {checked && <Check size={11} />}
+                    </span>
+                    <span className="flex-1 truncate">{value}</span>
+                    <span className="text-[10px] text-gray-400">n={count.toLocaleString()}</span>
+                  </button>
+                );
+              })}
+              {visibleOptions.length === 0 && (
+                <div className="px-3 py-4 text-center text-xs text-gray-400">无匹配地区</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── StatusView ─────────────────────────────────────────────────
 
 interface Props {
@@ -587,6 +706,10 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
   const [selectedGroupKeys, setSelectedGroupKeys] = useUrlArrayState('status_month');
   const [selectedOrderStatuses, setSelectedOrderStatuses] =
     useUrlArrayState('status_order', ['__all']);
+  const [geoLevel, setGeoLevel] = useUrlStringState<GeoLevel>(
+    'status_geo_level', 'region', ['region', 'province', 'city'],
+  );
+  const [selectedGeo, setSelectedGeo] = useUrlArrayState('status_geo');
   const [selectedDimKeys, setSelectedDimKeys] =
     useUrlArrayState('status_dimensions', initFieldKeys);
   const [compareDatasetId,  setCompareDatasetId]  = useState<string | null>(null);
@@ -621,13 +744,25 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
     () => getStatusOptions(dataset.records, viewConfig),
     [dataset.records, viewConfig],
   );
+  const geoLevels = ([
+    { key: 'region' as GeoLevel, label: '大区', fieldKey: viewConfig.geoRegionKey },
+    { key: 'province' as GeoLevel, label: '省份', fieldKey: viewConfig.geoProvinceKey },
+    { key: 'city' as GeoLevel, label: '城市', fieldKey: viewConfig.geoCityKey },
+  ] as const).filter(level => level.fieldKey);
+
+  useEffect(() => {
+    if (geoLevels.length === 0 || geoLevels.some(level => level.key === geoLevel)) return;
+    setGeoLevel(geoLevels[0].key);
+    setSelectedGeo([]);
+  }, [geoLevel, geoLevels, setGeoLevel, setSelectedGeo]);
+
   const selectedGroups  = groups.filter(g => selectedGroupKeys.includes(g.key));
   const analysisDataset = useMemo<Dataset>(() => {
     const filtered = filterRecords(
       dataset.records,
       viewConfig,
-      'all',
-      [],
+      geoLevel,
+      selectedGeo,
       selectedOrderStatuses,
     );
     return {
@@ -638,7 +773,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
       })),
       rowCount: filtered.length,
     };
-  }, [dataset, timeField, viewConfig, selectedOrderStatuses]);
+  }, [dataset, timeField, viewConfig, geoLevel, selectedGeo, selectedOrderStatuses]);
 
   const selectedDataset = useMemo(
     () => compareDatasetId ? allDatasets.find(d => d.id === compareDatasetId) : undefined,
@@ -651,8 +786,8 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
     const orderFiltered = filterRecords(
       selectedDataset.records,
       viewConfig,
-      'all',
-      [],
+      geoLevel,
+      selectedGeo,
       selectedOrderStatuses,
     );
     if (!compareTimeField) {
@@ -667,7 +802,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
       records,
       rowCount: records.length,
     };
-  }, [selectedDataset, selectedOrderStatuses, viewConfig]);
+  }, [selectedDataset, geoLevel, selectedGeo, selectedOrderStatuses, viewConfig]);
 
   const commonFieldKeys = useMemo(() => {
     if (!compareDataset) return null;
@@ -714,10 +849,12 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
     );
 
   // ── AI Insight helpers ─────────────────────────────
-  const insightCacheKey = `status_month_${selectedGroupKeys.join(',')}_${selectedDimKeys.join(',')}_${compareDatasetId ?? ''}`;
+  const insightCacheKey = `status_month_${selectedGroupKeys.join(',')}_${geoLevel}_${selectedGeo.join(',')}_${selectedDimKeys.join(',')}_${compareDatasetId ?? ''}`;
   const insightLabel = selectedGroups.length === 0
     ? '（请先选择月份）'
-    : `${selectedGroups.map(g => g.label).join(' vs ')} · ${personaFields.map(f => f.name).join('、').slice(0, 30)}`;
+    : `${selectedGroups.map(g => g.label).join(' vs ')} · ${
+      selectedGeo.length > 0 ? selectedGeo.join(' / ') : '全国'
+    } · ${personaFields.map(f => f.name).join('、').slice(0, 30)}`;
 
   const STATUS_DEFAULT_PROMPT = `分析上方各月份数据，找出用户特征与偏好的月度变化。禁止开场白、总结段落、套话。
 
@@ -737,6 +874,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
       dimensions:    personaFields.map(f => f.name),
       totalSamples:  filteredRecords.length,
       timeField:     timeField?.name,
+      geography:     selectedGeo.length > 0 ? selectedGeo : ['全国'],
       note:          compareDataset
         ? `与对比数据集「${compareDataset.name}」（${compareDataset.rowCount} 行）进行跨数据集月份对比`
         : undefined,
@@ -823,11 +961,38 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-[11px] text-gray-400">
-          <span>时间字段</span>
-          <span className="rounded-md bg-blue-50 px-2 py-1 text-blue-600">{timeField.name}</span>
-          <span>仅作为时间状态筛选，不参与图表维度</span>
-        </div>
+        {geoLevels.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-gray-400 flex-shrink-0">筛选地区</span>
+            <div className="flex items-center gap-0.5 rounded-xl bg-gray-100 p-0.5">
+              {geoLevels.map(level => (
+                <button
+                  type="button"
+                  key={level.key}
+                  onClick={() => {
+                    setGeoLevel(level.key);
+                    setSelectedGeo([]);
+                  }}
+                  className={cn(
+                    'rounded-lg px-2.5 py-1 text-xs transition-all',
+                    geoLevel === level.key
+                      ? 'bg-white font-medium text-gray-800 shadow-sm'
+                      : 'text-gray-400 hover:text-gray-600',
+                  )}
+                >
+                  {level.label}
+                </button>
+              ))}
+            </div>
+            <GeoMultiSelect
+              dataset={dataset}
+              viewConfig={viewConfig}
+              geoLevel={geoLevel}
+              selected={selectedGeo}
+              onChange={setSelectedGeo}
+            />
+          </div>
+        )}
 
         {/* Row 2: Cross-dataset picker */}
         <div className="flex items-center gap-2 flex-wrap">
