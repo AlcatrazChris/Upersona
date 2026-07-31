@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import {
   BarChart2, PieChart, TrendingUp, Activity, Circle,
-  CalendarDays, Bookmark, BookmarkCheck, MousePointerClick, Layers, X,
+  CalendarDays, Bookmark, BookmarkCheck, MousePointerClick, Layers, X, CircleDot, Grid3X3,
 } from 'lucide-react';
 import { ChartCard } from './ChartCard';
 import { ChartSettingsPanel, useStoredChartConfig } from './ChartSettingsPanel';
@@ -36,8 +36,8 @@ const TYPE_LABELS: Record<FieldType, string> = {
   number: '数值', date: '日期', boolean: '布尔', text: '文本',
 };
 
-type NormalType = 'bar' | 'pie' | 'donut' | 'line' | 'area';
-const NORMAL_TYPES: NormalType[] = ['bar', 'pie', 'donut', 'line', 'area'];
+type NormalType = 'bar' | 'lollipop' | 'waffle' | 'pie' | 'donut' | 'line' | 'area';
+const NORMAL_TYPES: NormalType[] = ['bar', 'lollipop', 'waffle', 'pie', 'donut', 'line', 'area'];
 
 const CHART_ICONS: Record<NormalType, React.ReactNode> = {
   bar:   <BarChart2  size={13} />,
@@ -45,10 +45,13 @@ const CHART_ICONS: Record<NormalType, React.ReactNode> = {
   donut: <Circle     size={13} />,
   line:  <TrendingUp size={13} />,
   area:  <Activity   size={13} />,
+  lollipop: <CircleDot size={13} />,
+  waffle: <Grid3X3 size={13} />,
 };
 
 const CHART_LABELS: Record<NormalType, string> = {
-  bar: '条形图', pie: '饼图', donut: '环形图', line: '折线图', area: '面积图',
+  bar: '条形图', lollipop: '棒棒糖图', waffle: '华夫图',
+  pie: '饼图', donut: '环形图', line: '折线图', area: '面积图',
 };
 
 const DATE_GRAN_LABELS = { year: '按年', month: '按月', day: '按日' } as const;
@@ -59,6 +62,12 @@ type DateGran = keyof typeof DATE_GRAN_LABELS;
 function getSupportedTypes(field: Field): NormalType[] {
   const recs = field.recommendedCharts as string[];
   const filtered = recs.filter((t): t is NormalType => NORMAL_TYPES.includes(t as NormalType));
+  if (field.type === 'single_choice' || field.type === 'boolean') {
+    return [...new Set<NormalType>([...filtered, 'lollipop', 'waffle'])];
+  }
+  if (field.type === 'multi_choice') {
+    return [...new Set<NormalType>([...filtered, 'lollipop'])];
+  }
   return filtered.length > 0 ? filtered : ['bar'];
 }
 
@@ -307,6 +316,7 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
                 <ChartSettingsPanel
                   config={config}
                   onChange={handleConfigChange}
+                  chartTypes={[chartType]}
                   field={activeField}
                   onUpdateOrdering={(isOrdered, orderedValues) =>
                     updateFieldOrdering(dataset.id, activeField.key, isOrdered, orderedValues)

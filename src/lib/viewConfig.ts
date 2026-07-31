@@ -5,7 +5,8 @@
  */
 
 import type { Dataset } from '@/types/dataSchema';
-import { detectTimeField } from '@/lib/timeStatus';
+import type { PersonaChartSpec, PersonaSemanticRole } from '@/lib/personaTemplate';
+import { detectTimeField, type DateBlock } from '@/lib/timeStatus';
 
 // ── Status groups ─────────────────────────────────────────────
 
@@ -42,10 +43,14 @@ export function buildDefaultStatusGroups(values: string[]): StatusGroup[] {
 export interface ViewConfig {
   statusFieldKey?:    string;
   statusGroups?:      StatusGroup[];
+  dateBlocks?:        DateBlock[];
   geoRegionKey?:      string;
   geoProvinceKey?:    string;
   geoCityKey?:        string;
   personaFieldKeys?:  string[];
+  personaRoles?:      Record<string, PersonaSemanticRole>;
+  personaRoleReasons?: Record<string, string>;
+  personaCharts?:     Record<string, PersonaChartSpec>;
   insightPrompt?:     string;
   /** per-view custom AI prompts: key = view id ('regional' | 'status' | 'rfeature') */
   viewPrompts?:       Record<string, string>;

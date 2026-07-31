@@ -6,9 +6,12 @@ import { Settings2, Palette, LayoutGrid, Type, Maximize2, ArrowUpDown, ListFilte
 import { cn } from '@/lib/utils';
 import {
   COLOR_SCHEMES,
+  REPORT_COLOR_SCHEMES,
   DEFAULT_CHART_CONFIG,
   loadChartConfig,
   saveChartConfig,
+  supportsChartSetting,
+  supportsAnyChartSetting,
 } from '@/lib/chartConfig';
 import { ManualOrderModal } from '@/components/fields/ManualOrderModal';
 import type { ChartConfig, ColorScheme } from '@/lib/chartConfig';
@@ -33,10 +36,12 @@ interface ChartSettingsPanelProps {
   onUpdateOrdering?: (isOrdered: boolean, orderedValues: string[]) => void;
   className?: string;
   iconOnly?: boolean;
+  chartTypes?: string[];
+  allowPartial?: boolean;
 }
 
 export function ChartSettingsPanel({
-  config, onChange, field, onUpdateOrdering, className, iconOnly = false,
+  config, onChange, field, onUpdateOrdering, className, iconOnly = false, chartTypes, allowPartial = false,
 }: ChartSettingsPanelProps) {
   const [open,          setOpen]          = useState(false);
   const [panelStyle,    setPanelStyle]    = useState<React.CSSProperties>({});
@@ -48,6 +53,9 @@ export function ChartSettingsPanel({
     && (field.type === 'single_choice' || field.type === 'multi_choice')
     && (field.options?.length ?? 0) >= 3
     && !!onUpdateOrdering;
+  const supports = (key: keyof ChartConfig) => allowPartial
+    ? supportsAnyChartSetting(chartTypes, key)
+    : supportsChartSetting(chartTypes, key);
 
   function updatePosition() {
     if (!triggerRef.current) return;
@@ -136,7 +144,9 @@ export function ChartSettingsPanel({
             {/* 配色方案 */}
             <Section icon={<Palette size={13} />} label="配色方案">
               <div className="grid grid-cols-2 gap-1.5">
-                {(Object.entries(COLOR_SCHEMES) as [ColorScheme, typeof COLOR_SCHEMES[ColorScheme]][]).map(([key, scheme]) => (
+                {REPORT_COLOR_SCHEMES.map(key => {
+                  const scheme = COLOR_SCHEMES[key];
+                  return (
                   <button
                     type="button"
                     key={key}
@@ -161,7 +171,8 @@ export function ChartSettingsPanel({
                       {scheme.name}
                     </span>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </Section>
 
@@ -183,6 +194,7 @@ export function ChartSettingsPanel({
                     label={label}
                     value={!!(config[key] as boolean)}
                     onChange={v => update(key, v as ChartConfig[typeof key])}
+                    disabled={!supports(key)}
                   />
                 ))}
               </div>
@@ -199,6 +211,7 @@ export function ChartSettingsPanel({
                     value={config.topN ?? 0}
                     onChange={e => update('topN', parseInt(e.target.value))}
                     className="flex-1 h-1.5 accent-blue-600"
+                    disabled={!supports('topN')}
                   />
                   <span className="text-xs text-gray-400 w-10 text-right tabular-nums">
                     {(config.topN ?? 0) === 0 ? '全部' : `前 ${config.topN}`}
@@ -219,9 +232,12 @@ export function ChartSettingsPanel({
                     key={t}
                     onClick={() => update('labelType', t)}
                     aria-pressed={config.labelType === t}
+                    disabled={!supports('labelType')}
                     className={cn(
                       'flex-1 py-1.5 rounded-xl text-xs transition-all',
-                      config.labelType === t
+                      !supports('labelType')
+                        ? 'cursor-not-allowed bg-gray-50 text-gray-300'
+                        : config.labelType === t
                         ? 'bg-blue-600 text-white font-medium'
                         : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                     )}
@@ -229,6 +245,30 @@ export function ChartSettingsPanel({
                     {t === 'pct' ? '百分比' : t === 'count' ? '数量' : '两者'}
                   </button>
                 ))}
+              </div>
+            </Section>
+
+            <Section icon={<LayoutGrid size={13} />} label="图例位置">
+              <div className="grid grid-cols-4 gap-1">
+                {([
+                  ['top', '顶部'], ['bottom', '底部'], ['left', '左侧'], ['right', '右侧'],
+                ] as const).map(([position, label]) => {
+                  const disabled = !supports('legendPosition');
+                  return (
+                    <button type="button" key={position} disabled={disabled}
+                      title={disabled ? '当前图表类型不支持图例位置设置' : undefined}
+                      onClick={() => update('legendPosition', position)}
+                      className={cn(
+                        'rounded-lg py-1.5 text-xs',
+                        disabled ? 'cursor-not-allowed bg-gray-50 text-gray-300'
+                          : config.legendPosition === position
+                            ? 'bg-blue-600 font-medium text-white'
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
+                      )}>
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             </Section>
 
@@ -247,6 +287,7 @@ export function ChartSettingsPanel({
                       value={config[key] as number}
                       onChange={e => update(key, parseFloat(e.target.value) as ChartConfig[typeof key])}
                       className="flex-1 h-1.5 accent-blue-600"
+                      disabled={!supports(key)}
                     />
                     <span className="text-xs text-gray-400 w-8 text-right tabular-nums">
                       {((config[key] as number) * (key === 'barOpacity' ? 100 : 1)).toFixed(0)}{key === 'barOpacity' ? '%' : ''}
@@ -272,6 +313,7 @@ export function ChartSettingsPanel({
                       value={config[key] as number}
                       onChange={e => update(key, parseFloat(e.target.value) as ChartConfig[typeof key])}
                       className="flex-1 h-1.5 accent-blue-600"
+                      disabled={!supports(key)}
                     />
                     <span className="text-xs text-gray-400 w-10 text-right tabular-nums">
                       {fmt(config[key] as number)}
@@ -348,15 +390,17 @@ function Section({ icon, label, children }: { icon: React.ReactNode; label: stri
   );
 }
 
-function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ label, value, onChange, disabled = false }: { label: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <button
       type="button"
       onClick={() => onChange(!value)}
       aria-pressed={value}
+      disabled={disabled}
+      title={disabled ? '当前图表类型不支持此设置' : undefined}
       className={cn(
         'flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs transition-all text-left',
-        value ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-50'
+        disabled ? 'cursor-not-allowed text-gray-300' : value ? 'bg-blue-50 text-blue-600' : 'text-gray-500 hover:bg-gray-50'
       )}
     >
       <div className={cn(

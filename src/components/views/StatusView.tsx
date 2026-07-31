@@ -3,9 +3,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Plus, X, ChevronDown, BarChart2, Layers, Search, Check, MapPin } from 'lucide-react';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
-} from 'recharts';
-import {
   aggregateField,
   aggregateByStatusGroups,
   aggregateCrossDatasetByStatus,
@@ -25,7 +22,6 @@ import {
   DEFAULT_CHART_CONFIG,
   loadChartConfig,
   saveChartConfig,
-  getColors,
   getContrastingColors,
   type ChartConfig,
 } from '@/lib/chartConfig';
@@ -34,7 +30,9 @@ import { cn } from '@/lib/utils';
 import type { Dataset, Field } from '@/types/dataSchema';
 import type { ViewConfig, StatusGroup } from '@/lib/viewConfig';
 import type { FlatChartType } from '@/components/charts/engine/ChartRenderer';
-import { detectTimeField, monthLabel, recordMonth } from '@/lib/timeStatus';
+import {
+  dateBlockForValue, detectTimeField, getDefaultDateBlocks,
+} from '@/lib/timeStatus';
 import { useUrlArrayState, useUrlStringState } from '@/hooks/useUrlParamState';
 
 const MONTH_FIELD_KEY = '__upersona_month';
@@ -332,86 +330,16 @@ function ProportionStackedCard({
   selectedGroups: StatusGroup[];
   config:         ChartConfig;
 }) {
-  const schemeColors = getColors(config.colorScheme);
-
-  // Collect all unique field values across selected groups
-  const allValues = useMemo(() => {
-    const set = new Set<string>();
-    for (const group of selectedGroups) {
-      const recs = dataset.records.filter(r =>
-        group.values.includes(String(r[statusFieldKey] ?? '')),
-      );
-      for (const rec of recs) {
-        const raw = String(rec[field.key] ?? '');
-        const vals = field.type === 'multi_choice'
-          ? raw.split(field.multiDelimiter ?? '|')
-          : [raw];
-        for (const v of vals) {
-          const t = v.trim();
-          if (t) set.add(t);
-        }
-      }
-    }
-    // Sort by frequency in first group descending
-    return [...set].sort((a, b) => {
-      const g0 = selectedGroups[0];
-      const recs = dataset.records.filter(r =>
-        g0.values.includes(String(r[statusFieldKey] ?? '')),
-      );
-      const freq = (v: string) => recs.filter(r => {
-        const raw = String(r[field.key] ?? '');
-        const vals = field.type === 'multi_choice'
-          ? raw.split(field.multiDelimiter ?? '|')
-          : [raw];
-        return vals.map(x => x.trim()).includes(v);
-      }).length;
-      return freq(b) - freq(a);
-    }).slice(0, 12);
-  }, [dataset.records, field, statusFieldKey, selectedGroups]);
-
-  // Build bar data: one row per status group
-  const barData = useMemo(() =>
-    selectedGroups.map(group => {
-      const recs = dataset.records.filter(r =>
-        group.values.includes(String(r[statusFieldKey] ?? '')),
-      );
-      const total = recs.length || 1;
-      const row: Record<string, string | number> = { group: group.label, n: recs.length };
-      for (const val of allValues) {
-        const cnt = recs.filter(r => {
-          const raw = String(r[field.key] ?? '');
-          const vals = field.type === 'multi_choice'
-            ? raw.split(field.multiDelimiter ?? '|')
-            : [raw];
-          return vals.map(x => x.trim()).includes(val);
-        }).length;
-        row[val] = parseFloat(((cnt / total) * 100).toFixed(1));
-      }
-      return row;
-    }),
-  [dataset.records, field, statusFieldKey, selectedGroups, allValues]);
-
-  const chartH = Math.max(160, selectedGroups.length * 48 + 80);
-
-  const CustomTooltip = ({ active, payload, label }: {
-    active?: boolean;
-    payload?: { name: string; value: number; color: string }[];
-    label?: string;
-  }) => {
-    if (!active || !payload?.length) return null;
-    return (
-      <div className="bg-white border border-gray-100 rounded-xl shadow-lg px-3 py-2.5 text-xs max-w-[200px]">
-        <p className="font-semibold text-gray-700 mb-1.5">{label}</p>
-        {payload.filter(p => p.value > 0).map((p, i) => (
-          <div key={i} className="flex items-center gap-1.5 leading-tight py-0.5">
-            <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ background: p.color }} />
-            <span className="text-gray-600 truncate">{p.name}</span>
-            <span className="text-gray-400 ml-auto pl-2 tabular-nums">{p.value}%</span>
-          </div>
-        ))}
-      </div>
-    );
-  };
+  const data = useMemo(
+    () => aggregateByStatusGroups(
+      dataset.records,
+      field,
+      statusFieldKey,
+      selectedGroups,
+    ),
+    [dataset.records, field, selectedGroups, statusFieldKey],
+  );
+  const chartH = Math.max(180, selectedGroups.length * 48 + 80);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-4 col-span-2">
@@ -419,42 +347,12 @@ function ProportionStackedCard({
         <h3 className="text-sm font-semibold text-gray-800">{field.name}</h3>
         <p className="text-xs text-gray-400 mt-0.5">各状态群体占比分布</p>
       </div>
-      <ResponsiveContainer width="100%" height={chartH}>
-        <BarChart layout="vertical" data={barData} margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-          <XAxis
-            type="number"
-            domain={[0, 100]}
-            tickFormatter={v => `${v}%`}
-            tick={{ fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            dataKey="group"
-            type="category"
-            tick={{ fontSize: 12, fill: '#374151' }}
-            width={80}
-            axisLine={false}
-            tickLine={false}
-          />
-          <Tooltip content={<CustomTooltip />} />
-          <Legend
-            wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
-            formatter={(value: string) =>
-              value.length > 10 ? value.slice(0, 9) + '…' : value
-            }
-          />
-          {allValues.map((val, i) => (
-            <Bar
-              key={val}
-              dataKey={val}
-              stackId="a"
-              fill={schemeColors[i % schemeColors.length]}
-              radius={i === 0 ? [4, 0, 0, 4] : i === allValues.length - 1 ? [0, 4, 4, 0] : [0, 0, 0, 0]}
-            />
-          ))}
-        </BarChart>
-      </ResponsiveContainer>
+      <GroupChartRenderer
+        type="stacked"
+        data={data}
+        config={{ ...config, chartHeight: chartH }}
+        height={chartH}
+      />
     </div>
   );
 }
@@ -672,24 +570,29 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
   const configs      = personaConfigs[dataset.id] ?? [];
   const activeConfig = configs.find(c => c.id === activePersonaConfigId);
   const timeField = useMemo(() => detectTimeField(dataset), [dataset]);
-  const monthOptions = useMemo(() => {
+  const groups = useMemo<StatusGroup[]>(() => {
     if (!timeField) return [];
-    const values = new Set<string>();
-    dataset.records.forEach(record => {
-      const month = recordMonth(record[timeField.key]);
-      if (month) values.add(month);
-    });
-    return [...values].sort((a, b) => b.localeCompare(a));
-  }, [dataset.records, timeField]);
-  const groups = useMemo<StatusGroup[]>(
-    () => monthOptions.map(month => ({
-      key: month,
-      label: monthLabel(month),
-      values: [month],
+    const blocks = viewConfig.dateBlocks?.length
+      ? viewConfig.dateBlocks
+      : getDefaultDateBlocks(dataset, timeField);
+    return blocks.map(block => ({
+      key: block.key,
+      label: block.label,
+      values: [block.key],
       color: 'blue',
       intent: 'neutral',
-    })),
-    [monthOptions],
+    }));
+  }, [dataset, timeField, viewConfig.dateBlocks]);
+  const monthOptions = useMemo(() => groups.map(group => group.key), [groups]);
+  const monthLabels = useMemo(
+    () => Object.fromEntries(groups.map(group => [group.key, group.label])),
+    [groups],
+  );
+  const dateBlocks = useMemo(
+    () => viewConfig.dateBlocks?.length
+      ? viewConfig.dateBlocks
+      : (timeField ? getDefaultDateBlocks(dataset, timeField) : []),
+    [dataset, timeField, viewConfig.dateBlocks],
   );
 
   // Derive the initial field keys respecting persona config order
@@ -769,11 +672,11 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
       ...dataset,
       records: filtered.map(record => ({
         ...record,
-        [MONTH_FIELD_KEY]: timeField ? recordMonth(record[timeField.key]) ?? '' : '',
+        [MONTH_FIELD_KEY]: timeField ? dateBlockForValue(record[timeField.key], dateBlocks) ?? '' : '',
       })),
       rowCount: filtered.length,
     };
-  }, [dataset, timeField, viewConfig, geoLevel, selectedGeo, selectedOrderStatuses]);
+  }, [dataset, timeField, dateBlocks, viewConfig, geoLevel, selectedGeo, selectedOrderStatuses]);
 
   const selectedDataset = useMemo(
     () => compareDatasetId ? allDatasets.find(d => d.id === compareDatasetId) : undefined,
@@ -795,14 +698,14 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
     }
     const records = orderFiltered.map(record => ({
       ...record,
-      [MONTH_FIELD_KEY]: recordMonth(record[compareTimeField.key]) ?? '',
+      [MONTH_FIELD_KEY]: dateBlockForValue(record[compareTimeField.key], dateBlocks) ?? '',
     }));
     return {
       ...selectedDataset,
       records,
       rowCount: records.length,
     };
-  }, [selectedDataset, geoLevel, selectedGeo, selectedOrderStatuses, viewConfig]);
+  }, [selectedDataset, geoLevel, selectedGeo, selectedOrderStatuses, viewConfig, dateBlocks]);
 
   const commonFieldKeys = useMemo(() => {
     if (!compareDataset) return null;
@@ -914,6 +817,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
               selectedOrders={selectedOrderStatuses}
               onOrdersChange={setSelectedOrderStatuses}
               monthOptions={monthOptions}
+              monthLabels={monthLabels}
               selectedMonths={selectedGroupKeys}
               onMonthsChange={values =>
                 setSelectedGroupKeys(values.includes('__all') ? monthOptions : values)
@@ -957,6 +861,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
             <ChartSettingsPanel
               config={globalConfig}
               onChange={handleConfigChange}
+              chartTypes={['grouped', 'stacked']}
             />
           </div>
         </div>

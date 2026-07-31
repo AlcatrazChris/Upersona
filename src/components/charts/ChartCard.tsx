@@ -53,8 +53,7 @@ export function ChartCard({
 
   return (
     <div
-      className={cn('bg-white group/card border border-gray-200', compact ? 'p-3' : 'p-5', className)}
-      style={{ borderTop: '2px solid #003087' }}
+      className={cn('ui-card group/card', compact ? 'p-4' : 'p-5 md:p-6', className)}
     >
       {/* Title */}
       <div className={cn(compact ? 'mb-2 pb-2' : 'mb-3 pb-3', 'border-b border-gray-100')}>
@@ -68,10 +67,10 @@ export function ChartCard({
                   onChange={e => setEditValue(e.target.value)}
                   onBlur={commitEdit}
                   onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditing(false); }}
-                  className="flex-1 text-[13px] font-medium text-gray-800 border-b border-[#003087] outline-none bg-transparent"
+                  className="flex-1 border-b border-blue-700 bg-transparent text-base font-semibold text-slate-900 outline-none"
                   maxLength={60}
                 />
-                <button onMouseDown={e => { e.preventDefault(); commitEdit(); }} className="flex-shrink-0" style={{ color: '#003087' }}>
+                <button aria-label="保存图表标题" onMouseDown={e => { e.preventDefault(); commitEdit(); }} className="flex-shrink-0 text-blue-700">
                   <Check size={12} />
                 </button>
               </div>
@@ -80,27 +79,29 @@ export function ChartCard({
                 <h3
                   onDoubleClick={startEdit}
                   title="双击编辑标题"
-                  className="text-[13px] font-medium text-gray-800 leading-tight truncate cursor-text"
+                  className="truncate text-base font-semibold leading-6 text-slate-900"
                 >
                   {displayTitle}
                 </h3>
                 <button
                   onClick={startEdit}
-                  className="opacity-0 group-hover/card:opacity-100 p-0.5 text-gray-300 hover:text-gray-500 transition-all flex-shrink-0"
+                  aria-label="编辑图表标题"
+                  title="编辑图表标题"
+                  className="flex-shrink-0 rounded-md p-1 text-slate-400 opacity-60 transition-all hover:bg-slate-100 hover:text-slate-700 focus-visible:opacity-100 group-hover/card:opacity-100"
                 >
-                  <Pencil size={10} />
+                  <Pencil size={13} aria-hidden="true" />
                 </button>
               </>
             )}
           </div>
           {(totalSamples != null || validSamples != null) && (
-            <span className="text-[10px] text-gray-400 tracking-wider uppercase flex-shrink-0 pt-px tabular-nums">
+            <span className="flex-shrink-0 pt-0.5 text-xs text-slate-500 tabular-nums">
               {isMultiSelect ? `n=${(totalSamples ?? 0).toLocaleString()}` : `n=${(validSamples ?? totalSamples ?? 0).toLocaleString()}`}
             </span>
           )}
         </div>
         {isMultiSelect && (
-          <div className="text-[10px] text-gray-400 mt-0.5 tracking-wide">各项之和 = 100%</div>
+          <div className="mt-1 text-xs text-slate-500">多选题 · 各选项占有效样本比例</div>
         )}
       </div>
 

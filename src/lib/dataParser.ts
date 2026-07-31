@@ -8,6 +8,7 @@
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { detectSchema } from '@/lib/schemaDetector';
+import { normalizeIndustryFields } from '@/lib/industryNormalizer';
 import type { Dataset, Field } from '@/types/dataSchema';
 
 function genId(): string {
@@ -64,6 +65,7 @@ export function parseFileToDataset(
     records = records.slice(0, options.maxRows);
   }
 
+  records = normalizeIndustryFields(records);
   const fields = detectSchema(records);
   const now = new Date().toISOString();
 

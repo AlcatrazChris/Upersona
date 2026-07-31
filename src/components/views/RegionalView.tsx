@@ -317,6 +317,7 @@ export function RegionalView({ dataset, viewConfig }: Props) {
             <ChartSettingsPanel
               config={globalConfig}
               onChange={handleConfigChange}
+              chartTypes={['grouped']}
             />
           </div>
         </div>

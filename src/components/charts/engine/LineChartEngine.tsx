@@ -31,7 +31,7 @@ export function LineChartEngine({
   const xAxis = config.showXAxis ? (
     <XAxis
       dataKey="label"
-      tick={{ fontSize: config.axisFontSize - 1, fill: 'rgba(0,0,0,0.40)' }}
+      tick={{ fontSize: config.axisFontSize, fill: '#64748b' }}
       axisLine={false}
       tickLine={false}
     />
@@ -40,7 +40,7 @@ export function LineChartEngine({
   const yAxis = config.showYAxis ? (
     <YAxis
       domain={[0, yMax]}
-      tick={{ fontSize: config.axisFontSize - 1, fill: 'rgba(0,0,0,0.30)' }}
+      tick={{ fontSize: config.axisFontSize, fill: '#64748b' }}
       axisLine={false}
       tickLine={false}
       tickFormatter={v => `${v}%`}
@@ -48,7 +48,7 @@ export function LineChartEngine({
   ) : null;
 
   const grid = config.showGrid ? (
-    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" vertical={false} />
+    <CartesianGrid stroke="#e2e8f0" vertical={false} />
   ) : null;
 
   const tooltip = config.showTooltip ? (
@@ -72,9 +72,9 @@ export function LineChartEngine({
   const refLine = (
     <ReferenceLine
       y={avg}
-      stroke="rgba(0,0,0,0.15)"
+      stroke="#94a3b8"
       strokeDasharray="4 3"
-      label={{ value: `均值 ${avg.toFixed(1)}%`, position: 'right', fontSize: 10, fill: 'rgba(0,0,0,0.30)' }}
+      label={{ value: `均值 ${avg.toFixed(1)}%`, position: 'right', fontSize: 11, fill: '#64748b' }}
     />
   );
 
@@ -105,7 +105,7 @@ export function LineChartEngine({
               stroke={color}
               strokeWidth={2}
               fill={`url(#area-grad-${color.replace('#', '')})`}
-              dot={{ r: 3, fill: color, strokeWidth: 0 }}
+              dot={false}
               activeDot={{ r: 5, fill: color, stroke: 'white', strokeWidth: 2 }}
               fillOpacity={config.barOpacity}
             >
@@ -120,7 +120,7 @@ export function LineChartEngine({
               dataKey="percentage"
               stroke={color}
               strokeWidth={2}
-              dot={{ r: 3.5, fill: color, strokeWidth: 0 }}
+              dot={false}
               activeDot={{ r: 5, fill: color, stroke: 'white', strokeWidth: 2 }}
               fillOpacity={config.barOpacity}
             >

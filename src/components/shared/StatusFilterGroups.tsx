@@ -69,6 +69,7 @@ export function StatusFilterGroups({
   monthOptions,
   selectedMonths,
   onMonthsChange,
+  monthLabels,
 }: {
   orderOptions: string[];
   selectedOrders: string[];
@@ -76,6 +77,7 @@ export function StatusFilterGroups({
   monthOptions: string[];
   selectedMonths: string[];
   onMonthsChange: (values: string[]) => void;
+  monthLabels?: Record<string, string>;
 }) {
   return (
     <>
@@ -90,7 +92,7 @@ export function StatusFilterGroups({
         options={monthOptions}
         selected={selectedMonths}
         onChange={onMonthsChange}
-        format={monthLabel}
+        format={value => monthLabels?.[value] ?? monthLabel(value)}
       />
     </>
   );

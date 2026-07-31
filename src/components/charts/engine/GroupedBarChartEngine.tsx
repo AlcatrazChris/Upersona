@@ -34,22 +34,22 @@ function TooltipContent({
   if (!active || !payload?.length || !label) return null;
 
   return (
-    <div className="bg-white border border-gray-300 p-3 min-w-[160px] max-w-[240px]" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.10)' }}>
-      <div className="text-[11px] font-medium text-gray-800 mb-1.5">{label}</div>
+    <div className="min-w-[180px] max-w-[260px] rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="mb-2 text-xs font-semibold text-slate-900">{label}</div>
       {payload.map(e => {
         const n = data.groupTotals[e.name] ?? 0;
         const raw = data.rawCounts[e.name]?.[label] ?? 0;
         return (
-          <div key={e.name} className="flex items-center gap-1.5 text-[11px] text-gray-600 py-0.5">
-            <span className="w-2 h-2 flex-shrink-0" style={{ background: e.color }} />
+          <div key={e.name} className="flex items-center gap-2 py-0.5 text-xs text-slate-600">
+            <span className="h-2 w-2 flex-shrink-0 rounded-sm" style={{ background: e.color }} />
             <span className="flex-1 truncate">
               {e.name}
               {showSampleCount && (
                 <span className="text-gray-400 ml-1 tabular-nums">(n={n.toLocaleString()})</span>
               )}
             </span>
-            <span className="font-semibold tabular-nums">{e.value.toFixed(1)}%</span>
-            <span className="text-gray-400 tabular-nums ml-1">({raw})</span>
+            <span className="font-semibold text-slate-900 tabular-nums">{e.value.toFixed(1)}%</span>
+            <span className="ml-1 text-slate-500 tabular-nums">({raw})</span>
           </div>
         );
       })}
@@ -91,7 +91,7 @@ export function GroupedBarChartEngine({
           barSize={minBarH}
         >
           {config.showGrid && (
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+            <CartesianGrid stroke="#e2e8f0" horizontal={false} />
           )}
 
           {/* Always render axes with hide prop — avoids recharts defaulting to
@@ -100,7 +100,7 @@ export function GroupedBarChartEngine({
             type="number"
             hide={!config.showXAxis}
             tickFormatter={(v: number) => `${v}%`}
-            tick={{ fontSize: config.axisFontSize, fill: '#9ca3af' }}
+            tick={{ fontSize: config.axisFontSize, fill: '#64748b' }}
             axisLine={false}
             tickLine={false}
           />
@@ -109,7 +109,7 @@ export function GroupedBarChartEngine({
             dataKey="label"
             width={config.showYAxis ? yWidth : 0}
             hide={!config.showYAxis}
-            tick={{ fontSize: config.axisFontSize, fill: '#6b7280' }}
+            tick={{ fontSize: config.axisFontSize, fill: '#475569' }}
             axisLine={false}
             tickLine={false}
           />
@@ -125,7 +125,7 @@ export function GroupedBarChartEngine({
                   showSampleCount={config.showSampleCount}
                 />
               )}
-              cursor={{ fill: 'rgba(0,0,0,0.04)' }}
+              cursor={{ fill: '#f1f5f9' }}
             />
           )}
 
@@ -165,7 +165,7 @@ export function GroupedBarChartEngine({
                   dataKey={key}
                   position="right"
                   formatter={(v: number) => v > 0 ? `${v.toFixed(0)}%` : ''}
-                  style={{ fontSize: config.labelFontSize, fill: '#6b7280' }}
+                  style={{ fontSize: config.labelFontSize, fill: '#475569', fontWeight: 500 }}
                 />
               )}
             </Bar>

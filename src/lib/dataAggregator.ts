@@ -33,6 +33,17 @@ function countMap(keys: string[]): Map<string, number> {
   return map;
 }
 
+export function sortChartItemsByCount<T extends { count: number }>(items: T[]): T[] {
+  return [...items].sort((a, b) => b.count - a.count);
+}
+
+function rankMainKeys(totalByMain: Map<string, number>, limit: number): string[] {
+  return [...totalByMain.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([key]) => key);
+}
+
 function toItems(
   map: Map<string, number>,
   total: number,
@@ -329,28 +340,8 @@ export function aggregateFieldGrouped(
   }
 
   // mainKeys = the dimension values shown on the Y-axis
-  let mainKeys = [...totalByMain.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([k]) => k)
-    .slice(0, maxSeries);
-
-  if (mainField.orderedValues?.length) {
-    const ord = mainField.orderedValues;
-    mainKeys.sort((a, b) => {
-      const ai = ord.indexOf(a); const bi = ord.indexOf(b);
-      if (ai === -1 && bi === -1) return (totalByMain.get(b) ?? 0) - (totalByMain.get(a) ?? 0);
-      if (ai === -1) return 1;
-      if (bi === -1) return -1;
-      return ai - bi;
-    });
-  }
-
-  // Clustered horizontal: rows = mainValues, series = groups.
-  // When orderedValues is set the order is already "largest first" (display top→bottom),
-  // so we keep it as-is. Without orderedValues we reverse the count-sorted list so the
-  // highest-count item appears at the bottom of the chart (reading-direction convention).
-  const displayKeys = mainField.orderedValues?.length ? mainKeys : [...mainKeys].reverse();
-  const items = displayKeys.map(mv => {
+  const mainKeys = rankMainKeys(totalByMain, maxSeries);
+  const items = mainKeys.map(mv => {
     const row: Record<string, number | string> = { label: mv };
     for (const g of selectedGroups) {
       const total = groupTotals[g];
@@ -422,25 +413,8 @@ export function aggregateByStatusGroups(
     }
   }
 
-  let mainKeys = [...totalByMain.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([k]) => k)
-    .slice(0, maxSeries);
-
-  if (mainField.orderedValues?.length) {
-    const ord = mainField.orderedValues;
-    mainKeys.sort((a, b) => {
-      const ai = ord.indexOf(a); const bi = ord.indexOf(b);
-      if (ai === -1 && bi === -1) return (totalByMain.get(b) ?? 0) - (totalByMain.get(a) ?? 0);
-      if (ai === -1) return 1;
-      if (bi === -1) return -1;
-      return ai - bi;
-    });
-  }
-
-  const displayKeys = mainField.orderedValues?.length ? mainKeys : [...mainKeys].reverse();
-
-  const items = displayKeys.map(mv => {
+  const mainKeys = rankMainKeys(totalByMain, maxSeries);
+  const items = mainKeys.map(mv => {
     const row: Record<string, number | string> = { label: mv };
     for (const g of groups) {
       const total = groupTotals[g.label];
@@ -536,25 +510,10 @@ export function aggregateCrossDatasetByStatus(
     }
   }
 
-  let mainKeys = [...totalByMain.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([k]) => k)
-    .slice(0, maxItems);
-
-  if (mainField.orderedValues?.length) {
-    const ord = mainField.orderedValues;
-    mainKeys.sort((a, b) => {
-      const ai = ord.indexOf(a); const bi = ord.indexOf(b);
-      if (ai === -1 && bi === -1) return (totalByMain.get(b) ?? 0) - (totalByMain.get(a) ?? 0);
-      if (ai === -1) return 1; if (bi === -1) return -1;
-      return ai - bi;
-    });
-  }
-
-  const displayKeys = mainField.orderedValues?.length ? mainKeys : [...mainKeys].reverse();
+  const mainKeys = rankMainKeys(totalByMain, maxItems);
 
   // Compute percentages using dataset total as denominator (option B)
-  const items = displayKeys.map(mv => {
+  const items = mainKeys.map(mv => {
     const row: Record<string, number | string> = { label: mv };
     for (const g of groups) {
       const skA = `${primary.label} · ${g.label}`;

@@ -14,7 +14,7 @@ interface PieProps extends ChartEngineProps {
 export function PieChartEngine({
   data: rawData, config, isMultiSelect = false, totalSamples, height, donut = true,
 }: PieProps) {
-  const data    = applyTopN(rawData, config.topN);
+  const data    = applyTopN(rawData, Math.min(config.topN || 5, 5));
   const colors  = getColors(config.colorScheme);
   const chartH  = height ?? 280;
   const innerR  = donut ? 44 : 0;
@@ -32,7 +32,7 @@ export function PieChartEngine({
             cy="44%"
             innerRadius={innerR}
             outerRadius={outerR}
-            paddingAngle={2}
+            paddingAngle={1}
             label={(props) => (
               <PieSliceLabel
                 {...props}
@@ -64,11 +64,14 @@ export function PieChartEngine({
           )}
           {config.showLegend && (
             <Legend
+              verticalAlign={config.legendPosition === 'top' ? 'top' : config.legendPosition === 'bottom' ? 'bottom' : 'middle'}
+              align={config.legendPosition === 'left' ? 'left' : config.legendPosition === 'right' ? 'right' : 'center'}
+              layout={config.legendPosition === 'left' || config.legendPosition === 'right' ? 'vertical' : 'horizontal'}
               iconType="circle"
               iconSize={8}
               wrapperStyle={{
-                fontSize: config.legendFontSize - 1,
-                color: 'rgba(0,0,0,0.55)',
+                fontSize: config.legendFontSize,
+                color: '#475569',
                 paddingTop: 2,
               }}
             />

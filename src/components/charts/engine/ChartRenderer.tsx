@@ -6,6 +6,8 @@ import { LineChartEngine }         from './LineChartEngine';
 import { RankingHeatmapEngine }    from './RankingHeatmapEngine';
 import { GroupedBarChartEngine }   from './GroupedBarChartEngine';
 import { StackedBarChartEngine }   from './StackedBarChartEngine';
+import { LollipopChartEngine }     from './LollipopChartEngine';
+import { WaffleChartEngine }       from './WaffleChartEngine';
 import type { ChartEngineProps, FlatChartType } from './types';
 import type { GroupedChartData, RankingData } from '@/lib/dataAggregator';
 import type { ChartConfig } from '@/lib/chartConfig';
@@ -23,6 +25,18 @@ export function ChartRenderer({
   fieldName = '',
   ...props
 }: ChartRendererProps) {
+  if (!props.data.length) {
+    return (
+      <div
+        className="flex min-h-60 flex-col items-center justify-center rounded-lg bg-slate-50 px-6 text-center"
+        role="status"
+      >
+        <p className="text-sm font-medium text-slate-700">暂无可展示的数据</p>
+        <p className="mt-1 text-xs text-slate-500">请调整筛选条件或选择其他字段。</p>
+      </div>
+    );
+  }
+
   // 排序题 → 专用热力图引擎
   if (type === 'ranking-heatmap' && rankingData) {
     return <RankingHeatmapEngine data={rankingData} fieldName={fieldName} height={props.height} />;
@@ -39,6 +53,8 @@ export function ChartRenderer({
     case 'donut': return <PieChartEngine  {...props} isMultiSelect={isMultiSelect} donut={true} />;
     case 'line':  return <LineChartEngine {...props} isMultiSelect={isMultiSelect} area={false} />;
     case 'area':  return <LineChartEngine {...props} isMultiSelect={isMultiSelect} area={true} />;
+    case 'lollipop': return <LollipopChartEngine {...props} isMultiSelect={isMultiSelect} />;
+    case 'waffle': return <WaffleChartEngine {...props} isMultiSelect={isMultiSelect} />;
     case 'bar':
     default:      return <BarChartEngine  {...props} isMultiSelect={isMultiSelect} />;
   }

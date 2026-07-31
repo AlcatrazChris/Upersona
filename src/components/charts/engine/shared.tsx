@@ -9,6 +9,8 @@ const CHART_TYPE_LABELS: Record<string, string> = {
   donut: '环形',
   line: '折线',
   area: '面积',
+  lollipop: '棒棒糖',
+  waffle: '华夫图',
   grouped: '簇状',
   stacked: '堆积',
 };
@@ -113,14 +115,14 @@ export function ChartTooltip({
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   return (
-    <div className="bg-white border border-gray-300 px-3 py-2 text-[11px] min-w-[130px] pointer-events-none" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.10)' }}>
-      <div className="font-medium text-gray-800 mb-1 leading-tight">{d.label}</div>
+    <div className="pointer-events-none min-w-[150px] rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+      <div className="mb-1.5 text-xs font-semibold leading-tight text-slate-900">{d.label}</div>
       <div className="flex items-baseline gap-2">
-        <span className="tabular-nums font-semibold" style={{ color: '#003087' }}>{d.percentage.toFixed(1)}%</span>
-        <span className="text-gray-400 tabular-nums">{d.count.toLocaleString()} 人</span>
+        <span className="text-sm font-semibold tabular-nums text-blue-700">{d.percentage.toFixed(1)}%</span>
+        <span className="text-xs text-slate-500 tabular-nums">{d.count.toLocaleString()} 人</span>
       </div>
       {isMultiSelect && totalSamples != null && (
-        <div className="text-gray-400 text-[10px] mt-0.5 tabular-nums">
+        <div className="mt-1 text-xs text-slate-500 tabular-nums">
           总样本 {totalSamples.toLocaleString()} 人
         </div>
       )}

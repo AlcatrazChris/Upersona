@@ -28,7 +28,7 @@ export type ColorScheme =
   | 'warm' | 'earth' | 'pastel' | 'neon' | 'cool';
 
 export const COLOR_SCHEMES: Record<ColorScheme, { name: string; colors: string[]; preview: string[]; singleColor?: boolean }> = {
-  mckinsey: { name: '麦肯锡',   singleColor: true,  preview: ['#003087','#1a5496','#5493c2','#c85a12','#748087'], colors: ['#003087','#1a5496','#3674a8','#5493c2','#7fb3d6','#9bbbd6','#c85a12','#748087','#1a3f6b','#4d7ba3'] },
+  mckinsey: { name: '报告蓝',   singleColor: true,  preview: ['#2563EB','#1E40AF','#94A3B8','#D97706'], colors: ['#2563EB','#1E40AF','#0891B2','#64748B','#D97706','#0F766E','#94A3B8','#CBD5E1'] },
   ios:      { name: 'iOS 系统',  preview: ['#007AFF','#34C759','#FF9500','#5856D6','#FF2D55'], colors: ['#007AFF','#34C759','#FF9500','#5856D6','#FF2D55','#5AC8FA','#AF52DE','#FFCC00','#32ADE6','#FF3B30'] },
   ocean:    { name: '海洋蓝绿',  preview: ['#006994','#0099CC','#00BCD4','#4DD0E1','#80DEEA'], colors: ['#006994','#0099CC','#00BCD4','#26C6DA','#4DD0E1','#80DEEA','#B2EBF2','#0277BD','#01579B','#0288D1'] },
   sunset:   { name: '日落橙红',  preview: ['#E53935','#F4511E','#FB8C00','#FDD835','#FF7043'], colors: ['#E53935','#F4511E','#FB8C00','#FDD835','#FF7043','#EF5350','#FF8A65','#FFCA28','#FF6F00','#BF360C'] },
@@ -43,11 +43,13 @@ export const COLOR_SCHEMES: Record<ColorScheme, { name: string; colors: string[]
   cool:     { name: '冷调极简',  preview: ['#1A1A2E','#16213E','#0F3460','#533483','#E94560'], colors: ['#2D3561','#0F3460','#533483','#E94560','#1B4F72','#154360','#1A5276','#0E6655','#117A65','#1F618D'] },
 };
 
+export const REPORT_COLOR_SCHEMES: ColorScheme[] = ['mckinsey', 'ocean', 'mono', 'brand'];
+
 export const DEFAULT_CHART_CONFIG: ChartConfig = {
   colorScheme:     'mckinsey',
   showXAxis:       true,
   showYAxis:       true,
-  showGrid:        true,
+  showGrid:        false,
   showLabel:       true,
   labelType:       'pct',
   showLegend:      true,
@@ -59,14 +61,42 @@ export const DEFAULT_CHART_CONFIG: ChartConfig = {
   legendFontSize:  11,
   barRadius:       0,
   barOpacity:      1,
-  chartHeight:     300,
-  minBarSize:      22,
-  topN:            0,
+  chartHeight:     320,
+  minBarSize:      20,
+  topN:            10,
   compact:         false,
 };
 
 // 通用 pageKey（任意字符串即可，用于 localStorage 隔离）
 export type PageKey = string;
+
+export const CHART_CAPABILITIES: Record<string, Set<keyof ChartConfig>> = {
+  bar: new Set(['colorScheme','showXAxis','showYAxis','showGrid','showLabel','labelType','showSampleCount','showTooltip','axisFontSize','labelFontSize','barRadius','barOpacity','chartHeight','minBarSize','topN','compact']),
+  lollipop: new Set(['colorScheme','showXAxis','showYAxis','showGrid','showSampleCount','showTooltip','axisFontSize','barOpacity','chartHeight','topN']),
+  waffle: new Set(['colorScheme','showLabel','showLegend','showSampleCount','labelFontSize','legendFontSize','barOpacity','topN']),
+  pie: new Set(['colorScheme','showLabel','labelType','showLegend','legendPosition','showSampleCount','showTooltip','labelFontSize','legendFontSize','barOpacity','chartHeight','topN']),
+  donut: new Set(['colorScheme','showLabel','labelType','showLegend','legendPosition','showSampleCount','showTooltip','labelFontSize','legendFontSize','barOpacity','chartHeight','topN']),
+  line: new Set(['colorScheme','showXAxis','showYAxis','showGrid','showLabel','showSampleCount','showTooltip','axisFontSize','labelFontSize','barOpacity','chartHeight']),
+  area: new Set(['colorScheme','showXAxis','showYAxis','showGrid','showLabel','showSampleCount','showTooltip','axisFontSize','labelFontSize','barOpacity','chartHeight']),
+  grouped: new Set(['colorScheme','showXAxis','showYAxis','showGrid','showLabel','showLegend','showSampleCount','showTooltip','axisFontSize','labelFontSize','legendFontSize','barRadius','barOpacity','chartHeight','minBarSize']),
+  stacked: new Set(['colorScheme','showXAxis','showYAxis','showGrid','showLabel','showLegend','showSampleCount','showTooltip','axisFontSize','labelFontSize','legendFontSize','barOpacity','chartHeight','minBarSize']),
+  'ranking-heatmap': new Set(['colorScheme','showLabel','showSampleCount','labelFontSize','chartHeight','compact']),
+  scatter: new Set(['colorScheme','showXAxis','showYAxis','showGrid','showSampleCount','showTooltip','axisFontSize','barOpacity','chartHeight']),
+  histogram: new Set(['colorScheme','showXAxis','showYAxis','showGrid','showLabel','showSampleCount','showTooltip','axisFontSize','labelFontSize','barOpacity','chartHeight']),
+  dumbbell: new Set(['colorScheme','showLabel','showSampleCount','showTooltip','labelFontSize','barOpacity','chartHeight','topN','compact']),
+  difference: new Set(['colorScheme','showLabel','showSampleCount','labelFontSize','barOpacity','chartHeight','topN','compact']),
+  heatmap: new Set(['showLabel','showSampleCount','labelFontSize','chartHeight','topN']),
+};
+
+export function supportsChartSetting(chartTypes: string[] | undefined, key: keyof ChartConfig) {
+  if (!chartTypes?.length) return true;
+  return chartTypes.every(type => CHART_CAPABILITIES[type]?.has(key) ?? false);
+}
+
+export function supportsAnyChartSetting(chartTypes: string[] | undefined, key: keyof ChartConfig) {
+  if (!chartTypes?.length) return true;
+  return chartTypes.some(type => CHART_CAPABILITIES[type]?.has(key) ?? false);
+}
 
 function storageKey(page: PageKey) { return `upersona-chart-config-${page}`; }
 

@@ -373,6 +373,7 @@ function ChartCard({
           <ChartSettingsPanel
             config={chart.config}
             onChange={config => onPatch({ config })}
+            chartTypes={[chart.chartType === 'grouped-bar' ? 'grouped' : chart.chartType === 'stacked-bar' ? 'stacked' : chart.chartType]}
             field={field}
             onUpdateOrdering={field
               ? (isOrdered, orderedValues) =>

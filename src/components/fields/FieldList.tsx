@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Check, ChevronDown, Edit2, ArrowUpDown, Sparkles, Trash2, Wand2, FilterX } from 'lucide-react';
+import {
+  Check, ChevronDown, Edit2, ArrowUpDown, Sparkles, Trash2,
+  Wand2, FilterX, Loader2,
+} from 'lucide-react';
 import { useDatasetStore } from '@/store/datasetStore';
 import { useIsAdmin } from '@/lib/auth';
 import { autoDetectViewConfig } from '@/lib/viewConfig';
@@ -10,6 +13,7 @@ import { FieldAIEnrichModal } from './FieldAIEnrichModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { cn } from '@/lib/utils';
 import { isSkipValue } from '@/lib/skipPatterns';
+import { autoPersonaChartSpec } from '@/lib/personaTemplate';
 import type { Dataset, Field, FieldType } from '@/types/dataSchema';
 
 // ── Type config ────────────────────────────────────────────────────
@@ -266,7 +270,11 @@ export function FieldList({ dataset }: { dataset: Dataset }) {
   const [orderingField, setOrderingField]   = useState<Field | null>(null);
   const [enrichField,   setEnrichField]     = useState<Field | null>(null);
   const [deletingKey,   setDeletingKey]     = useState<string | null>(null);
-  const [autoHint,      setAutoHint]        = useState<number | null>(null);
+  const [aiAction, setAiAction] = useState<'ordering' | 'persona' | null>(null);
+  const [actionHint, setActionHint] = useState<{
+    kind: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   // Count skip values per field for badge display
   const skipCounts = useMemo(() => {
@@ -281,11 +289,122 @@ export function FieldList({ dataset }: { dataset: Dataset }) {
     return result;
   }, [dataset.records, dataset.fields]);
 
-  function handleAutoDetect() {
-    const detected = autoDetectViewConfig(dataset);
-    updateViewConfig(dataset.id, { personaFieldKeys: detected.personaFieldKeys });
-    setAutoHint(detected.personaFieldKeys?.length ?? 0);
-    setTimeout(() => setAutoHint(null), 3000);
+  function fieldSummary(field: Field) {
+    const count = field.statistics?.count ?? dataset.rowCount;
+    const missing = field.statistics?.missing ?? 0;
+    return {
+      key: field.key,
+      name: field.name,
+      type: field.type,
+      unique: field.statistics?.unique ?? field.options?.length ?? 0,
+      missingRate: count > 0 ? Number(((missing / count) * 100).toFixed(1)) : 0,
+      values: (
+        field.options?.length
+          ? field.options
+          : field.statistics?.topValues?.map(item => item.value) ?? []
+      ).slice(0, 60),
+    };
+  }
+
+  async function requestFieldAnalysis<T>(
+    mode: 'ordering' | 'persona',
+    fields: Field[],
+  ): Promise<T> {
+    const response = await fetch('/api/fields/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, fields: fields.map(fieldSummary) }),
+    });
+    const text = await response.text();
+    let result: (T & { error?: string });
+    try {
+      result = JSON.parse(text) as T & { error?: string };
+    } catch {
+      throw new Error(text.slice(0, 160) || `AI 分析失败 (${response.status})`);
+    }
+    if (!response.ok || result.error) {
+      throw new Error(result.error ?? `AI 分析失败 (${response.status})`);
+    }
+    return result;
+  }
+
+  function showHint(kind: 'success' | 'error', message: string) {
+    setActionHint({ kind, message });
+    setTimeout(() => setActionHint(null), 5000);
+  }
+
+  async function handleAutoOrdering() {
+    const candidates = dataset.fields.filter(field =>
+      !field.isOrdered &&
+      (field.type === 'single_choice' || field.type === 'multi_choice') &&
+      (field.options?.length ?? 0) >= 3 &&
+      (field.options?.length ?? 0) <= 60,
+    );
+    if (candidates.length === 0) {
+      showHint('success', '没有需要自动排序的字段');
+      return;
+    }
+
+    setAiAction('ordering');
+    setActionHint(null);
+    try {
+      const result = await requestFieldAnalysis<{
+        orderings: Array<{ key: string; orderedValues: string[] }>;
+      }>('ordering', candidates);
+      for (const ordering of result.orderings) {
+        updateFieldOrdering(dataset.id, ordering.key, true, ordering.orderedValues);
+      }
+      showHint(
+        'success',
+        result.orderings.length > 0
+          ? `已自动排序 ${result.orderings.length} 个字段`
+          : 'AI 判断这些字段均无天然顺序',
+      );
+    } catch (error) {
+      showHint('error', error instanceof Error ? error.message : 'AI 自动排序失败');
+    } finally {
+      setAiAction(null);
+    }
+  }
+
+  async function handleAIPersonaDetect() {
+    const ruleDetected = autoDetectViewConfig(dataset);
+    const candidateKeys = new Set(ruleDetected.personaFieldKeys ?? []);
+    const candidates = dataset.fields.filter(field => candidateKeys.has(field.key));
+    if (candidates.length === 0) {
+      showHint('error', '未发现适合画像分析的候选字段');
+      return;
+    }
+
+    setAiAction('persona');
+    setActionHint(null);
+    try {
+      const result = await requestFieldAnalysis<{
+        personaFieldKeys: string[];
+        roles?: Record<string, import('@/lib/personaTemplate').PersonaSemanticRole>;
+        chartTypes?: Record<string, import('@/lib/personaTemplate').PersonaChartType>;
+        reasons: Record<string, string>;
+      }>('persona', candidates);
+      updateViewConfig(dataset.id, {
+        personaFieldKeys: result.personaFieldKeys,
+        personaRoles: result.roles,
+        personaRoleReasons: result.reasons,
+        personaCharts: Object.fromEntries(
+          Object.entries(result.chartTypes ?? {}).map(([key, type]) => {
+            const field = dataset.fields.find(item => item.key === key);
+            return [
+              key,
+              field ? autoPersonaChartSpec(field, type, dataset.fields) : { type },
+            ];
+          }),
+        ),
+      });
+      showHint('success', `已识别并配置 ${result.personaFieldKeys.length} 个画像字段`);
+    } catch (error) {
+      showHint('error', error instanceof Error ? error.message : 'AI 画像字段识别失败');
+    } finally {
+      setAiAction(null);
+    }
   }
 
   return (
@@ -445,22 +564,38 @@ export function FieldList({ dataset }: { dataset: Dataset }) {
             共 {dataset.fields.length} 个字段 · {dataset.rowCount.toLocaleString()} 行数据
           </span>
           {isAdmin && (
-            <button
-              onClick={handleAutoDetect}
-              title="根据字段类型智能配置画像视图，将所有适合的字段自动加入用户画像"
-              className={cn(
-                'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-all whitespace-nowrap',
-                autoHint !== null
-                  ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                  : 'bg-violet-50 text-violet-600 border-violet-200 hover:bg-violet-100',
+            <div className="flex items-center gap-2">
+              {actionHint && (
+                <span className={cn(
+                  'max-w-[260px] truncate text-[11px]',
+                  actionHint.kind === 'success' ? 'text-emerald-600' : 'text-red-600',
+                )} title={actionHint.message}>
+                  {actionHint.message}
+                </span>
               )}
-            >
-              {autoHint !== null ? (
-                <><Check size={11} />已配置 {autoHint} 个画像字段</>
-              ) : (
-                <><Wand2 size={11} />智能识别画像字段</>
-              )}
-            </button>
+              <button
+                onClick={handleAutoOrdering}
+                disabled={aiAction !== null}
+                title="批量判断分类字段是否具有天然顺序，并自动应用有效排序"
+                className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs text-indigo-600 transition-all hover:bg-indigo-100 disabled:cursor-wait disabled:opacity-50"
+              >
+                {aiAction === 'ordering'
+                  ? <Loader2 size={11} className="animate-spin" />
+                  : <ArrowUpDown size={11} />}
+                AI 自动排序
+              </button>
+              <button
+                onClick={handleAIPersonaDetect}
+                disabled={aiAction !== null}
+                title="根据字段语义、类型、缺失率和典型值自动配置画像字段"
+                className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs text-violet-600 transition-all hover:bg-violet-100 disabled:cursor-wait disabled:opacity-50"
+              >
+                {aiAction === 'persona'
+                  ? <Loader2 size={11} className="animate-spin" />
+                  : <Wand2 size={11} />}
+                AI 识别画像字段
+              </button>
+            </div>
           )}
         </div>
       </div>

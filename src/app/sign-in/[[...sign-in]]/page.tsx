@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { BarChart2, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -64,21 +65,16 @@ export default function SignInPage() {
       {/* ── 左侧品牌面板 ── */}
       <div
         className="hidden lg:flex flex-col justify-between w-[420px] flex-shrink-0 px-10 py-12"
-        style={{ background: '#0f1923' }}
+        style={{ background: '#20252b' }}
       >
         {/* Logo */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center flex-shrink-0 shadow-md">
-            <svg viewBox="0 0 24 24" fill="white" className="w-5 h-5" aria-hidden="true">
-              <rect x="3"  y="3"  width="7" height="7" rx="1.5" />
-              <rect x="14" y="3"  width="7" height="7" rx="1.5" />
-              <rect x="3"  y="14" width="7" height="7" rx="1.5" />
-              <rect x="14" y="14" width="7" height="7" rx="1.5" />
-            </svg>
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
+            <Image src="/icon02.png" alt="" width={34} height={34} className="h-8 w-8 object-contain" priority />
           </div>
           <div>
             <div className="text-base font-semibold text-white tracking-tight">Upersona</div>
-            <div className="text-xs" style={{ color: '#4a6080' }}>通用数据洞察平台</div>
+            <div className="text-xs text-slate-400">通用数据洞察平台</div>
           </div>
         </div>
 

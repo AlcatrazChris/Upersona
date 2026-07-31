@@ -5,6 +5,7 @@ import {
   ResponsiveContainer, Cell, LabelList, CartesianGrid,
 } from 'recharts';
 import { getColors, isSingleColorScheme } from '@/lib/chartConfig';
+import { sortChartItemsByCount } from '@/lib/dataAggregator';
 import { ChartTooltip, BarLabelContent, cfgLabelRight, applyTopN } from './shared';
 import type { ChartEngineProps } from './types';
 
@@ -28,7 +29,7 @@ function TruncatedYTick({ x, y, payload, fontSize, maxWidth }: {
         x={-4} y={0}
         textAnchor="end"
         dominantBaseline="middle"
-        fill="rgba(0,0,0,0.50)"
+        fill="#475569"
         style={{ fontSize, pointerEvents: 'none' }}
       >
         {label}
@@ -40,7 +41,10 @@ function TruncatedYTick({ x, y, payload, fontSize, maxWidth }: {
 export function BarChartEngine({
   data: rawData, config, isMultiSelect = false, totalSamples, height,
 }: ChartEngineProps) {
-  const data    = applyTopN(rawData, config.topN);
+  const data    = applyTopN(
+    sortChartItemsByCount(rawData),
+    config.topN,
+  );
   const colors  = getColors(config.colorScheme);
   const useSingleColor = isSingleColorScheme(config.colorScheme);
 
@@ -67,7 +71,7 @@ export function BarChartEngine({
           barCategoryGap={compact ? '15%' : '22%'}
         >
           {config.showGrid && (
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" horizontal={false} />
+            <CartesianGrid stroke="#e2e8f0" horizontal={false} vertical />
           )}
           {/* Always render axes — using `hide` instead of conditional mount.
               In layout="vertical", omitting XAxis entirely causes recharts to
@@ -75,7 +79,7 @@ export function BarChartEngine({
           <XAxis
             type="number"
             hide={!config.showXAxis}
-            tick={{ fontSize: config.axisFontSize, fill: 'rgba(0,0,0,0.40)' }}
+            tick={{ fontSize: config.axisFontSize, fill: '#64748b' }}
             axisLine={false}
             tickLine={false}
             tickFormatter={v => `${v}%`}
@@ -99,7 +103,7 @@ export function BarChartEngine({
           />
           {config.showTooltip && (
             <Tooltip
-              cursor={{ fill: 'rgba(0,0,0,0.03)' }}
+              cursor={{ fill: '#f1f5f9' }}
               content={({ active, payload }) => (
                 <ChartTooltip
                   active={active}

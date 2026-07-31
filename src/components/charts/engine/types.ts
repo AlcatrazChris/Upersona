@@ -16,6 +16,6 @@ export interface ChartEngineProps {
   className?:     string;
 }
 
-export type FlatChartType = 'bar' | 'pie' | 'donut' | 'line' | 'area' | 'ranking-heatmap';
+export type FlatChartType = 'bar' | 'lollipop' | 'waffle' | 'pie' | 'donut' | 'line' | 'area' | 'ranking-heatmap';
 export type GroupChartType = 'grouped-bar' | 'stacked-bar';
 export type ChartType = FlatChartType | GroupChartType;

@@ -2,14 +2,16 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  X, Table2, BarChart2, Bookmark, Sparkles,
-  Database, Trash2, ChevronRight, CloudUpload,
+  X, Table2, BarChart2, Bookmark, Sparkles, UserRoundSearch,
+  Database, Trash2, ChevronRight, CloudUpload, CalendarRange,
   Cloud, RefreshCw, Loader2, HardDrive,
 } from 'lucide-react';
 import { FieldList }         from '@/components/fields/FieldList';
 import { ChartBuilder }      from '@/components/charts/ChartBuilder';
 import { SavedChartGrid }    from '@/components/charts/SavedChartGrid';
 import { AIPanel }           from '@/components/ai/AIPanel';
+import { PersonaTemplatePanel } from '@/components/persona/PersonaTemplatePanel';
+import { DateBlockEditor } from '@/components/views/DateBlockEditor';
 import { UploadDropzone }    from '@/components/upload/UploadDropzone';
 import { SchemaDiffDialog }  from '@/components/upload/SchemaDiffDialog';
 import { EnrichmentDialog }  from '@/components/upload/EnrichmentDialog';
@@ -31,6 +33,8 @@ import type { EnrichableField }           from '@/lib/fieldEnricher';
 const TABS = [
   { id: 'data',    label: '数据管理', icon: Database,  needsDataset: false },
   { id: 'fields',  label: '字段概览', icon: Table2,    needsDataset: true  },
+  { id: 'dates',   label: '时间分块', icon: CalendarRange, needsDataset: true },
+  { id: 'persona', label: '画像模板', icon: UserRoundSearch, needsDataset: true },
   { id: 'builder', label: '图表构建', icon: BarChart2, needsDataset: true  },
   { id: 'saved',   label: '图表浏览', icon: Bookmark,  needsDataset: true  },
   { id: 'ai',      label: 'AI 分析',  icon: Sparkles,  needsDataset: true  },
@@ -630,6 +634,8 @@ export function DataCenterPanel({ dataset, onClose }: Props) {
         <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5">
           {tab === 'data'    && <DataManagementTab />}
           {tab === 'fields'  && dataset && <FieldList      dataset={dataset} />}
+          {tab === 'dates'   && dataset && <DateBlockEditor dataset={dataset} />}
+          {tab === 'persona' && dataset && <PersonaTemplatePanel dataset={dataset} />}
           {tab === 'builder' && dataset && <ChartBuilder   dataset={dataset} />}
           {tab === 'saved'   && dataset && <SavedChartGrid dataset={dataset} />}
           {tab === 'ai'      && dataset && <AIPanel        dataset={dataset} />}

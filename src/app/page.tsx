@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { Users, MapPin, GitCompare, Lightbulb, Database, BarChart2, Settings2, Map, Loader2, CloudDownload, Menu, X } from 'lucide-react';
+import Image from 'next/image';
+import { Users, MapPin, GitCompare, Lightbulb, Database, BarChart2, Map, Loader2, CloudDownload, Menu, X } from 'lucide-react';
 import { useDatasetStore, useActiveDataset } from '@/store/datasetStore';
 import { useIsAdmin } from '@/lib/auth';
 import { UserSection } from '@/components/auth/UserSection';
@@ -43,10 +44,6 @@ const RegionalFeatureView = dynamic(
 );
 const DataCenterPanel = dynamic(
   () => import('@/components/views/DataCenterPanel').then(module => module.DataCenterPanel),
-  { loading: ViewLoading },
-);
-const PersonaConfigEditor = dynamic(
-  () => import('@/components/persona/PersonaConfigEditor').then(module => module.PersonaConfigEditor),
   { loading: ViewLoading },
 );
 
@@ -117,7 +114,6 @@ export default function MainPage() {
   const isAdmin  = useIsAdmin();
   const [view,         setView]         = useState<ViewId>('persona');
   const [dcOpen,       setDcOpen]       = useState(false);
-  const [personaConfig, setPersonaConfig] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // 自动拉取最新云端数据集（对 viewer 透明）
@@ -132,7 +128,6 @@ export default function MainPage() {
 
   function selectView(nextView: ViewId) {
     setView(nextView);
-    setPersonaConfig(false);
     setMobileNavOpen(false);
     const url = new URL(window.location.href);
     url.searchParams.set('view', nextView);
@@ -150,14 +145,10 @@ export default function MainPage() {
       return;
     }
 
-    // 已有配置：仅补充"字段概览里有但 personaFieldKeys 里没有"的字段
-    // 不删除用户手动移除的字段，不重置其他配置项
-    const storedSet = new Set(stored.personaFieldKeys ?? []);
-    const missing   = (detected.personaFieldKeys ?? []).filter(k => !storedSet.has(k));
-    if (!stored.personaFieldKeys || missing.length > 0) {
-      updateViewConfig(dataset.id, {
-        personaFieldKeys: [...(stored.personaFieldKeys ?? []), ...missing],
-      });
+    // 画像模板是唯一配置来源。仅在从未初始化时写入默认值，
+    // 不自动补回用户在数据中心明确移除的字段。
+    if (!stored.personaFieldKeys) {
+      updateViewConfig(dataset.id, { personaFieldKeys: detected.personaFieldKeys });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataset?.id]);
@@ -188,23 +179,18 @@ export default function MainPage() {
           'fixed inset-y-0 left-0 z-40 flex w-[200px] flex-shrink-0 flex-col overflow-hidden transition-transform md:static md:translate-x-0',
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
         )}
-        style={{ background: '#0f1923' }}
+        style={{ background: '#20252b' }}
       >
         {/* Brand */}
         <div className="flex items-center gap-3 px-4 py-[18px] border-b border-white/5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center flex-shrink-0 shadow-md">
-            <svg viewBox="0 0 24 24" fill="white" className="w-[18px] h-[18px]" aria-hidden="true">
-              <rect x="3"  y="3"  width="7" height="7" rx="1.5" />
-              <rect x="14" y="3"  width="7" height="7" rx="1.5" />
-              <rect x="3"  y="14" width="7" height="7" rx="1.5" />
-              <rect x="14" y="14" width="7" height="7" rx="1.5" />
-            </svg>
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
+            <Image src="/icon02.png" alt="" width={30} height={30} className="h-7 w-7 object-contain" priority />
           </div>
           <div className="min-w-0">
             <div className="text-[13px] font-semibold text-white leading-tight tracking-tight">
               Upersona
             </div>
-            <div className="text-[10px] leading-tight mt-0.5" style={{ color: '#4a6080' }}>
+            <div className="mt-0.5 text-[10px] leading-tight text-slate-400">
               用户画像平台
             </div>
           </div>
@@ -247,7 +233,7 @@ export default function MainPage() {
                   <div className="text-[12.5px] font-medium leading-tight">{v.label}</div>
                   <div
                     className="mt-0.5 text-xs leading-tight"
-                    style={{ color: active ? 'rgba(239,246,255,0.82)' : '#8294aa' }}
+                    style={{ color: active ? 'rgba(239,246,255,0.82)' : '#9aa8b6' }}
                   >
                     {v.sub}
                   </div>
@@ -274,7 +260,7 @@ export default function MainPage() {
                 <Database size={17} className="flex-shrink-0" aria-hidden="true" />
                 <div className="min-w-0">
                   <div className="text-[12.5px] font-medium leading-tight">数据中心</div>
-                  <div className="mt-0.5 text-xs leading-tight" style={{ color: '#8294aa' }}>
+                  <div className="mt-0.5 text-xs leading-tight" style={{ color: '#9aa8b6' }}>
                     Management
                   </div>
                 </div>
@@ -332,16 +318,6 @@ export default function MainPage() {
 
           {dataset && (
             <div className="flex min-w-0 items-center gap-2 sm:flex-shrink-0">
-              {/* 配置画像 — admin only, persona / insight view */}
-              {(view === 'persona' || view === 'insight') && isAdmin && (
-                <button
-                  onClick={() => setPersonaConfig(true)}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl bg-violet-600 text-white hover:bg-violet-700 transition-all shadow-sm font-medium"
-                >
-                  <Settings2 size={12} aria-hidden="true" />
-                  配置画像
-                </button>
-              )}
               <div className="flex min-w-0 items-center gap-2 text-xs text-gray-500">
                 <CloudDatasetSelector currentDataset={dataset} />
                 <span className="hidden whitespace-nowrap lg:inline">{dataset.rowCount.toLocaleString()} 条数据</span>
@@ -360,24 +336,12 @@ export default function MainPage() {
 
         {/* Scrollable content */}
         <main id="main-content" className="flex-1 overflow-y-auto overflow-x-hidden" tabIndex={-1}>
-          {/* Persona config editor — full-content takeover when open */}
-          {personaConfig && dataset ? (
-            <div className="mx-auto max-w-7xl px-3 py-4 md:px-6 md:py-5">
-              <PersonaConfigEditor
-                dataset={dataset}
-                onClose={() => setPersonaConfig(false)}
-              />
-            </div>
-          ) : !dataset || !viewConfig ? (
+          {!dataset || !viewConfig ? (
             <EmptyState onOpenDC={() => setDcOpen(true)} isAdmin={isAdmin} />
           ) : (
             <div className="mx-auto max-w-7xl px-3 py-4 md:px-6 md:py-5">
               {view === 'persona'  && (
-                <PersonaView
-                  dataset={dataset}
-                  viewConfig={viewConfig}
-                  onConfig={() => setPersonaConfig(true)}
-                />
+                <PersonaView dataset={dataset} viewConfig={viewConfig} />
               )}
               {view === 'regional'  && <RegionalView        dataset={dataset} viewConfig={viewConfig} />}
               {view === 'status'    && (

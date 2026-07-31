@@ -2,6 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    --ui-canvas: #f7f8fa;
+    --ui-surface: #ffffff;
+    --ui-subtle: #f1f5f9;
+    --ui-ink: #172033;
+    --ui-ink-secondary: #475569;
+    --ui-ink-muted: #64748b;
+    --ui-border: #e2e8f0;
+    --ui-border-strong: #cbd5e1;
+    --ui-brand: #1e40af;
+    --ui-brand-active: #1e3a8a;
+    --ui-brand-soft: #eff6ff;
+    --ui-positive: #0f766e;
+    --ui-warning: #b45309;
+    --ui-negative: #b91c1c;
+    --ui-ai: #6d5bd0;
+    --chart-grid: #e2e8f0;
+    --chart-axis: #64748b;
+    --chart-primary: #2563eb;
+    --chart-reference: #94a3b8;
+  }
+
+  body {
+    color: var(--ui-ink);
+    background: var(--ui-canvas);
+    font-family: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
 @layer components {
   /* 兼容从旧项目搬运的 engine 组件所用的自定义类 */
   .glass-card {
@@ -15,6 +48,27 @@
   }
   .rounded-ios {
     @apply rounded-xl;
+  }
+
+  .ui-report-section {
+    @apply rounded-lg border bg-white p-5 md:p-6;
+    border-color: var(--ui-border);
+  }
+
+  .ui-control-panel {
+    @apply rounded-xl border p-4;
+    border-color: var(--ui-border);
+    background: var(--ui-subtle);
+  }
+
+  .ui-card {
+    @apply rounded-lg border bg-white;
+    border-color: var(--ui-border);
+  }
+
+  .ui-caption {
+    @apply text-xs leading-[18px];
+    color: var(--ui-ink-muted);
   }
 
   .content-auto {
@@ -44,7 +98,7 @@
   }
 
   html {
-    background: #f8fafc;
+    background: var(--ui-canvas);
   }
 
   body {

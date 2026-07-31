@@ -8,12 +8,12 @@ export const metadata: Metadata = {
   title:       'Upersona — 通用数据洞察工具',
   description: '上传任意表格，自动识别字段类型，生成交互式图表',
   icons: {
-    icon: '/icon.svg',
+    icon: '/icon02.png',
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0f1923',
+  themeColor: '#20252b',
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,23 +1,26 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
-import { Filter, MapPin, ChevronDown, Check, Settings2, Pencil, Search } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Filter, MapPin, ChevronDown, Check, Search } from 'lucide-react';
 import { aggregateField, aggregateRanking } from '@/lib/dataAggregator';
 import { filterRecords, getGeoOptions, getStatusOptions, type GeoLevel } from '@/lib/filterRecords';
 import { ChartRenderer, type FlatChartType } from '@/components/charts/engine/ChartRenderer';
+import { AdvancedPersonaChartEngine } from '@/components/charts/engine/AdvancedPersonaChartEngine';
 import { RankingHeatmapEngine }          from '@/components/charts/engine/RankingHeatmapEngine';
 import { ChartSettingsPanel, useStoredChartConfig } from '@/components/charts/ChartSettingsPanel';
 import { DEFAULT_CHART_CONFIG, type ChartConfig } from '@/lib/chartConfig';
 import type { Dataset, Field } from '@/types/dataSchema';
 import type { ViewConfig } from '@/lib/viewConfig';
 import { useDatasetStore } from '@/store/datasetStore';
-import { PersonaDashboard } from '@/components/persona/PersonaDashboard';
-import { useIsAdmin } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { StatusFilterGroups } from '@/components/shared/StatusFilterGroups';
 import { detectTimeField, filterByMonths, getMonthOptions } from '@/lib/timeStatus';
 import { useUrlArrayState, useUrlStringState } from '@/hooks/useUrlParamState';
-import { ChartTypeSwitcher, useResizableChartHeight } from '@/components/charts/engine/shared';
+import { useResizableChartHeight } from '@/components/charts/engine/shared';
+import {
+  PERSONA_ROLE_META, defaultPersonaChart, roleForField,
+  type PersonaChartSpec, type PersonaChartType,
+} from '@/lib/personaTemplate';
 
 // ── Geo dropdown (multi-select) ───────────────────────────────
 
@@ -111,22 +114,10 @@ function GeoDropdown({
 
 // ── Chart type helpers ─────────────────────────────────────────
 
-const PERSONA_SUPPORTED_SET = new Set(['bar', 'pie', 'donut', 'line', 'area']);
+const ADVANCED_TYPES = new Set<PersonaChartType>(['scatter', 'histogram', 'dumbbell', 'difference', 'heatmap']);
 
-function isPersonaChartType(t: string): t is FlatChartType {
-  return PERSONA_SUPPORTED_SET.has(t);
-}
-
-function getDefaultChartType(field: Field): FlatChartType {
-  if (field.type === 'ranking') return 'ranking-heatmap';
-  const rec = field.recommendedCharts.find(t => isPersonaChartType(t));
-  return rec ?? 'bar';
-}
-
-function getAvailableTypes(field: Field): FlatChartType[] {
-  if (field.type === 'ranking') return [];
-  const types = field.recommendedCharts.filter(isPersonaChartType);
-  return types.length > 0 ? types : ['bar'];
+function getDefaultChartType(field: Field): PersonaChartType {
+  return defaultPersonaChart(field);
 }
 
 // ── Per-card chart card ────────────────────────────────────────
@@ -137,12 +128,16 @@ function PersonaChartCard({
   config,
   datasetId,
   initialChartType,
+  chartSpec,
+  dataset,
 }: {
   field:             Field;
   filteredRecords:   Record<string, unknown>[];
   config:            ChartConfig;   // global config (from filter bar)
   datasetId:         string;
-  initialChartType?: FlatChartType;
+  initialChartType?: PersonaChartType;
+  chartSpec?: PersonaChartSpec;
+  dataset: Dataset;
 }) {
   const { updateFieldOrdering } = useDatasetStore();
   const isRanking = field.type === 'ranking';
@@ -162,8 +157,7 @@ function PersonaChartCard({
     ? (rankData?.N ?? 0)
     : data.reduce((s, d) => s + d.count, 0);
 
-  const [chartType, setChartType] = useState<FlatChartType>(() => initialChartType ?? getDefaultChartType(field));
-  const availableTypes = getAvailableTypes(field);
+  const chartType = initialChartType ?? getDefaultChartType(field);
   // localCfg: null = follow global; non-null = card-level override
   const [localCfg, setLocalCfg] = useState<ChartConfig | null>(null);
   const effective = localCfg ?? config;
@@ -183,25 +177,19 @@ function PersonaChartCard({
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-400 mt-0.5">有效样本 n={validN.toLocaleString()}</p>
+          {effective.showSampleCount && (
+            <p className="mt-0.5 text-xs text-gray-400">有效样本 n={validN.toLocaleString()}</p>
+          )}
         </div>
 
         {/* Hover toolbar: chart type switcher + settings — hidden for ranking */}
         {!isRanking && (
           <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            {/* Chart type switcher — adapts to field's recommendedCharts */}
-            {availableTypes.length > 1 && (
-              <ChartTypeSwitcher
-                value={chartType}
-                options={availableTypes}
-                onChange={setChartType}
-              />
-            )}
-
             {/* Per-card chart settings (includes field ordering) */}
             <ChartSettingsPanel
               config={effective}
               onChange={c => { setLocalCfg(c); resetHeight(); }}
+              chartTypes={[chartType]}
               field={field}
               onUpdateOrdering={(isOrdered, orderedValues) =>
                 updateFieldOrdering(datasetId, field.key, isOrdered, orderedValues)
@@ -225,9 +213,19 @@ function PersonaChartCard({
       {/* Chart — ranking uses heatmap engine; others use ChartRenderer */}
       {isRanking && rankData
         ? <RankingHeatmapEngine data={rankData} fieldName={field.name} />
+        : ADVANCED_TYPES.has(chartType)
+          ? <AdvancedPersonaChartEngine
+              dataset={dataset}
+              field={field}
+              records={filteredRecords}
+              baselineRecords={dataset.records}
+              spec={{ ...chartSpec, type: chartType }}
+              config={{ ...effective, chartHeight: cardH, showSampleCount: false }}
+              height={cardH}
+            />
         : (
           <ChartRenderer
-            type={chartType}
+            type={chartType as FlatChartType}
             data={data}
             config={{ ...effective, chartHeight: cardH, showSampleCount: false }}
             isMultiSelect={field.type === 'multi_choice'}
@@ -258,34 +256,18 @@ function PersonaChartCard({
 interface Props {
   dataset:    Dataset;
   viewConfig: ViewConfig;
-  onConfig:   () => void;
 }
 
 const PERSONA_DEFAULT: ChartConfig = {
   ...DEFAULT_CHART_CONFIG,
-  colorScheme: 'forest',
+  colorScheme: 'mckinsey',
   showLabel:   true,
   showXAxis:   false,
   showGrid:    false,
 };
 
-export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
-  const { personaConfigs, activePersonaConfigId, setActivePersonaConfigId, updatePersonaConfig } = useDatasetStore();
-  const configs      = personaConfigs[dataset.id] ?? [];
-  const activeConfig = configs.find(c => c.id === activePersonaConfigId);
-
+export function PersonaView({ dataset, viewConfig }: Props) {
   // ── All hooks MUST be declared before any conditional return ──
-  const isAdmin         = useIsAdmin();
-  const [dashMode,      setDashMode]      = useState(!!activeConfig);
-  // 改名状态
-  const [editingName,   setEditingName]   = useState(false);
-  const [nameInput,     setNameInput]     = useState('');
-
-  // 配置完成后自动进入看板模式（id 变化 = 新建/切换；updatedAt 变化 = 编辑器保存后返回）
-  useEffect(() => {
-    if (activeConfig) setDashMode(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConfig?.id, activeConfig?.updatedAt]);
   const [geoLevel, setGeoLevel] = useUrlStringState<GeoLevel>(
     'persona_geo_level', 'all', ['all', 'region', 'province', 'city'],
   );
@@ -317,107 +299,15 @@ export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
     [dataset.records, viewConfig, geoLevel, selectedGeo, selStatus, timeField, selMonths],
   );
   const personaFields = useMemo(
-    () => {
-      // 有活跃画像配置时，图表模式也按配置字段顺序展示
-      if (activeConfig) {
-        return activeConfig.blocks
-          .filter(b => b.visible && b.sourceFieldKey)
-          .map(b => dataset.fields.find(f => f.key === b.sourceFieldKey))
-          .filter((field): field is Field => !!field && field.key !== timeField?.key);
-      }
-      return (viewConfig.personaFieldKeys ?? [])
+    () => (viewConfig.personaFieldKeys ?? [])
         .map(k => dataset.fields.find(f => f.key === k))
-        .filter((field): field is Field => !!field && field.key !== timeField?.key);
-    },
-    [dataset.fields, viewConfig.personaFieldKeys, activeConfig, timeField],
+        .filter((field): field is Field => !!field && field.key !== timeField?.key)
+        .sort((a, b) =>
+          PERSONA_ROLE_META[roleForField(a, viewConfig.personaRoles)].order
+          - PERSONA_ROLE_META[roleForField(b, viewConfig.personaRoles)].order
+        ),
+    [dataset.fields, viewConfig.personaFieldKeys, viewConfig.personaRoles, timeField],
   );
-
-  // 从活跃画像配置中提取每个字段的图表类型偏好
-  // 仅 distribution 块且配置了 chartType 才会覆盖默认类型
-  const blockChartTypeMap = useMemo(() => {
-    if (!activeConfig) return {} as Record<string, FlatChartType>;
-    const map: Record<string, FlatChartType> = {};
-    for (const b of activeConfig.blocks) {
-      if (!b.visible || !b.sourceFieldKey) continue;
-      if (b.blockType === 'distribution' && b.config?.chartType) {
-        const ct = b.config.chartType;
-        if (isPersonaChartType(ct)) map[b.sourceFieldKey] = ct;
-      }
-    }
-    return map;
-  }, [activeConfig]);
-
-  // ── Dashboard mode (safe early-return — all hooks already called) ──
-  if (dashMode && activeConfig) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-3 px-1">
-          {/* 画像选择 */}
-          {configs.length > 1 ? (
-            <select
-              value={activeConfig.id}
-              onChange={e => setActivePersonaConfigId(e.target.value || null)}
-              className="text-sm border border-gray-200 rounded-xl px-3 py-1.5 outline-none bg-white"
-            >
-              {configs.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          ) : (
-            /* 单个画像时：点击可改名 */
-            editingName ? (
-              <input
-                value={nameInput}
-                onChange={e => setNameInput(e.target.value)}
-                onBlur={() => {
-                  if (nameInput.trim()) updatePersonaConfig(dataset.id, activeConfig.id, { name: nameInput.trim() });
-                  setEditingName(false);
-                }}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    if (nameInput.trim()) updatePersonaConfig(dataset.id, activeConfig.id, { name: nameInput.trim() });
-                    setEditingName(false);
-                  }
-                  if (e.key === 'Escape') setEditingName(false);
-                }}
-                autoFocus
-                className="text-sm border border-blue-300 rounded-xl px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-100 bg-white w-40"
-              />
-            ) : (
-              <button
-                onClick={() => { setNameInput(activeConfig.name); setEditingName(true); }}
-                title="点击改名"
-                className="flex items-center gap-1.5 text-sm font-medium text-gray-700 hover:text-blue-600 group"
-              >
-                {activeConfig.name}
-                <Pencil size={11} className="text-gray-300 group-hover:text-blue-400 transition-colors" />
-              </button>
-            )
-          )}
-          <button
-            onClick={() => setDashMode(false)}
-            className="text-xs px-3 py-1.5 rounded-xl bg-gray-100 text-gray-500 hover:bg-gray-200 transition-all"
-          >
-            切换到图表模式
-          </button>
-          {isAdmin && (
-            <button
-              onClick={() => onConfig()}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl bg-violet-600 text-white hover:bg-violet-700 transition-all shadow-sm"
-            >
-              <Settings2 size={12} />
-              配置画像
-            </button>
-          )}
-          <span className="text-xs text-gray-400">
-            {activeConfig.blocks.filter(b => b.visible).length} 个区块
-          </span>
-        </div>
-        <PersonaDashboard dataset={dataset} config={activeConfig} />
-      </div>
-    );
-  }
-
   const geoLabel =
     selectedGeo.length === 0 ? '全国' :
     selectedGeo.length === 1 ? selectedGeo[0] :
@@ -503,28 +393,14 @@ export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
             <div className="w-px h-4 bg-gray-200" />
 
             {/* Global chart settings */}
-            <ChartSettingsPanel config={globalConfig} onChange={handleConfigChange} />
-
-            {configs.length > 0 && (
-              <button
-                onClick={() => {
-                  if (!activePersonaConfigId && configs.length > 0) setActivePersonaConfigId(configs[0].id);
-                  setDashMode(true);
-                }}
-                className="text-xs px-3 py-1.5 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all"
-              >
-                画像看板
-              </button>
-            )}
-            {isAdmin && (
-              <button
-                onClick={() => onConfig()}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl bg-violet-600 text-white hover:bg-violet-700 transition-all shadow-sm"
-              >
-                <Settings2 size={12} />
-                配置画像
-              </button>
-            )}
+            <ChartSettingsPanel
+              config={globalConfig}
+              onChange={handleConfigChange}
+              chartTypes={[...new Set(personaFields.map(field =>
+                viewConfig.personaCharts?.[field.key]?.type ?? getDefaultChartType(field)
+              ))]}
+              allowPartial
+            />
           </div>
         </div>
 
@@ -546,14 +422,10 @@ export function PersonaView({ dataset, viewConfig, onConfig }: Props) {
       ) : (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {personaFields.map(field => (
-            <PersonaChartCard
-              key={`${activeConfig?.id ?? 'default'}-${field.key}`}
-              field={field}
-              filteredRecords={filteredRecords}
-              config={globalConfig}
-              datasetId={dataset.id}
-              initialChartType={blockChartTypeMap[field.key]}
-            />
+            <PersonaChartCard key={field.key} field={field} filteredRecords={filteredRecords}
+              config={globalConfig} datasetId={dataset.id} dataset={dataset}
+              chartSpec={viewConfig.personaCharts?.[field.key]}
+              initialChartType={viewConfig.personaCharts?.[field.key]?.type} />
           ))}
         </div>
       )}
