@@ -7,7 +7,7 @@ import { Users, MapPin, GitCompare, Lightbulb, Database, BarChart2, Map, Loader2
 import { useDatasetStore, useActiveDataset } from '@/store/datasetStore';
 import { useIsAdmin } from '@/lib/auth';
 import { UserSection } from '@/components/auth/UserSection';
-import { autoDetectViewConfig } from '@/lib/viewConfig';
+import { autoDetectViewConfig, normalizeViewConfig } from '@/lib/viewConfig';
 import { useAutoSyncCloud }  from '@/hooks/useAutoSyncCloud';
 import { useConfigAutoSync } from '@/hooks/useConfigAutoSync';
 import { CloudDatasetSelector } from '@/components/shared/CloudDatasetSelector';
@@ -155,7 +155,7 @@ export default function MainPage() {
 
   const viewConfig = useMemo(
     () => dataset
-      ? { ...autoDetectViewConfig(dataset), ...(viewConfigs[dataset.id] ?? {}) }
+      ? normalizeViewConfig(dataset, { ...autoDetectViewConfig(dataset), ...(viewConfigs[dataset.id] ?? {}) })
       : null,
     [dataset, viewConfigs],
   );

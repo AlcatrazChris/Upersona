@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { resolveAIOrder } from '@/lib/aiOrder';
+import { ORDERING_RULES, resolveAIOrder } from '@/lib/aiOrder';
 
 export const runtime = 'nodejs';
 
 const AI_API_KEY  = process.env.AI_API_KEY  ?? process.env.DEEPSEEK_API_KEY ?? '';
 const AI_BASE_URL = process.env.AI_BASE_URL ?? 'https://api.deepseek.com/v1';
-const AI_MODEL    = process.env.AI_MODEL    ?? 'deepseek-chat';
+const AI_MODEL    = process.env.AI_MODEL    ?? 'deepseek-v4-flash';
 
 export async function POST(req: NextRequest) {
   if (!AI_API_KEY) {
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: AI_MODEL,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: 'user', content: `${ORDERING_RULES}\n${prompt}` }],
         max_tokens: 400,
         temperature: 0.1,
         response_format: { type: 'json_object' },

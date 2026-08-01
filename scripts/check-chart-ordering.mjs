@@ -28,4 +28,19 @@ const grouped = aggregateByStatusGroups(
 );
 assert.deepEqual(grouped.items.map(item => item.label), ['多', '少']);
 
+const ordered = aggregateByStatusGroups(
+  [
+    { status: 'A', answer: 'low' },
+    { status: 'A', answer: 'high' },
+    { status: 'A', answer: 'high' },
+  ],
+  {
+    key: 'answer', name: 'answer', type: 'single_choice',
+    isOrdered: true, orderedValues: ['low', 'high'],
+  },
+  'status',
+  [{ key: 'a', label: 'A', values: ['A'] }],
+);
+assert.deepEqual(ordered.items.map(item => item.label), ['low', 'high']);
+
 console.log('chart ordering: ok');

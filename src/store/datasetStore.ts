@@ -16,6 +16,7 @@ import type { ChartType } from '@/components/charts/engine/types';
 import type { ChartConfig } from '@/lib/chartConfig';
 import type { PersonaConfig } from '@/types/personaSchema';
 import type { ViewConfig } from '@/lib/viewConfig';
+import { chartSchemaFromLegacy, type ChartSchema } from '@/types/chartSchema';
 import { isSkipValue } from '@/lib/skipPatterns';
 
 export interface SavedChart {
@@ -27,9 +28,11 @@ export interface SavedChart {
   createdAt: string;
   groupFieldKey?: string;
   selectedGroups?: string[];
+  dateGranularity?: 'year' | 'month' | 'day';
   gridSpan?: 1 | 2;             // legacy grid mode
   position?: { x: number; y: number }; // free-canvas position
   canvasWidth?: number;          // card width on canvas in px (default 380)
+  schema?: ChartSchema;          // v1 unified schema; legacy fields remain during migration
 }
 
 export interface CanvasTextElement {
@@ -378,10 +381,11 @@ export const useDatasetStore = create<DatasetStore>()(
       saveChart(datasetId, chart) {
         set(state => {
           const prev = state.savedCharts[datasetId] ?? [];
+          const saved = { ...chart, id: genId(), createdAt: new Date().toISOString() };
           return {
             savedCharts: {
               ...state.savedCharts,
-              [datasetId]: [...prev, { ...chart, id: genId(), createdAt: new Date().toISOString() }],
+              [datasetId]: [...prev, { ...saved, schema: chartSchemaFromLegacy(datasetId, saved) }],
             },
           };
         });
@@ -400,9 +404,11 @@ export const useDatasetStore = create<DatasetStore>()(
         set(state => ({
           savedCharts: {
             ...state.savedCharts,
-            [datasetId]: (state.savedCharts[datasetId] ?? []).map(c =>
-              c.id === chartId ? { ...c, ...patch } : c
-            ),
+            [datasetId]: (state.savedCharts[datasetId] ?? []).map(c => {
+              if (c.id !== chartId) return c;
+              const updated = { ...c, ...patch };
+              return { ...updated, schema: chartSchemaFromLegacy(datasetId, updated) };
+            }),
           },
         }));
       },

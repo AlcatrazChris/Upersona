@@ -37,11 +37,24 @@ export function sortChartItemsByCount<T extends { count: number }>(items: T[]): 
   return [...items].sort((a, b) => b.count - a.count);
 }
 
-function rankMainKeys(totalByMain: Map<string, number>, limit: number): string[] {
-  return [...totalByMain.entries()]
+function rankMainKeys(
+  totalByMain: Map<string, number>,
+  limit: number,
+  orderedValues?: string[],
+): string[] {
+  if (!orderedValues?.length) {
+    return [...totalByMain.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([key]) => key);
+  }
+  const ordered = orderedValues.filter(value => totalByMain.has(value));
+  const included = new Set(ordered);
+  const remaining = [...totalByMain.entries()]
+    .filter(([value]) => !included.has(value))
     .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([key]) => key);
+    .map(([value]) => value);
+  return [...ordered, ...remaining].slice(0, limit);
 }
 
 function toItems(
@@ -340,7 +353,7 @@ export function aggregateFieldGrouped(
   }
 
   // mainKeys = the dimension values shown on the Y-axis
-  const mainKeys = rankMainKeys(totalByMain, maxSeries);
+  const mainKeys = rankMainKeys(totalByMain, maxSeries, mainField.isOrdered ? mainField.orderedValues : undefined);
   const items = mainKeys.map(mv => {
     const row: Record<string, number | string> = { label: mv };
     for (const g of selectedGroups) {
@@ -413,7 +426,7 @@ export function aggregateByStatusGroups(
     }
   }
 
-  const mainKeys = rankMainKeys(totalByMain, maxSeries);
+  const mainKeys = rankMainKeys(totalByMain, maxSeries, mainField.isOrdered ? mainField.orderedValues : undefined);
   const items = mainKeys.map(mv => {
     const row: Record<string, number | string> = { label: mv };
     for (const g of groups) {
@@ -510,7 +523,7 @@ export function aggregateCrossDatasetByStatus(
     }
   }
 
-  const mainKeys = rankMainKeys(totalByMain, maxItems);
+  const mainKeys = rankMainKeys(totalByMain, maxItems, mainField.isOrdered ? mainField.orderedValues : undefined);
 
   // Compute percentages using dataset total as denominator (option B)
   const items = mainKeys.map(mv => {

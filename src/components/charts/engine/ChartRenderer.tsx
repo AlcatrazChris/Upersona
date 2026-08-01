@@ -25,6 +25,10 @@ export function ChartRenderer({
   fieldName = '',
   ...props
 }: ChartRendererProps) {
+  if (type === 'ranking-heatmap' && rankingData) {
+    return <RankingHeatmapEngine data={rankingData} fieldName={fieldName} height={props.height} />;
+  }
+
   if (!props.data.length) {
     return (
       <div
@@ -38,10 +42,6 @@ export function ChartRenderer({
   }
 
   // 排序题 → 专用热力图引擎
-  if (type === 'ranking-heatmap' && rankingData) {
-    return <RankingHeatmapEngine data={rankingData} fieldName={fieldName} height={props.height} />;
-  }
-
   // 多选题不适合饼图/折线图，强制回退到条形图
   const resolvedType: FlatChartType =
     isMultiSelect && (type === 'pie' || type === 'donut' || type === 'line' || type === 'area')

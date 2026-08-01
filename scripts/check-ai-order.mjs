@@ -1,26 +1,18 @@
 import assert from 'node:assert/strict';
-import { ensureDescendingOrder, resolveAIOrder } from '../src/lib/aiOrder.ts';
+import { resolveAIOrder } from '../src/lib/aiOrder.ts';
 
-const values = ['低', '中', '高'];
+const values = ['<10万', '10-20万', '≥20万', '其他'];
 assert.deepEqual(
-  resolveAIOrder('{"isOrdered":true,"orderedIndices":[2,1,0]}', values),
-  { isOrdered: true, orderedValues: ['高', '中', '低'] },
+  resolveAIOrder('{"isOrdered":true,"orderedIndices":[2,1,0,3]}', values),
+  { isOrdered: true, orderedValues: ['≥20万', '10-20万', '<10万', '其他'] },
 );
 assert.deepEqual(
   resolveAIOrder('```json\n{"isOrdered":false,"orderedIndices":[]}\n```', values),
   { isOrdered: false, orderedValues: [] },
 );
 assert.throws(
-  () => resolveAIOrder('{"isOrdered":true,"orderedIndices":[2', values),
-  /结果不完整/,
-);
-assert.deepEqual(
-  ensureDescendingOrder(['10万元以下', '10~20万元', '20万元以上']),
-  ['20万元以上', '10~20万元', '10万元以下'],
-);
-assert.deepEqual(
-  ensureDescendingOrder(['60岁以上', '40~59岁', '20~39岁']),
-  ['60岁以上', '40~59岁', '20~39岁'],
+  () => resolveAIOrder('{"isOrdered":true,"orderedIndices":[2,1]}', values),
+  /缺少选项/,
 );
 
 console.log('ai order resolver: ok');

@@ -6,6 +6,7 @@ import {
   CalendarDays, Bookmark, BookmarkCheck, MousePointerClick, Layers, X, CircleDot, Grid3X3,
 } from 'lucide-react';
 import { ChartCard } from './ChartCard';
+import { ChartContainer } from './ChartContainer';
 import { ChartSettingsPanel, useStoredChartConfig } from './ChartSettingsPanel';
 import { ComparePanel } from './ComparePanel';
 import { GroupChartRenderer } from './engine/ChartRenderer';
@@ -17,6 +18,7 @@ import { cn } from '@/lib/utils';
 import type { Dataset, Field, FieldType } from '@/types/dataSchema';
 import type { ChartType } from '@/components/charts/engine/types';
 import type { ChartConfig } from '@/lib/chartConfig';
+import type { ChartSchema } from '@/types/chartSchema';
 import { detectTimeField } from '@/lib/timeStatus';
 
 // ── Constants ─────────────────────────────────────────────────
@@ -170,6 +172,7 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
       config,
       groupFieldKey:  (!isRankingField && compareMode && groupFieldKey) ? groupFieldKey : undefined,
       selectedGroups: (!isRankingField && compareMode && selectedGroups.length) ? selectedGroups : undefined,
+      dateGranularity: activeField.type === 'date' ? dateGran : undefined,
     });
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 2000);
@@ -185,6 +188,31 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
     : compareMode
       ? !!(groupedData)
       : chartData.length > 0;
+
+  const previewSchema = useMemo<ChartSchema | null>(() => {
+    if (!activeField) return null;
+    const type: ChartType = isRankingField
+      ? 'ranking-heatmap'
+      : compareMode
+        ? (compareType === 'stacked' ? 'stacked-bar' : 'grouped-bar')
+        : chartType;
+    return {
+      version: 1,
+      id: 'chart-preview',
+      presentation: { title: chartTitle || activeField.name },
+      data: {
+        datasetId: dataset.id,
+        fieldKey: activeField.key,
+        groupFieldKey: groupFieldKey ?? undefined,
+        selectedGroups: selectedGroups.length ? selectedGroups : undefined,
+        dateGranularity: activeField.type === 'date' ? dateGran : undefined,
+        aggregation: 'count',
+      },
+      chart: { type },
+      appearance: config,
+      layout: { height: config.chartHeight },
+    };
+  }, [activeField, chartTitle, chartType, compareMode, compareType, config, dataset.id, dateGran, groupFieldKey, isRankingField, selectedGroups]);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -367,7 +395,9 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
             </div>
 
             {/* Chart preview */}
-            {isRankingField ? (
+            {previewSchema ? (
+              <ChartContainer schema={previewSchema} dataset={dataset} className="border border-gray-100" />
+            ) : isRankingField ? (
               rankingData && rankingData.N > 0 ? (
                 <div className="bg-white rounded-2xl border border-gray-100 p-5">
                   <div className="flex items-center gap-2 mb-3">

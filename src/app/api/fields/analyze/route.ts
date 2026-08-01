@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { COOKIE_NAME, verifyToken } from '@/lib/auth-server';
-import { resolveAIOrder } from '@/lib/aiOrder';
+import { ORDERING_RULES, resolveAIOrder } from '@/lib/aiOrder';
 
 export const runtime = 'nodejs';
 
 const AI_API_KEY = process.env.AI_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? '';
 const AI_BASE_URL = process.env.AI_BASE_URL ?? 'https://api.deepseek.com/v1';
-const AI_MODEL = process.env.AI_MODEL ?? 'deepseek-chat';
+const AI_MODEL = process.env.AI_MODEL ?? 'deepseek-v4-flash';
 
 type FieldSummary = {
   key: string;
@@ -136,7 +136,7 @@ ${JSON.stringify(batch.map((field, fieldIndex) => ({
 只返回 JSON：
 {"orderings":[{"fieldIndex":0,"isOrdered":true,"orderedIndices":[2,1,0]}]}`;
 
-        const raw = await callAI(prompt) as {
+        const raw = await callAI(`${ORDERING_RULES}\n${prompt}`) as {
           orderings?: Array<{
             fieldIndex?: unknown;
             isOrdered?: unknown;

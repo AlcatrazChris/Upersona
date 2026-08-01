@@ -2,7 +2,7 @@
  * 字段类型自动识别引擎
  *
  * 从一列数据推断最合适的 FieldType：
- *   - 大量逗号分隔 → multi_choice
+ *   - 包含 ┋ 分隔符 → multi_choice
  *   - 全为数字      → number
  *   - 全为日期格式  → date
  *   - 唯一值少      → single_choice
@@ -49,15 +49,6 @@ export function detectFieldType(values: unknown[]): FieldType {
 
   // 多选：出现 ┋ 分隔符 → 确定是多选（无需达到阈值）
   if (nonEmpty.some(v => v.includes('┋'))) return 'multi_choice';
-
-  // 多选：≥20% 的值包含常见分隔符（顿号、逗号等）
-  const COMMON_MULTI_RE = /[、，,;；|\/]/;
-  const multiCount = nonEmpty.filter(v => {
-    if (!COMMON_MULTI_RE.test(v)) return false;
-    const parts = v.split(COMMON_MULTI_RE);
-    return parts.length >= 2 && parts.every(p => p.trim().length <= 40);
-  }).length;
-  if (multiCount / total >= 0.2) return 'multi_choice';
 
   // 单选：唯一值数量 ≤ min(30, total * 0.3)
   const uniqueCount = new Set(nonEmpty).size;
@@ -120,23 +111,15 @@ export function detectSchema(
       options = [...opts];
       multiDelimiter = '→';
     } else if (type === 'multi_choice') {
-      // Detect which delimiter this column actually uses
-      const DELIM_CANDIDATES = ['┋', '、', '，', ',', ';', '；', '|', '/'];
-      for (const d of DELIM_CANDIDATES) {
-        if (values.some(v => v != null && String(v).includes(d))) {
-          multiDelimiter = d;
-          break;
-        }
-      }
-      const delim = multiDelimiter ?? '┋';
+      multiDelimiter = '┋';
 
       const opts = new Set<string>();
       for (const v of values) {
         if (v == null) continue;
         const raw = String(v).trim();
         if (!raw) continue;
-        const parts = raw.includes(delim)
-          ? raw.split(delim).map(p => p.trim()).filter(Boolean)
+        const parts = raw.includes(multiDelimiter)
+          ? raw.split(multiDelimiter).map(p => p.trim()).filter(Boolean)
           : [raw];
         parts.forEach(p => opts.add(p.startsWith('其他') ? '其他' : p));
       }

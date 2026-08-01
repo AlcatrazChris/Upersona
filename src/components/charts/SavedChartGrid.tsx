@@ -14,6 +14,8 @@ import { ChartSettingsPanel } from './ChartSettingsPanel';
 import type { Dataset, Field } from '@/types/dataSchema';
 import type { ChartDataItem } from './engine/types';
 import type { ChartConfig } from '@/lib/chartConfig';
+import { ChartContainer } from './ChartContainer';
+import { chartSchemaFromLegacy } from '@/types/chartSchema';
 
 const DEFAULT_W = 380;
 const DEFAULT_H = 300;
@@ -291,7 +293,7 @@ async function exportFullCanvas(innerCanvasEl: HTMLElement, datasetName: string)
 
 function ChartCard({
   chart, pos, field, data, groupedData, mode, isCompare, isMultiSelect,
-  totalSamples, datasetId, onDragStart, onDelete, onTitleChange, onPatch,
+  totalSamples, dataset, datasetId, onDragStart, onDelete, onTitleChange, onPatch,
 }: {
   chart: SavedChart;
   pos: { x: number; y: number };
@@ -302,6 +304,7 @@ function ChartCard({
   isCompare: boolean;
   isMultiSelect: boolean;
   totalSamples: number;
+  dataset: Dataset;
   datasetId: string;
   onDragStart: (e: React.MouseEvent) => void;
   onDelete: () => void;
@@ -417,27 +420,11 @@ function ChartCard({
 
       {/* Chart content */}
       <div className="chart-content" style={{ height: chartH, minHeight: 120 }}>
-        {isCompare && groupedData ? (
-          <GroupChartRenderer
-            type={mode ?? 'grouped'}
-            data={groupedData}
-            config={engineConfig}
-            height={chartH}
-          />
-        ) : data ? (
-          <ChartRenderer
-            type={
-              chart.chartType === 'grouped-bar' || chart.chartType === 'stacked-bar'
-                ? 'bar'
-                : chart.chartType
-            }
-            data={data}
-            config={engineConfig}
-            isMultiSelect={isMultiSelect}
-            totalSamples={totalSamples}
-            height={chartH}
-          />
-        ) : null}
+        <ChartContainer
+          schema={{ ...(chart.schema ?? chartSchemaFromLegacy(dataset.id, chart)), appearance: engineConfig, layout: { ...(chart.schema ?? chartSchemaFromLegacy(dataset.id, chart)).layout, height: chartH } }}
+          dataset={dataset}
+          contentOnly
+        />
       </div>
 
       <ResizeHandle
@@ -805,6 +792,7 @@ export function SavedChartGrid({ dataset }: { dataset: Dataset }) {
                 isCompare={isCompare}
                 isMultiSelect={field.type === 'multi_choice'}
                 totalSamples={dataset.rowCount}
+                dataset={dataset}
                 datasetId={dataset.id}
                 onDragStart={e => startDrag(e, chart.id, 'chart', pos.x, pos.y)}
                 onDelete={() => {

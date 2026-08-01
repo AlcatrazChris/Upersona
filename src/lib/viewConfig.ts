@@ -145,18 +145,46 @@ export const DEFAULT_INSIGHT_PROMPT = `你是资深汽车行业用户研究分�
 
 // ── Auto-detection ────────────────────────────────────────────
 
+function fieldValues(dataset: Dataset, fieldKey: string): string[] {
+  return [...new Set(dataset.records
+    .map(record => String(record[fieldKey] ?? '').trim())
+    .filter(Boolean))];
+}
+
+function explicitOrderStatusField(dataset: Dataset) {
+  return dataset.fields.find(field =>
+    field.name.trim() === '订单状态' || field.key.trim() === '订单状态'
+  );
+}
+
+/** Prevent a blank 订单状态 column from falling through to unrelated fields such as 工作生活状态. */
+export function normalizeViewConfig(dataset: Dataset, config: ViewConfig): ViewConfig {
+  const explicit = explicitOrderStatusField(dataset);
+  if (!explicit) return config;
+  const values = fieldValues(dataset, explicit.key);
+  if (!values.length) return { ...config, statusFieldKey: undefined, statusGroups: [] };
+  return {
+    ...config,
+    statusFieldKey: explicit.key,
+    statusGroups: buildDefaultStatusGroups(values),
+  };
+}
+
 export function autoDetectViewConfig(dataset: Dataset): ViewConfig {
   const config: ViewConfig = {};
   const timeField = detectTimeField(dataset);
 
   // Status field
   const statusKw = ['状态', '意向', '订单', '阶段', 'status'];
-  const statusField = dataset.fields.find(f =>
-    f.type === 'single_choice' && statusKw.some(kw => f.name.toLowerCase().includes(kw))
-  );
+  const explicitStatusField = explicitOrderStatusField(dataset);
+  const statusField = explicitStatusField
+    ? (fieldValues(dataset, explicitStatusField.key).length ? explicitStatusField : undefined)
+    : dataset.fields.find(f =>
+        f.type === 'single_choice' && statusKw.some(kw => f.name.toLowerCase().includes(kw))
+      );
   if (statusField) {
     config.statusFieldKey = statusField.key;
-    config.statusGroups   = buildDefaultStatusGroups(statusField.options ?? []);
+    config.statusGroups   = buildDefaultStatusGroups(statusField.options ?? fieldValues(dataset, statusField.key));
   }
 
   // Geo fields (prefer derived fields)
