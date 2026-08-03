@@ -20,6 +20,7 @@ export interface ChartDataFrame {
     seriesKeys: string[];
     groupTotals?: Record<string, number>;
     rawCounts?: Record<string, Record<string, number>>;
+    numericValues?: number[];
   };
 }
 
@@ -82,8 +83,11 @@ export function buildChartDataFrame(dataset: Dataset, schema: ChartSchema): Char
   }
 
   let rows = aggregateField(records, field, schema.data.dateGranularity ?? 'month');
-  if (schema.data.sort === 'value-asc') rows = [...rows].sort((a, b) => a.count - b.count);
-  if (schema.data.sort === 'value-desc') rows = [...rows].sort((a, b) => b.count - a.count);
+  // Field overview ordering is the global source of truth and cannot be overridden by chart settings.
+  if (!field.isOrdered || !field.orderedValues?.length) {
+    if (schema.data.sort === 'value-asc') rows = [...rows].sort((a, b) => a.count - b.count);
+    if (schema.data.sort === 'value-desc') rows = [...rows].sort((a, b) => b.count - a.count);
+  }
   if (schema.data.limit) rows = rows.slice(0, schema.data.limit);
   const frameRows = rows.map(({ label, count, percentage, group }) => ({
     label,
@@ -102,6 +106,13 @@ export function buildChartDataFrame(dataset: Dataset, schema: ChartSchema): Char
       ...baseMeta,
       validRowCount: records.filter(record => String(record[field.key] ?? '').trim()).length,
       seriesKeys: [],
+      numericValues: field.type === 'number'
+        ? records.flatMap(record => {
+            const raw = String(record[field.key] ?? '').trim();
+            const value = Number(raw);
+            return raw && Number.isFinite(value) ? [value] : [];
+          })
+        : undefined,
     },
   };
 }

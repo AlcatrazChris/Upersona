@@ -16,7 +16,9 @@ const ALLOWED_FIELD_TYPES: Partial<Record<ChartSchema['chart']['type'], FieldTyp
   donut: ['single_choice', 'boolean', 'number'],
   line: ['date', 'number', 'single_choice'],
   area: ['date', 'number', 'single_choice'],
+  boxplot: ['number'],
   'ranking-heatmap': ['ranking'],
+  wordcloud: ['text', 'multi_choice', 'single_choice'],
 };
 
 export function validateChartSchema(schema: ChartSchema, dataset: Dataset): ChartValidationResult {

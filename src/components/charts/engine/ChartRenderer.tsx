@@ -8,6 +8,8 @@ import { GroupedBarChartEngine }   from './GroupedBarChartEngine';
 import { StackedBarChartEngine }   from './StackedBarChartEngine';
 import { LollipopChartEngine }     from './LollipopChartEngine';
 import { WaffleChartEngine }       from './WaffleChartEngine';
+import { BoxPlotEngine }           from './BoxPlotEngine';
+import { WordCloudEngine }         from './WordCloudEngine';
 import type { ChartEngineProps, FlatChartType } from './types';
 import type { GroupedChartData, RankingData } from '@/lib/dataAggregator';
 import type { ChartConfig } from '@/lib/chartConfig';
@@ -16,6 +18,7 @@ interface ChartRendererProps extends ChartEngineProps {
   type?:        FlatChartType;
   rankingData?: RankingData;
   fieldName?:   string;
+  numericValues?: number[];
 }
 
 export function ChartRenderer({
@@ -23,8 +26,12 @@ export function ChartRenderer({
   isMultiSelect = false,
   rankingData,
   fieldName = '',
+  numericValues = [],
   ...props
 }: ChartRendererProps) {
+  if (type === 'boxplot' && numericValues.length) {
+    return <BoxPlotEngine values={numericValues} config={props.config} height={props.height} />;
+  }
   if (type === 'ranking-heatmap' && rankingData) {
     return <RankingHeatmapEngine data={rankingData} fieldName={fieldName} height={props.height} />;
   }
@@ -55,6 +62,7 @@ export function ChartRenderer({
     case 'area':  return <LineChartEngine {...props} isMultiSelect={isMultiSelect} area={true} />;
     case 'lollipop': return <LollipopChartEngine {...props} isMultiSelect={isMultiSelect} />;
     case 'waffle': return <WaffleChartEngine {...props} isMultiSelect={isMultiSelect} />;
+    case 'wordcloud': return <WordCloudEngine {...props} isMultiSelect={isMultiSelect} />;
     case 'bar':
     default:      return <BarChartEngine  {...props} isMultiSelect={isMultiSelect} />;
   }

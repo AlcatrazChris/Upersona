@@ -17,11 +17,11 @@ export function PieChartEngine({
   const data    = applyTopN(rawData, Math.min(config.topN || 5, 5));
   const colors  = getColors(config.colorScheme);
   const chartH  = height ?? 280;
-  const innerR  = donut ? 44 : 0;
+  const innerR  = donut ? config.pieInnerRadius : 0;
   const outerR  = donut ? 78 : 88;
 
   return (
-    <div style={{ height: chartH }}>
+    <div style={{ height: chartH, background: config.backgroundColor, fontFamily: config.fontFamily, padding: config.chartPadding }}>
       <ResponsiveContainer width="100%" height="100%">
         <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
           <Pie
@@ -32,12 +32,17 @@ export function PieChartEngine({
             cy="44%"
             innerRadius={innerR}
             outerRadius={outerR}
-            paddingAngle={1}
+            paddingAngle={config.piePaddingAngle}
+            isAnimationActive={config.animation}
             label={(props) => (
               <PieSliceLabel
                 {...props}
                 showLabel={config.showLabel}
                 labelType={config.labelType}
+                decimalPlaces={config.decimalPlaces}
+                valuePrefix={config.valuePrefix}
+                valueSuffix={config.valueSuffix}
+                showZeroLabels={config.showZeroLabels}
               />
             )}
             labelLine={false}
@@ -66,7 +71,7 @@ export function PieChartEngine({
             <Legend
               verticalAlign={config.legendPosition === 'top' ? 'top' : config.legendPosition === 'bottom' ? 'bottom' : 'middle'}
               align={config.legendPosition === 'left' ? 'left' : config.legendPosition === 'right' ? 'right' : 'center'}
-              layout={config.legendPosition === 'left' || config.legendPosition === 'right' ? 'vertical' : 'horizontal'}
+              layout={config.legendDirection}
               iconType="circle"
               iconSize={8}
               wrapperStyle={{

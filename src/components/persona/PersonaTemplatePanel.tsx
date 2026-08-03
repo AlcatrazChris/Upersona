@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Check, Loader2, Sparkles } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Loader2, Sparkles } from 'lucide-react';
 import { useDatasetStore } from '@/store/datasetStore';
 import {
   PERSONA_ROLE_META,
@@ -23,12 +23,18 @@ export function PersonaTemplatePanel({ dataset }: { dataset: Dataset }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const fields = useMemo(() => dataset.fields.map(field => ({
-    field,
-    role: config.personaRoles?.[field.key] ?? inferPersonaRole(field),
-  })).sort((a, b) =>
-    PERSONA_ROLE_META[a.role].order - PERSONA_ROLE_META[b.role].order
-  ), [dataset.fields, config.personaRoles]);
+  const fields = useMemo(() => {
+    const order = new Map((config.personaFieldKeys ?? []).map((key, index) => [key, index]));
+    return dataset.fields.map(field => ({
+      field,
+      role: config.personaRoles?.[field.key] ?? inferPersonaRole(field),
+    })).sort((a, b) => {
+      const ai = order.get(a.field.key);
+      const bi = order.get(b.field.key);
+      if (ai !== undefined || bi !== undefined) return (ai ?? Infinity) - (bi ?? Infinity);
+      return PERSONA_ROLE_META[a.role].order - PERSONA_ROLE_META[b.role].order;
+    });
+  }, [dataset.fields, config.personaFieldKeys, config.personaRoles]);
 
   function patchField(key: string, role: PersonaSemanticRole, included: boolean) {
     updateViewConfig(dataset.id, {
@@ -52,6 +58,15 @@ export function PersonaTemplatePanel({ dataset }: { dataset: Dataset }) {
         },
       },
     });
+  }
+
+  function moveField(key: string, direction: -1 | 1) {
+    const keys = [...(config.personaFieldKeys ?? [])];
+    const index = keys.indexOf(key);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= keys.length) return;
+    [keys[index], keys[target]] = [keys[target], keys[index]];
+    updateViewConfig(dataset.id, { personaFieldKeys: keys });
   }
 
   async function analyze() {
@@ -111,18 +126,30 @@ export function PersonaTemplatePanel({ dataset }: { dataset: Dataset }) {
       </div>
       {error && <div role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <div className="grid min-w-[880px] grid-cols-[44px_minmax(150px,1fr)_150px_150px_minmax(220px,1fr)] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-500">
-          <span>启用</span><span>字段</span><span>画像角色</span><span>图表类型</span><span>关联字段 / 识别依据</span>
+        <div className="grid min-w-[940px] grid-cols-[44px_64px_minmax(150px,1fr)_150px_150px_minmax(220px,1fr)] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-500">
+          <span>启用</span><span>顺序</span><span>字段</span><span>画像角色</span><span>图表类型</span><span>关联字段 / 识别依据</span>
         </div>
         {fields.map(({ field, role }) => {
           const included = selected.has(field.key);
           return (
-            <div key={field.key} className="grid min-w-[880px] grid-cols-[44px_minmax(150px,1fr)_150px_150px_minmax(220px,1fr)] items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-0">
+            <div key={field.key} className="grid min-w-[940px] grid-cols-[44px_64px_minmax(150px,1fr)_150px_150px_minmax(220px,1fr)] items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-0">
               <button type="button" aria-label={`${included ? '移除' : '加入'}画像字段 ${field.name}`}
                 aria-pressed={included} onClick={() => patchField(field.key, role, !included)}
                 className={`flex h-6 w-6 items-center justify-center rounded border ${included ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white text-transparent'}`}>
                 <Check size={14} />
               </button>
+              <div className="flex gap-1">
+                <button type="button" aria-label={`上移 ${field.name}`} disabled={!included || config.personaFieldKeys?.[0] === field.key}
+                  onClick={() => moveField(field.key, -1)}
+                  className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-25">
+                  <ChevronUp size={14} />
+                </button>
+                <button type="button" aria-label={`下移 ${field.name}`} disabled={!included || config.personaFieldKeys?.at(-1) === field.key}
+                  onClick={() => moveField(field.key, 1)}
+                  className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-25">
+                  <ChevronDown size={14} />
+                </button>
+              </div>
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium text-slate-800">{field.name}</div>
                 <div className="truncate text-xs text-slate-400">{field.key}</div>

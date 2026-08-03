@@ -348,16 +348,25 @@ export function FieldList({ dataset }: { dataset: Dataset }) {
     setAiAction('ordering');
     setActionHint(null);
     try {
-      const result = await requestFieldAnalysis<{
-        orderings: Array<{ key: string; orderedValues: string[] }>;
-      }>('ordering', candidates);
-      for (const ordering of result.orderings) {
-        updateFieldOrdering(dataset.id, ordering.key, true, ordering.orderedValues);
+      let orderedCount = 0;
+      // Use the exact same endpoint and payload as the per-field "AI 建议" action.
+      for (const field of candidates) {
+        const response = await fetch('/api/order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fieldName: field.name, values: field.options }),
+        });
+        const result: { isOrdered?: boolean; orderedValues?: string[]; error?: string } = await response.json();
+        if (!response.ok || result.error) throw new Error(result.error ?? `AI 排序失败 (${response.status})`);
+        if (result.isOrdered && result.orderedValues && result.orderedValues.length === field.options?.length) {
+          updateFieldOrdering(dataset.id, field.key, true, result.orderedValues);
+          orderedCount++;
+        }
       }
       showHint(
         'success',
-        result.orderings.length > 0
-          ? `已自动排序 ${result.orderings.length} 个字段`
+        orderedCount > 0
+          ? `已自动排序 ${orderedCount} 个字段`
           : 'AI 判断这些字段均无天然顺序',
       );
     } catch (error) {

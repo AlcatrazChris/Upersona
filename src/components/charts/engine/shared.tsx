@@ -135,18 +135,19 @@ const RADIAN = Math.PI / 180;
 export function PieSliceLabel(props: any) {
   const {
     cx, cy, midAngle, innerRadius, outerRadius,
-    percentage, count, showLabel, labelType,
+    percentage, count, showLabel, labelType, decimalPlaces = 0, valuePrefix = '', valueSuffix = '', showZeroLabels = false,
   } = props as {
     cx: number; cy: number; midAngle: number;
     innerRadius: number; outerRadius: number;
     percentage: number; count: number;
-    showLabel: boolean; labelType: LabelType;
+    showLabel: boolean; labelType: LabelType; decimalPlaces?: number; valuePrefix?: string; valueSuffix?: string; showZeroLabels?: boolean;
   };
-  if (!showLabel || percentage < 4) return null;
+  if (!showLabel || (!showZeroLabels && percentage === 0) || percentage < 4) return null;
   const r = innerRadius + (outerRadius - innerRadius) * 0.52;
   const x = cx + r * Math.cos(-midAngle * RADIAN);
   const y = cy + r * Math.sin(-midAngle * RADIAN);
-  const text = labelType === 'count' ? `${count}` : `${percentage.toFixed(0)}%`;
+  const value = labelType === 'count' ? `${count}` : `${percentage.toFixed(decimalPlaces)}%`;
+  const text = `${valuePrefix}${value}${valueSuffix}`;
   return (
     <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central"
       style={{ fontSize: 11, fontWeight: 600, pointerEvents: 'none' }}>
@@ -157,19 +158,21 @@ export function PieSliceLabel(props: any) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function BarLabelContent(props: any & { items: ChartDataItem[]; labelType: LabelType; fontSize: number }) {
-  const { x, y, width, height, value, index, items, labelType, fontSize } = props as {
+  const { x, y, width, height, value, index, items, labelType, fontSize, decimalPlaces = 0, valuePrefix = '', valueSuffix = '', showZeroLabels = false } = props as {
     x: number; y: number; width: number; height: number;
     value: number; index: number;
-    items: ChartDataItem[]; labelType: LabelType; fontSize: number;
+    items: ChartDataItem[]; labelType: LabelType; fontSize: number; decimalPlaces?: number; valuePrefix?: string; valueSuffix?: string; showZeroLabels?: boolean;
   };
   const item = items[index];
   if (!item || x == null || y == null) return null;
+  if (!showZeroLabels && Number(value) === 0) return null;
   const lx = x + width + 6;
   const ly = y + height / 2 + 1;
   let text = '';
-  if (labelType === 'pct')   text = `${Number(value).toFixed(1)}%`;
+  if (labelType === 'pct')   text = `${Number(value).toFixed(decimalPlaces)}%`;
   if (labelType === 'count') text = `${item.count}`;
-  if (labelType === 'both')  text = `${Number(value).toFixed(1)}% / ${item.count}`;
+  if (labelType === 'both')  text = `${Number(value).toFixed(decimalPlaces)}% / ${item.count}`;
+  text = `${valuePrefix}${text}${valueSuffix}`;
   return (
     <text x={lx} y={ly} dominantBaseline="middle"
       style={{ fontSize, fill: 'rgba(0,0,0,0.62)', fontWeight: 600, fontVariantNumeric: 'tabular-nums', pointerEvents: 'none' }}>

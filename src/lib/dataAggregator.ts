@@ -122,6 +122,14 @@ function aggregateMultiChoice(records: Record<string, unknown>[], field: Field):
   return toItems(countMap(allParts), validRows, field.orderedValues);
 }
 
+function aggregateText(records: Record<string, unknown>[], field: Field): ChartDataItem[] {
+  const terms = records.flatMap(record => toStr(record[field.key])
+    .split(/[┋,，。；;、|/\n\r]+/)
+    .map(value => value.trim())
+    .filter(value => value.length >= 2 && value.length <= 24));
+  return toItems(countMap(terms), terms.length, field.isOrdered ? field.orderedValues : undefined);
+}
+
 function aggregateNumeric(records: Record<string, unknown>[], field: Field): ChartDataItem[] {
   const values: number[] = [];
   for (const r of records) {
@@ -215,7 +223,7 @@ export function aggregateRanking(
   records: Record<string, unknown>[],
   field:   Field,
 ): RankingData {
-  const delimiter = field.multiDelimiter ?? '→';
+  const delimiter = field.multiDelimiter ?? '->';
   const sequences: string[][] = [];
 
   for (const r of records) {
@@ -288,10 +296,10 @@ export function aggregateField(
     case 'date':
       return aggregateDate(records, field, dateGran);
     case 'text':
-      return aggregateCategorical(records, field).slice(0, 15);
+      return aggregateText(records, field).slice(0, 60);
     case 'ranking':
       // Flat fallback: treat options as multi-choice for grouping contexts
-      return aggregateMultiChoice(records, { ...field, multiDelimiter: field.multiDelimiter ?? '→' });
+      return aggregateMultiChoice(records, { ...field, multiDelimiter: field.multiDelimiter ?? '->' });
     default:
       return [];
   }

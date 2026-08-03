@@ -40,6 +40,22 @@ def text(value: Any) -> str:
     return "" if value is None else str(value).strip()
 
 
+# 2025 第一财经·新一线城市研究所《城市商业魅力排行榜》。项目将四、五线合并展示。
+CITY_TIERS = {
+    "一线城市": set("上海市 北京市 深圳市 广州市 新界".split()),
+    "新一线城市": set("成都市 杭州市 重庆市 武汉市 苏州市 西安市 南京市 长沙市 郑州市 天津市 合肥市 青岛市 东莞市 宁波市 佛山市".split()),
+    "二线城市": set("济南市 无锡市 沈阳市 昆明市 福州市 厦门市 温州市 石家庄市 大连市 哈尔滨市 金华市 泉州市 南宁市 长春市 常州市 南昌市 南通市 贵阳市 嘉兴市 徐州市 惠州市 太原市 烟台市 临沂市 保定市 台州市 绍兴市 珠海市 洛阳市 潍坊市".split()),
+    "三线城市": set("乌鲁木齐市 兰州市 中山市 盐城市 海口市 扬州市 济宁市 湖州市 赣州市 邯郸市 南阳市 唐山市 芜湖市 阜阳市 廊坊市 汕头市 泰州市 呼和浩特市 镇江市 江门市 菏泽市 连云港市 沧州市 淄博市 新乡市 周口市 襄阳市 淮安市 商丘市 桂林市 咸阳市 上饶市 银川市 宿迁市 漳州市 遵义市 滁州市 绵阳市 宜昌市 威海市 湛江市 九江市 邢台市 揭阳市 三亚市 衡阳市 信阳市 泰安市 荆州市 肇庆市 蚌埠市 安阳市 安庆市 德州市 株洲市 莆田市 聊城市 驻马店市 岳阳市 亳州市 柳州市 宜春市 宿州市 黄冈市 六安市 常德市 宁德市 茂名市 马鞍山市 衢州市".split()),
+}
+
+
+def city_tier(city: Any) -> str:
+    name = text(city)
+    if not name:
+        return ""
+    return next((tier for tier, cities in CITY_TIERS.items() if name in cities), "四线城市及以下")
+
+
 def learn_maps(raw_rows: list[tuple[Any, ...]], clean_rows: list[tuple[Any, ...]]):
     whole_counts = defaultdict(lambda: defaultdict(Counter))
     token_counts = defaultdict(lambda: defaultdict(Counter))
@@ -166,11 +182,15 @@ def main() -> None:
         row[0] = raw[1]
         for clean_col, raw_col in DIRECT_COLUMNS.items():
             row[clean_col] = clean_value(raw[raw_col], raw_col, whole, tokens)
-        row[3:8] = geo_map.get(text(raw[8]), fallback_geo(raw[8], city_map))
+        geo = list(geo_map.get(text(raw[8]), fallback_geo(raw[8], city_map)))
+        row[3:8] = geo
         row[32] = vehicle_map.get(text(raw[42]), ("其他/无法识别",))[0]
         row[35], row[36] = budget_map.get(text(raw[45]), fallback_budget(raw[45]))
         row[48], row[49], row[50] = recommend_map.get(text(raw[66]), fallback_recommend(raw[66]))
         output_rows.append(row)
+
+    for row in output_rows:
+        row[7] = city_tier(row[5])
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     workbook = Workbook()
@@ -187,6 +207,9 @@ def main() -> None:
         raise AssertionError("学历复合选项被错误拆分")
     if any(value in SKIP_VALUES for row in output_rows for value in map(text, row)):
         raise AssertionError("清洗结果仍包含跳过值")
+    valid_tiers = set(CITY_TIERS) | {"四线城市及以下"}
+    if any(text(row[5]) and row[7] not in valid_tiers for row in output_rows):
+        raise AssertionError("存在未分级城市")
     print(f"清洗完成：{args.output} ({len(output_rows)} 行 × {len(headers)} 列)")
 
 

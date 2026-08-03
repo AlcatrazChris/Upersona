@@ -55,32 +55,42 @@ function scatter(records: Record<string, unknown>[], xKey: string, yKey: string)
   }).slice(0, 1000);
 }
 
-function dumbbell(records: Record<string, unknown>[], categoryKey: string, startKey: string, endKey: string): DumbbellPoint[] {
+function dumbbell(records: Record<string, unknown>[], field: Field, startKey: string, endKey: string): DumbbellPoint[] {
   const groups = new Map<string, { start: number[]; end: number[] }>();
   for (const record of records) {
-    const label = String(record[categoryKey] ?? '').trim();
+    const label = String(record[field.key] ?? '').trim();
     const start = Number(record[startKey]);
     const end = Number(record[endKey]);
     if (!label || !Number.isFinite(start) || !Number.isFinite(end)) continue;
     const group = groups.get(label) ?? { start: [], end: [] };
     group.start.push(start); group.end.push(end); groups.set(label, group);
   }
-  return [...groups.entries()].map(([label, values]) => ({
+  const result = [...groups.entries()].map(([label, values]) => ({
     label,
     start: values.start.reduce((sum, value) => sum + value, 0) / values.start.length,
     end: values.end.reduce((sum, value) => sum + value, 0) / values.end.length,
-  })).sort((a, b) => Math.abs(b.end - b.start) - Math.abs(a.end - a.start)).slice(0, 10);
+  }));
+  return (field.isOrdered && field.orderedValues?.length
+    ? result.sort((a, b) => {
+        const ai = field.orderedValues!.indexOf(a.label);
+        const bi = field.orderedValues!.indexOf(b.label);
+        return (ai < 0 ? Infinity : ai) - (bi < 0 ? Infinity : bi);
+      })
+    : result.sort((a, b) => Math.abs(b.end - b.start) - Math.abs(a.end - a.start))).slice(0, 10);
 }
 
 function difference(records: Record<string, unknown>[], baseline: Record<string, unknown>[], field: Field): DifferencePoint[] {
   const current = aggregateField(records, field);
   const base = new Map(aggregateField(baseline, field).map(item => [item.label, item.percentage]));
-  return current.map(item => ({
+  const result = current.map(item => ({
     label: item.label,
     value: item.percentage,
     baseline: base.get(item.label) ?? 0,
     delta: item.percentage - (base.get(item.label) ?? 0),
-  })).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 10);
+  }));
+  return (field.isOrdered && field.orderedValues?.length
+    ? result
+    : result.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))).slice(0, 10);
 }
 
 function heatmap(records: Record<string, unknown>[], rowKey: string, columnKey: string, valueKey?: string): HeatmapCell[] {
@@ -116,7 +126,7 @@ export function AdvancedPersonaChartEngine({ dataset, field, records, baselineRe
   const data = useMemo(() => {
     if (spec.type === 'histogram') return histogram(records, field.key, spec.bins);
     if (spec.type === 'scatter' && secondary) return scatter(records, field.key, secondary.key);
-    if (spec.type === 'dumbbell' && secondary && endField) return dumbbell(records, field.key, secondary.key, endField.key);
+    if (spec.type === 'dumbbell' && secondary && endField) return dumbbell(records, field, secondary.key, endField.key);
     if (spec.type === 'difference') return difference(records, baselineRecords, field);
     if (spec.type === 'heatmap' && secondary) {
       return heatmap(records, field.key, secondary.key, spec.valueFieldKey);

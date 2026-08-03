@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  aggregateField,
   aggregateByStatusGroups,
   sortChartItemsByCount,
 } from '../src/lib/dataAggregator.ts';
@@ -42,5 +43,13 @@ const ordered = aggregateByStatusGroups(
   [{ key: 'a', label: 'A', values: ['A'] }],
 );
 assert.deepEqual(ordered.items.map(item => item.label), ['low', 'high']);
+
+assert.deepEqual(
+  aggregateField(
+    [{ answer: 'low' }, { answer: 'high' }, { answer: 'high' }],
+    { key: 'answer', name: 'answer', type: 'single_choice', isOrdered: true, orderedValues: ['low', 'high'] },
+  ).map(item => item.label),
+  ['low', 'high'],
+);
 
 console.log('chart ordering: ok');

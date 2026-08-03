@@ -34,21 +34,24 @@ export function LineChartEngine({
       tick={{ fontSize: config.axisFontSize, fill: '#64748b' }}
       axisLine={false}
       tickLine={false}
+      label={config.xAxisTitle ? { value: config.xAxisTitle, position: 'insideBottom', offset: -2, fontSize: config.axisFontSize } : undefined}
     />
   ) : null;
 
   const yAxis = config.showYAxis ? (
     <YAxis
-      domain={[0, yMax]}
+      domain={[config.axisMin ?? (config.startAtZero ? 0 : 'auto'), config.axisMax ?? yMax]}
+      tickCount={config.tickCount}
       tick={{ fontSize: config.axisFontSize, fill: '#64748b' }}
       axisLine={false}
       tickLine={false}
       tickFormatter={v => `${v}%`}
+      label={config.yAxisTitle ? { value: config.yAxisTitle, angle: -90, position: 'insideLeft', fontSize: config.axisFontSize } : undefined}
     />
   ) : null;
 
   const grid = config.showGrid ? (
-    <CartesianGrid stroke="#e2e8f0" vertical={false} />
+    <CartesianGrid stroke={config.gridColor} vertical={false} />
   ) : null;
 
   const tooltip = config.showTooltip ? (
@@ -82,13 +85,13 @@ export function LineChartEngine({
     <LabelList
       dataKey="percentage"
       position="top"
-      formatter={(v: number) => `${v.toFixed(1)}%`}
+      formatter={(v: number) => `${config.valuePrefix}${v.toFixed(config.decimalPlaces)}%${config.valueSuffix}`}
       style={{ fontSize: config.labelFontSize - 1, fill: 'rgba(0,0,0,0.40)', fontWeight: 500 }}
     />
   ) : null;
 
   return (
-    <div style={{ height: chartH }}>
+    <div style={{ height: chartH, background: config.backgroundColor, fontFamily: config.fontFamily, padding: config.chartPadding }}>
       <ResponsiveContainer width="100%" height="100%">
         {area ? (
           <AreaChart {...commonProps}>
@@ -100,12 +103,13 @@ export function LineChartEngine({
               </linearGradient>
             </defs>
             <Area
-              type="monotone"
+              type={config.lineCurve ? 'monotone' : 'linear'}
               dataKey="percentage"
               stroke={color}
-              strokeWidth={2}
+              strokeWidth={config.lineWidth}
               fill={`url(#area-grad-${color.replace('#', '')})`}
-              dot={false}
+              dot={config.showMarkers ? { r: config.markerSize } : false}
+              isAnimationActive={config.animation}
               activeDot={{ r: 5, fill: color, stroke: 'white', strokeWidth: 2 }}
               fillOpacity={config.barOpacity}
             >
@@ -116,11 +120,12 @@ export function LineChartEngine({
           <LineChart {...commonProps}>
             {grid}{xAxis}{yAxis}{tooltip}{refLine}
             <Line
-              type="monotone"
+              type={config.lineCurve ? 'monotone' : 'linear'}
               dataKey="percentage"
               stroke={color}
-              strokeWidth={2}
-              dot={false}
+              strokeWidth={config.lineWidth}
+              dot={config.showMarkers ? { r: config.markerSize } : false}
+              isAnimationActive={config.animation}
               activeDot={{ r: 5, fill: color, stroke: 'white', strokeWidth: 2 }}
               fillOpacity={config.barOpacity}
             >

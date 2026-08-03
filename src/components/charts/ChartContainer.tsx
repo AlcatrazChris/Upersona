@@ -10,6 +10,7 @@ import { ChartRenderer, GroupChartRenderer } from './engine/ChartRenderer';
 import type { ChartDataItem } from './engine/types';
 import type { GroupedChartData } from '@/lib/dataAggregator';
 import { cn } from '@/lib/utils';
+import { DEFAULT_CHART_CONFIG } from '@/lib/chartConfig';
 
 interface ChartContainerProps {
   schema: ChartSchema;
@@ -19,6 +20,7 @@ interface ChartContainerProps {
 }
 
 export function ChartContainer({ schema, dataset, className, contentOnly = false }: ChartContainerProps) {
+  const appearance = { ...DEFAULT_CHART_CONFIG, ...schema.appearance };
   const validation = useMemo(() => validateChartSchema(schema, dataset), [schema, dataset]);
   const frameResult = useMemo(() => {
     if (!validation.valid) return null;
@@ -48,7 +50,7 @@ export function ChartContainer({ schema, dataset, className, contentOnly = false
           data={[]}
           rankingData={aggregateRanking(dataset.records, field)}
           fieldName={field.name}
-          config={schema.appearance}
+          config={appearance}
           height={schema.layout.height}
         />
       );
@@ -67,7 +69,7 @@ export function ChartContainer({ schema, dataset, className, contentOnly = false
         <GroupChartRenderer
           type={schema.chart.type === 'stacked-bar' ? 'stacked' : 'grouped'}
           data={grouped}
-          config={schema.appearance}
+          config={appearance}
           height={schema.layout.height}
         />
       );
@@ -77,9 +79,10 @@ export function ChartContainer({ schema, dataset, className, contentOnly = false
       <ChartRenderer
         type={schema.chart.type}
         data={frame.rows as unknown as ChartDataItem[]}
-        config={schema.appearance}
+        config={appearance}
         isMultiSelect={frame.meta.isMultiSelect}
         totalSamples={frame.meta.sourceRowCount}
+        numericValues={frame.meta.numericValues}
         height={schema.layout.height}
       />
     );

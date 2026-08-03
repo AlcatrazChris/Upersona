@@ -11,6 +11,7 @@
 
 import type { Field, FieldType, Dataset } from '@/types/dataSchema';
 import { recommendCharts } from '@/types/dataSchema';
+import { MULTI_CHOICE_DELIMITER, RANKING_DELIMITER, splitRankingValue } from '@/lib/fieldSyntax';
 
 const DATE_RE = /^\d{4}(?:[-/.]\d{1,2}[-/.]\d{1,2}|年\d{1,2}月\d{1,2}日)(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?$/;
 const NUMBER_RE = /^-?\d+(\.\d+)?$/;
@@ -39,16 +40,15 @@ export function detectFieldType(values: unknown[]): FieldType {
   const numCount = nonEmpty.filter(v => NUMBER_RE.test(v)).length;
   if (numCount / total >= 0.8) return 'number';
 
-  // 排序题：≥15% 的值包含 → 且每部分长度合理（排除 URL、箭头符号滥用）
+  // 排序题：≥15% 的值包含 -> 且每部分长度合理
   const rankCount = nonEmpty.filter(v => {
-    if (!v.includes('→')) return false;
-    const parts = v.split('→').map(p => p.trim()).filter(Boolean);
+    const parts = splitRankingValue(v);
     return parts.length >= 2 && parts.every(p => p.length >= 1 && p.length <= 30);
   }).length;
   if (rankCount / total >= 0.15) return 'ranking';
 
   // 多选：出现 ┋ 分隔符 → 确定是多选（无需达到阈值）
-  if (nonEmpty.some(v => v.includes('┋'))) return 'multi_choice';
+  if (nonEmpty.some(v => v.includes(MULTI_CHOICE_DELIMITER))) return 'multi_choice';
 
   // 单选：唯一值数量 ≤ min(30, total * 0.3)
   const uniqueCount = new Set(nonEmpty).size;
@@ -106,12 +106,12 @@ export function detectSchema(
         if (v == null) continue;
         const raw = String(v).trim();
         if (!raw) continue;
-        raw.split('→').map(p => p.trim()).filter(Boolean).forEach(p => opts.add(p));
+        splitRankingValue(raw).forEach(p => opts.add(p));
       }
       options = [...opts];
-      multiDelimiter = '→';
+      multiDelimiter = RANKING_DELIMITER;
     } else if (type === 'multi_choice') {
-      multiDelimiter = '┋';
+      multiDelimiter = MULTI_CHOICE_DELIMITER;
 
       const opts = new Set<string>();
       for (const v of values) {

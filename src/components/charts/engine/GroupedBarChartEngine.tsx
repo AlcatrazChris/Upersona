@@ -80,18 +80,18 @@ export function GroupedBarChartEngine({
   const rightMargin = config.showLabel && !isStacked ? 46 : 12;
 
   return (
-    <div className={className} style={{ height: actualHeight }}>
+    <div className={className} style={{ height: actualHeight, background: config.backgroundColor, fontFamily: config.fontFamily, padding: config.chartPadding }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           layout="vertical"
           data={items}
           margin={{ top: 4, right: rightMargin, left: 0, bottom: 4 }}
           barCategoryGap="22%"
-          barGap={isStacked ? 0 : 3}
+          barGap={isStacked ? 0 : config.barGap}
           barSize={minBarH}
         >
           {config.showGrid && (
-            <CartesianGrid stroke="#e2e8f0" horizontal={false} />
+            <CartesianGrid stroke={config.gridColor} horizontal={false} />
           )}
 
           {/* Always render axes with hide prop — avoids recharts defaulting to
@@ -100,6 +100,9 @@ export function GroupedBarChartEngine({
             type="number"
             hide={!config.showXAxis}
             tickFormatter={(v: number) => `${v}%`}
+            domain={[config.axisMin ?? (config.startAtZero ? 0 : 'auto'), config.axisMax ?? 'auto']}
+            tickCount={config.tickCount}
+            label={config.xAxisTitle ? { value: config.xAxisTitle, position: 'insideBottom', offset: -2, fontSize: config.axisFontSize } : undefined}
             tick={{ fontSize: config.axisFontSize, fill: '#64748b' }}
             axisLine={false}
             tickLine={false}
@@ -112,6 +115,7 @@ export function GroupedBarChartEngine({
             tick={{ fontSize: config.axisFontSize, fill: '#475569' }}
             axisLine={false}
             tickLine={false}
+            label={config.yAxisTitle ? { value: config.yAxisTitle, angle: -90, position: 'insideLeft', fontSize: config.axisFontSize } : undefined}
           />
 
           {config.showTooltip && (

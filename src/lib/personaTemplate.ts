@@ -13,7 +13,7 @@ export type PersonaSemanticRole =
   | 'metadata';
 
 export type PersonaChartType =
-  | 'bar' | 'lollipop' | 'waffle' | 'donut'
+  | 'bar' | 'lollipop' | 'waffle' | 'donut' | 'wordcloud'
   | 'line' | 'area' | 'ranking-heatmap'
   | 'scatter' | 'histogram' | 'dumbbell' | 'difference' | 'heatmap';
 
@@ -32,7 +32,7 @@ export interface DifferencePoint { label: string; baseline: number; delta: numbe
 export interface HeatmapCell { row: string; column: string; value: number }
 
 export const PERSONA_CHART_LABELS: Record<PersonaChartType, string> = {
-  bar: '条形图', lollipop: '棒棒糖图', waffle: '华夫图', donut: '环形图',
+  bar: '条形图', lollipop: '棒棒糖图', waffle: '华夫图', donut: '环形图', wordcloud: '词云',
   line: '折线图', area: '面积图', 'ranking-heatmap': '排序热力图',
   scatter: '散点图', histogram: '直方图', dumbbell: '哑铃图',
   difference: '差异图', heatmap: '矩阵热力图',
@@ -43,9 +43,10 @@ export function personaChartOptions(field: Field): PersonaChartType[] {
   if (field.type === 'number') return ['histogram', 'scatter', 'dumbbell', 'bar'];
   if (field.type === 'date') return ['line', 'area'];
   if (field.type === 'single_choice' || field.type === 'boolean') {
-    return ['bar', 'lollipop', 'waffle', 'donut', 'difference', 'heatmap', 'dumbbell'];
+    return ['bar', 'donut', 'heatmap', 'wordcloud', 'dumbbell'];
   }
-  if (field.type === 'multi_choice') return ['bar', 'lollipop', 'difference'];
+  if (field.type === 'multi_choice') return ['bar', 'wordcloud'];
+  if (field.type === 'text') return ['wordcloud', 'bar'];
   return ['bar'];
 }
 

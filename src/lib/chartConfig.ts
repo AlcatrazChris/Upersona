@@ -1,5 +1,7 @@
 export type LegendPosition = 'bottom' | 'top' | 'right' | 'left';
 export type LabelType     = 'pct' | 'count' | 'both';
+export type LabelPosition = 'auto' | 'inside' | 'outside' | 'center';
+export type LegendDirection = 'horizontal' | 'vertical';
 
 export interface ChartConfig {
   colorScheme:     ColorScheme;
@@ -21,6 +23,30 @@ export interface ChartConfig {
   minBarSize:      number;
   topN?:           number;   // 0 or undefined = show all; positive = top N bars + 其他
   compact?:        boolean;  // tighter bar spacing and card padding
+  labelPosition:   LabelPosition;
+  decimalPlaces:   number;
+  valuePrefix:     string;
+  valueSuffix:     string;
+  showZeroLabels:  boolean;
+  xAxisTitle:      string;
+  yAxisTitle:      string;
+  axisMin?:        number;
+  axisMax?:        number;
+  startAtZero:     boolean;
+  tickCount:       number;
+  gridColor:       string;
+  legendDirection: LegendDirection;
+  backgroundColor: string;
+  fontFamily:      string;
+  chartPadding:    number;
+  barGap:          number;
+  lineWidth:       number;
+  lineCurve:       boolean;
+  showMarkers:     boolean;
+  markerSize:      number;
+  pieInnerRadius:  number;
+  piePaddingAngle: number;
+  animation:       boolean;
 }
 
 export type ColorScheme =
@@ -65,6 +91,30 @@ export const DEFAULT_CHART_CONFIG: ChartConfig = {
   minBarSize:      20,
   topN:            10,
   compact:         false,
+  labelPosition:   'auto',
+  decimalPlaces:   0,
+  valuePrefix:     '',
+  valueSuffix:     '',
+  showZeroLabels:  false,
+  xAxisTitle:      '',
+  yAxisTitle:      '',
+  axisMin:         undefined,
+  axisMax:         undefined,
+  startAtZero:     true,
+  tickCount:       5,
+  gridColor:       '#e2e8f0',
+  legendDirection: 'horizontal',
+  backgroundColor: '#ffffff',
+  fontFamily:      'inherit',
+  chartPadding:    8,
+  barGap:          3,
+  lineWidth:       2,
+  lineCurve:       false,
+  showMarkers:     true,
+  markerSize:      4,
+  pieInnerRadius:  56,
+  piePaddingAngle: 1,
+  animation:       true,
 };
 
 // 通用 pageKey（任意字符串即可，用于 localStorage 隔离）
@@ -74,10 +124,12 @@ export const CHART_CAPABILITIES: Record<string, Set<keyof ChartConfig>> = {
   bar: new Set(['colorScheme','showXAxis','showYAxis','showGrid','showLabel','labelType','showSampleCount','showTooltip','axisFontSize','labelFontSize','barRadius','barOpacity','chartHeight','minBarSize','topN','compact']),
   lollipop: new Set(['colorScheme','showXAxis','showYAxis','showGrid','showSampleCount','showTooltip','axisFontSize','barOpacity','chartHeight','topN']),
   waffle: new Set(['colorScheme','showLabel','showLegend','showSampleCount','labelFontSize','legendFontSize','barOpacity','topN']),
+  wordcloud: new Set(['colorScheme','showLabel','showSampleCount','showTooltip','labelFontSize','barOpacity','chartHeight','topN','compact']),
   pie: new Set(['colorScheme','showLabel','labelType','showLegend','legendPosition','showSampleCount','showTooltip','labelFontSize','legendFontSize','barOpacity','chartHeight','topN']),
   donut: new Set(['colorScheme','showLabel','labelType','showLegend','legendPosition','showSampleCount','showTooltip','labelFontSize','legendFontSize','barOpacity','chartHeight','topN']),
   line: new Set(['colorScheme','showXAxis','showYAxis','showGrid','showLabel','showSampleCount','showTooltip','axisFontSize','labelFontSize','barOpacity','chartHeight']),
   area: new Set(['colorScheme','showXAxis','showYAxis','showGrid','showLabel','showSampleCount','showTooltip','axisFontSize','labelFontSize','barOpacity','chartHeight']),
+  boxplot: new Set(['colorScheme','showXAxis','showLabel','showSampleCount','axisFontSize','labelFontSize','barOpacity','chartHeight']),
   grouped: new Set(['colorScheme','showXAxis','showYAxis','showGrid','showLabel','showLegend','showSampleCount','showTooltip','axisFontSize','labelFontSize','legendFontSize','barRadius','barOpacity','chartHeight','minBarSize']),
   stacked: new Set(['colorScheme','showXAxis','showYAxis','showGrid','showLabel','showLegend','showSampleCount','showTooltip','axisFontSize','labelFontSize','legendFontSize','barOpacity','chartHeight','minBarSize']),
   'ranking-heatmap': new Set(['colorScheme','showLabel','showSampleCount','labelFontSize','chartHeight','compact']),
@@ -88,13 +140,36 @@ export const CHART_CAPABILITIES: Record<string, Set<keyof ChartConfig>> = {
   heatmap: new Set(['showLabel','showSampleCount','labelFontSize','chartHeight','topN']),
 };
 
+const UNIVERSAL_SETTINGS = new Set<keyof ChartConfig>([
+  'backgroundColor', 'fontFamily', 'chartPadding', 'animation',
+  'decimalPlaces', 'valuePrefix', 'valueSuffix', 'showZeroLabels',
+]);
+const AXIS_SETTINGS = new Set<keyof ChartConfig>(['xAxisTitle','yAxisTitle','axisMin','axisMax','startAtZero','tickCount','gridColor']);
+const BAR_SETTINGS = new Set<keyof ChartConfig>(['barGap']);
+const LINE_SETTINGS = new Set<keyof ChartConfig>(['lineWidth','lineCurve','showMarkers','markerSize']);
+const PIE_SETTINGS = new Set<keyof ChartConfig>(['pieInnerRadius','piePaddingAngle']);
+
 export function supportsChartSetting(chartTypes: string[] | undefined, key: keyof ChartConfig) {
   if (!chartTypes?.length) return true;
+  if (UNIVERSAL_SETTINGS.has(key)) return true;
+  if (AXIS_SETTINGS.has(key)) return chartTypes.every(type => CHART_CAPABILITIES[type]?.has('showXAxis') || CHART_CAPABILITIES[type]?.has('showYAxis'));
+  if (BAR_SETTINGS.has(key)) return chartTypes.every(type => ['bar','grouped','stacked'].includes(type));
+  if (LINE_SETTINGS.has(key)) return chartTypes.every(type => ['line','area'].includes(type));
+  if (PIE_SETTINGS.has(key)) return chartTypes.every(type => ['pie','donut'].includes(type));
+  if (key === 'labelPosition') return chartTypes.every(type => CHART_CAPABILITIES[type]?.has('showLabel'));
+  if (key === 'legendDirection') return chartTypes.every(type => CHART_CAPABILITIES[type]?.has('showLegend'));
   return chartTypes.every(type => CHART_CAPABILITIES[type]?.has(key) ?? false);
 }
 
 export function supportsAnyChartSetting(chartTypes: string[] | undefined, key: keyof ChartConfig) {
   if (!chartTypes?.length) return true;
+  if (UNIVERSAL_SETTINGS.has(key)) return true;
+  if (AXIS_SETTINGS.has(key)) return chartTypes.some(type => CHART_CAPABILITIES[type]?.has('showXAxis') || CHART_CAPABILITIES[type]?.has('showYAxis'));
+  if (BAR_SETTINGS.has(key)) return chartTypes.some(type => ['bar','grouped','stacked'].includes(type));
+  if (LINE_SETTINGS.has(key)) return chartTypes.some(type => ['line','area'].includes(type));
+  if (PIE_SETTINGS.has(key)) return chartTypes.some(type => ['pie','donut'].includes(type));
+  if (key === 'labelPosition') return chartTypes.some(type => CHART_CAPABILITIES[type]?.has('showLabel'));
+  if (key === 'legendDirection') return chartTypes.some(type => CHART_CAPABILITIES[type]?.has('showLegend'));
   return chartTypes.some(type => CHART_CAPABILITIES[type]?.has(key) ?? false);
 }
 

@@ -301,12 +301,8 @@ export function PersonaView({ dataset, viewConfig }: Props) {
   const personaFields = useMemo(
     () => (viewConfig.personaFieldKeys ?? [])
         .map(k => dataset.fields.find(f => f.key === k))
-        .filter((field): field is Field => !!field && field.key !== timeField?.key)
-        .sort((a, b) =>
-          PERSONA_ROLE_META[roleForField(a, viewConfig.personaRoles)].order
-          - PERSONA_ROLE_META[roleForField(b, viewConfig.personaRoles)].order
-        ),
-    [dataset.fields, viewConfig.personaFieldKeys, viewConfig.personaRoles, timeField],
+        .filter((field): field is Field => !!field && field.key !== timeField?.key),
+    [dataset.fields, viewConfig.personaFieldKeys, timeField],
   );
   const geoLabel =
     selectedGeo.length === 0 ? '全国' :

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { COOKIE_NAME, verifyToken } from '@/lib/auth-server';
-import { ORDERING_RULES, resolveAIOrder } from '@/lib/aiOrder';
+import { ORDERING_RULES, ORDERING_SYSTEM_PROMPT, resolveAIOrder } from '@/lib/aiOrder';
 
 export const runtime = 'nodejs';
 
@@ -61,7 +61,7 @@ function parseModelJSON(content: string): unknown {
   return JSON.parse(cleaned);
 }
 
-async function callAI(prompt: string): Promise<unknown> {
+async function callAI(prompt: string, systemPrompt?: string): Promise<unknown> {
   const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -70,9 +70,13 @@ async function callAI(prompt: string): Promise<unknown> {
     },
     body: JSON.stringify({
       model: AI_MODEL,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+        { role: 'user', content: prompt },
+      ],
       max_tokens: 4000,
-      temperature: 0.1,
+      temperature: 0,
+      thinking: { type: 'disabled' },
       response_format: { type: 'json_object' },
     }),
   });
@@ -86,7 +90,9 @@ async function callAI(prompt: string): Promise<unknown> {
   if (data.choices?.[0]?.finish_reason === 'length') {
     throw new Error('AI 返回内容被截断，请重试');
   }
-  return parseModelJSON(data.choices?.[0]?.message?.content ?? '{}');
+  const content = String(data.choices?.[0]?.message?.content ?? '').trim();
+  if (!content) throw new Error('AI 返回空结果，请重试');
+  return parseModelJSON(content);
 }
 
 export async function POST(request: Request) {
@@ -136,7 +142,7 @@ ${JSON.stringify(batch.map((field, fieldIndex) => ({
 只返回 JSON：
 {"orderings":[{"fieldIndex":0,"isOrdered":true,"orderedIndices":[2,1,0]}]}`;
 
-        const raw = await callAI(`${ORDERING_RULES}\n${prompt}`) as {
+        const raw = await callAI(`${ORDERING_RULES}\n${prompt}`, ORDERING_SYSTEM_PROMPT) as {
           orderings?: Array<{
             fieldIndex?: unknown;
             isOrdered?: unknown;
@@ -182,7 +188,7 @@ ${JSON.stringify(fields)}
 同时为每个字段判断语义角色，只能使用：
 demographic, geography, lifecycle, behavior, motivation, preference, barrier, intent, open_text, metadata。
 为进入画像的字段推荐图表，只能使用：
-bar, lollipop, waffle, donut, line, area, ranking-heatmap, scatter, histogram, dumbbell, difference, heatmap。
+bar, donut, wordcloud, line, area, ranking-heatmap, scatter, histogram, dumbbell, heatmap。
 多字段图表只有在数据中存在合适关联字段时才推荐。
 只返回 JSON，personaFieldKeys 按分析价值从高到低排列，metadata 不得进入 personaFieldKeys，key 必须来自输入：
 {"personaFieldKeys":["字段key"],"roles":{"字段key":"semanticRole"},"chartTypes":{"字段key":"chartType"},"reasons":{"字段key":"简短理由"}}`;
@@ -220,10 +226,10 @@ bar, lollipop, waffle, donut, line, area, ranking-heatmap, scatter, histogram, d
       ranking: ['ranking-heatmap'],
       number: ['histogram', 'scatter', 'dumbbell', 'bar'],
       date: ['line', 'area'],
-      single_choice: ['bar', 'lollipop', 'waffle', 'donut', 'difference', 'heatmap', 'dumbbell'],
-      boolean: ['bar', 'lollipop', 'waffle', 'donut', 'difference', 'heatmap', 'dumbbell'],
-      multi_choice: ['bar', 'lollipop', 'difference'],
-      text: ['bar'],
+      single_choice: ['bar', 'donut', 'heatmap', 'wordcloud', 'dumbbell'],
+      boolean: ['bar', 'donut', 'heatmap', 'wordcloud', 'dumbbell'],
+      multi_choice: ['bar', 'wordcloud'],
+      text: ['wordcloud', 'bar'],
     };
     const rawChartTypes = raw.chartTypes && typeof raw.chartTypes === 'object'
       ? raw.chartTypes as Record<string, unknown>

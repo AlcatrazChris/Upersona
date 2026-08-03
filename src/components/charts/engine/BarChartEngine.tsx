@@ -5,7 +5,6 @@ import {
   ResponsiveContainer, Cell, LabelList, CartesianGrid,
 } from 'recharts';
 import { getColors, isSingleColorScheme } from '@/lib/chartConfig';
-import { sortChartItemsByCount } from '@/lib/dataAggregator';
 import { ChartTooltip, BarLabelContent, cfgLabelRight, applyTopN } from './shared';
 import type { ChartEngineProps } from './types';
 
@@ -41,10 +40,8 @@ function TruncatedYTick({ x, y, payload, fontSize, maxWidth }: {
 export function BarChartEngine({
   data: rawData, config, isMultiSelect = false, totalSamples, height,
 }: ChartEngineProps) {
-  const data    = applyTopN(
-    sortChartItemsByCount(rawData),
-    config.topN,
-  );
+  // Aggregation owns category order: configured field order first, count-desc otherwise.
+  const data = applyTopN(rawData, config.topN);
   const colors  = getColors(config.colorScheme);
   const useSingleColor = isSingleColorScheme(config.colorScheme);
 
@@ -62,7 +59,7 @@ export function BarChartEngine({
   }
 
   return (
-    <div style={{ height: chartH }}>
+    <div style={{ height: chartH, background: config.backgroundColor, fontFamily: config.fontFamily, padding: config.chartPadding }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={data}
@@ -71,18 +68,21 @@ export function BarChartEngine({
           barCategoryGap={compact ? '15%' : '22%'}
         >
           {config.showGrid && (
-            <CartesianGrid stroke="#e2e8f0" horizontal={false} vertical />
+            <CartesianGrid stroke={config.gridColor} horizontal={false} vertical />
           )}
           {/* Always render axes — using `hide` instead of conditional mount.
               In layout="vertical", omitting XAxis entirely causes recharts to
               infer a category-type X axis, making all bars except the first collapse. */}
           <XAxis
             type="number"
+            domain={[config.axisMin ?? (config.startAtZero ? 0 : 'auto'), config.axisMax ?? 'auto']}
+            tickCount={config.tickCount}
             hide={!config.showXAxis}
             tick={{ fontSize: config.axisFontSize, fill: '#64748b' }}
             axisLine={false}
             tickLine={false}
             tickFormatter={v => `${v}%`}
+            label={config.xAxisTitle ? { value: config.xAxisTitle, position: 'insideBottom', offset: -2, fontSize: config.axisFontSize } : undefined}
           />
           <YAxis
             type="category"
@@ -100,6 +100,7 @@ export function BarChartEngine({
             ) : false}
             axisLine={false}
             tickLine={false}
+            label={config.yAxisTitle ? { value: config.yAxisTitle, angle: -90, position: 'insideLeft', fontSize: config.axisFontSize } : undefined}
           />
           {config.showTooltip && (
             <Tooltip
@@ -118,6 +119,7 @@ export function BarChartEngine({
             dataKey="percentage"
             radius={[0, config.barRadius, config.barRadius, 0]}
             barSize={config.minBarSize ?? 18}
+            isAnimationActive={config.animation}
           >
             {data.map((item, i) => (
               <Cell
@@ -136,6 +138,10 @@ export function BarChartEngine({
                     items={data}
                     labelType={config.labelType}
                     fontSize={config.labelFontSize}
+                    decimalPlaces={config.decimalPlaces}
+                    valuePrefix={config.valuePrefix}
+                    valueSuffix={config.valueSuffix}
+                    showZeroLabels={config.showZeroLabels}
                   />
                 )}
               />
