@@ -16,6 +16,7 @@ interface ReqBody {
   context:   AIContext;
   messages?: ChatMessage[];
   question?: string;   // legacy single-turn callers
+  maxTokens?: number;
 }
 
 export async function POST(req: NextRequest) {
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body: ReqBody = await req.json();
-    const { context, messages: rawMessages, question } = body;
+    const { context, messages: rawMessages, question, maxTokens } = body;
 
     // Accept both multi-turn messages[] and legacy single question string
     const chatMessages: ChatMessage[] =
@@ -67,7 +68,7 @@ ${JSON.stringify(context, null, 2)}
           { role: 'system', content: systemPrompt },
           ...chatMessages,
         ],
-        max_tokens:  1000,
+        max_tokens:  Math.min(3000, Math.max(500, Number(maxTokens) || 1000)),
         temperature: 0.3,
       }),
     });

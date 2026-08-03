@@ -172,11 +172,12 @@ export interface AIInsightPanelProps {
   /** Called when user saves a new prompt so parent can persist it */
   onPromptSave?:  (p: string) => void;
   buildContext:   () => object;
+  maxTokens?:     number;
 }
 
 export function AIInsightPanel({
   label, cacheKey, cachedResult, onCache,
-  defaultPrompt, savedPrompt, onPromptSave, buildContext,
+  defaultPrompt, savedPrompt, onPromptSave, buildContext, maxTokens,
 }: AIInsightPanelProps) {
   const isAdmin = useIsAdmin();
 
@@ -184,6 +185,10 @@ export function AIInsightPanel({
   const [editPrompt, setEditPrompt] = useState(false);
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState('');
+  const [editResult, setEditResult] = useState(false);
+  const [resultDraft, setResultDraft] = useState(cachedResult ?? '');
+
+  useEffect(() => setResultDraft(cachedResult ?? ''), [cachedResult]);
 
   // Local prompt state initialised from persisted value (or default).
   // Syncs when an external update arrives (e.g. another admin saves a new prompt via cloud).
@@ -205,11 +210,12 @@ export function AIInsightPanel({
       const res = await fetch('/api/ai', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ context, question: p }),
+        body:    JSON.stringify({ context, question: p, maxTokens }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
       const { answer } = await res.json();
       onCache(cacheKey, answer);
+      setEditResult(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : '生成失败');
     } finally {
@@ -267,6 +273,20 @@ export function AIInsightPanel({
                 {editPrompt ? '收起提示词' : '编辑提示词'}
               </button>
             )}
+            {cachedResult && !loading && (
+              <button
+                onClick={() => setEditResult(value => !value)}
+                className={cn(
+                  'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300',
+                  editResult
+                    ? 'bg-blue-50 border-blue-200 text-blue-600'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300',
+                )}
+              >
+                <Edit2 size={11} />
+                {editResult ? '收起编辑' : '编辑内容'}
+              </button>
+            )}
             <button
               onClick={() => generate(prompt)}
               disabled={loading}
@@ -297,7 +317,32 @@ export function AIInsightPanel({
             </div>
           )}
 
-          {!loading && cachedResult && (
+          {!loading && cachedResult && editResult && (
+            <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 space-y-3">
+              <textarea
+                value={resultDraft}
+                onChange={event => setResultDraft(event.target.value)}
+                aria-label="编辑 AI 洞察内容"
+                className="w-full min-h-72 resize-y rounded-lg border border-gray-200 bg-white p-3 text-sm leading-6 text-gray-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => { setResultDraft(cachedResult); setEditResult(false); }}
+                  className="text-xs px-3 py-1.5 rounded-lg text-gray-500 hover:bg-white"
+                >取消</button>
+                <button
+                  onClick={() => { onCache(cacheKey, resultDraft.trim()); setEditResult(false); }}
+                  disabled={!resultDraft.trim()}
+                  className="flex items-center gap-1 text-xs px-4 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
+                >
+                  <Check size={11} />
+                  保存内容
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!loading && cachedResult && !editResult && (
             <div className="bg-gray-50 rounded-xl p-4">
               <InsightResult text={cachedResult} />
             </div>

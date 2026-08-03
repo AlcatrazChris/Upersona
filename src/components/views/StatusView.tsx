@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, X, ChevronDown, BarChart2, Layers, Search, Check, MapPin } from 'lucide-react';
+import { Plus, X, ChevronDown, BarChart2, Layers, Search, Check, MapPin, GripVertical } from 'lucide-react';
 import {
   aggregateField,
   aggregateByStatusGroups,
@@ -34,6 +34,8 @@ import {
   dateBlockForValue, detectTimeField, getDefaultDateBlocks,
 } from '@/lib/timeStatus';
 import { useUrlArrayState, useUrlStringState } from '@/hooks/useUrlParamState';
+import { formatStatusDimensionComparison, reorderSelectedKeys } from '@/lib/statusInsight';
+import { PERSONA_ROLE_META, roleForField, type PersonaSemanticRole } from '@/lib/personaTemplate';
 
 const MONTH_FIELD_KEY = '__upersona_month';
 
@@ -359,20 +361,59 @@ function ProportionStackedCard({
 
 function DimensionMultiSelect({
   fields,
+  categories,
   selectedKeys,
   availableKeys,
   onToggle,
+  onReorder,
 }: {
   fields: Field[];
+  categories: Array<{ key: PersonaSemanticRole; label: string; fields: Field[] }>;
   selectedKeys: string[];
   availableKeys: Set<string> | null;
   onToggle: (key: string) => void;
+  onReorder: (fromKey: string, toKey: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const visibleFields = fields.filter(field =>
-    !search || field.name.toLowerCase().includes(search.toLowerCase()),
-  );
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
+  const selectedFields = selectedKeys
+    .map(key => fields.find(field => field.key === key))
+    .filter((field): field is Field => !!field);
+  const visibleCategories = categories
+    .map(category => ({
+      ...category,
+      fields: category.fields.filter(field =>
+        !search || field.name.toLowerCase().includes(search.toLowerCase()),
+      ),
+    }))
+    .filter(category => category.fields.length > 0);
+
+  function renderField(field: Field) {
+    const available = !availableKeys || availableKeys.has(field.key);
+    const selected = selectedKeys.includes(field.key);
+    return (
+      <button
+        type="button"
+        key={field.key}
+        disabled={!available}
+        onClick={() => available && onToggle(field.key)}
+        className={cn(
+          'flex w-full items-center gap-2 px-3 py-2 text-left text-xs',
+          available ? 'text-gray-700 hover:bg-blue-50' : 'cursor-not-allowed text-gray-300',
+        )}
+      >
+        <span className={cn(
+          'flex h-4 w-4 items-center justify-center rounded border',
+          selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300 bg-white',
+        )}>
+          {selected && <Check size={11} />}
+        </span>
+        <span className="flex-1 truncate">{field.name}</span>
+        {!available && <span className="text-[10px]">对比数据集缺失</span>}
+      </button>
+    );
+  }
 
   return (
     <div className="relative">
@@ -389,7 +430,7 @@ function DimensionMultiSelect({
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-9 z-50 flex max-h-80 min-w-[280px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
+          <div className="absolute left-0 top-9 z-50 flex max-h-[460px] min-w-[340px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
             <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2">
               <Search size={12} className="text-gray-400" />
               <input
@@ -401,33 +442,40 @@ function DimensionMultiSelect({
               />
             </div>
             <div className="overflow-y-auto py-1">
-              {visibleFields.map(field => {
-                const available = !availableKeys || availableKeys.has(field.key);
-                const selected = selectedKeys.includes(field.key);
-                return (
-                  <button
-                    type="button"
-                    key={field.key}
-                    disabled={!available}
-                    onClick={() => available && onToggle(field.key)}
-                    className={cn(
-                      'flex w-full items-center gap-2 px-3 py-2 text-left text-xs',
-                      available ? 'text-gray-700 hover:bg-blue-50' : 'cursor-not-allowed text-gray-300',
-                    )}
-                  >
-                    <span className={cn(
-                      'flex h-4 w-4 items-center justify-center rounded border',
-                      selected
-                        ? 'border-blue-600 bg-blue-600 text-white'
-                        : 'border-gray-300 bg-white',
-                    )}>
-                      {selected && <Check size={11} />}
-                    </span>
-                    <span className="flex-1 truncate">{field.name}</span>
-                    {!available && <span className="text-[10px]">对比数据集缺失</span>}
-                  </button>
-                );
-              })}
+              {selectedFields.length > 0 && !search && (
+                <div className="border-b border-gray-100 px-2 pb-2">
+                  <div className="px-1 py-2 text-[11px] font-medium text-gray-400">图表顺序 · 拖动调整</div>
+                  {selectedFields.map((field, index) => (
+                    <div
+                      key={field.key}
+                      draggable
+                      onDragStart={() => setDraggingKey(field.key)}
+                      onDragOver={event => event.preventDefault()}
+                      onDrop={() => {
+                        if (draggingKey) onReorder(draggingKey, field.key);
+                        setDraggingKey(null);
+                      }}
+                      onDragEnd={() => setDraggingKey(null)}
+                      className={cn(
+                        'flex cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 active:cursor-grabbing',
+                        draggingKey === field.key && 'bg-blue-50 opacity-60',
+                      )}
+                    >
+                      <GripVertical size={13} className="text-gray-300" />
+                      <span className="w-5 text-right tabular-nums text-gray-400">{index + 1}</span>
+                      <span className="flex-1 truncate">{field.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {visibleCategories.map(category => (
+                <div key={category.key} className="py-1">
+                  <div className="sticky top-0 bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-gray-400 backdrop-blur-sm">
+                    {category.label}
+                  </div>
+                  {category.fields.map(renderField)}
+                </div>
+              ))}
             </div>
             <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2 text-[11px] text-gray-400">
               <span>可连续勾选多个维度</span>
@@ -597,6 +645,9 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
 
   // Derive the initial field keys respecting persona config order
   const initFieldKeys = (() => {
+    if (viewConfig.personaFieldKeys?.length) {
+      return viewConfig.personaFieldKeys.slice(0, 6);
+    }
     if (activeConfig) {
       return activeConfig.blocks
         .filter(b => b.visible && b.sourceFieldKey)
@@ -714,6 +765,13 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
   }, [compareDataset, viewConfig.personaFieldKeys]);
 
   const allPersonaFields = useMemo(() => {
+    if (viewConfig.personaFieldKeys?.length) {
+      return viewConfig.personaFieldKeys
+        .map(key => dataset.fields.find(field => field.key === key))
+        .filter((field): field is Field =>
+          !!field && field.key !== timeField?.key && field.key !== viewConfig.statusFieldKey
+        );
+    }
     if (activeConfig) {
       return activeConfig.blocks
         .filter(b => b.visible && b.sourceFieldKey)
@@ -728,6 +786,18 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
         !!field && field.key !== timeField?.key && field.key !== viewConfig.statusFieldKey
       );
   }, [dataset.fields, viewConfig.personaFieldKeys, viewConfig.statusFieldKey, activeConfig, timeField]);
+
+  const dimensionCategories = useMemo(() => {
+    const grouped = new Map<PersonaSemanticRole, Field[]>();
+    for (const field of allPersonaFields) {
+      const role = roleForField(field, viewConfig.personaRoles);
+      if (role === 'metadata') continue;
+      grouped.set(role, [...(grouped.get(role) ?? []), field]);
+    }
+    return [...grouped.entries()]
+      .sort(([a], [b]) => PERSONA_ROLE_META[a].order - PERSONA_ROLE_META[b].order)
+      .map(([key, fields]) => ({ key, label: PERSONA_ROLE_META[key].label, fields }));
+  }, [allPersonaFields, viewConfig.personaRoles]);
 
   const personaFields = useMemo(
     () => selectedDimKeys
@@ -759,17 +829,35 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
       selectedGeo.length > 0 ? selectedGeo.join(' / ') : '全国'
     } · ${personaFields.map(f => f.name).join('、').slice(0, 30)}`;
 
-  const STATUS_DEFAULT_PROMPT = `分析上方各月份数据，找出用户特征与偏好的月度变化。禁止开场白、总结段落、套话。
+  const STATUS_DEFAULT_PROMPT = `根据 dimensionComparisons 逐一分析状态对比。每个维度都必须输出，不得遗漏、合并或只选变化较大的维度。
 
-## 月度变化（≤3条）
-格式：[维度]——[月份A]【XX%】vs[月份B]【XX%】，变化XX%→[判断]
+## 逐维度变化
+按 dimensionComparisons 的输入顺序，每个维度使用一个“### 维度名”小标题，并输出：
+- 变化：引用各对比组的具体选项和占比，说明最主要的升降或结构变化。
+- 判断：用1句话解释该维度的趋势。如无明显变化，明确写“结构基本稳定”并引用最大差值。
 
-## 趋势与建议（≤2条）
-格式：[变化趋势]——[具体行动建议]
+## 总体趋势
+用2—4句话概括跨维度的共同变化，不重复罗列逐维度结论。
 
-只引用上方真实数据，每条≤40字，不输出其他任何内容。`;
+## 建议
+输出2—4条可执行建议，每条对应前文数据。
+
+占比差用“百分点”表达，不将百分点误写为增长率。只引用上下文中的真实数据。`;
 
   function buildStatusContext() {
+    const dimensionComparisons = personaFields.map(field => {
+      const grouped = compareDataset
+        ? aggregateCrossDatasetByStatus(
+            { records: analysisDataset.records, label: dataset.name },
+            { records: compareDataset.records, label: compareDataset.name },
+            field, MONTH_FIELD_KEY, selectedGroups,
+          )
+        : aggregateByStatusGroups(
+            analysisDataset.records, field, MONTH_FIELD_KEY, selectedGroups,
+          );
+      return formatStatusDimensionComparison(field.name, grouped);
+    });
+
     return {
       analysisType:  'month_comparison',
       dataset:       dataset.name,
@@ -778,6 +866,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
       totalSamples:  filteredRecords.length,
       timeField:     timeField?.name,
       geography:     selectedGeo.length > 0 ? selectedGeo : ['全国'],
+      dimensionComparisons,
       note:          compareDataset
         ? `与对比数据集「${compareDataset.name}」（${compareDataset.rowCount} 行）进行跨数据集月份对比`
         : undefined,
@@ -924,9 +1013,13 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
           <span className="text-xs text-gray-400 flex-shrink-0">对比维度</span>
           <DimensionMultiSelect
             fields={allPersonaFields}
+            categories={dimensionCategories}
             selectedKeys={selectedDimKeys}
             availableKeys={commonFieldKeys}
             onToggle={toggleDim}
+            onReorder={(fromKey, toKey) =>
+              setSelectedDimKeys(keys => reorderSelectedKeys(keys, fromKey, toKey))
+            }
           />
           {selectedDimKeys.length > 0 && (
             <span className="text-[11px] text-gray-400">
@@ -955,6 +1048,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
             })
           }
           buildContext={buildStatusContext}
+          maxTokens={2400}
         />
       )}
 

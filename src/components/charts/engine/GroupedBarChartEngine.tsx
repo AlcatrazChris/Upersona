@@ -7,6 +7,7 @@ import {
 import type { GroupedChartData } from '@/lib/dataAggregator';
 import type { ChartConfig } from '@/lib/chartConfig';
 import { getColors } from '@/lib/chartConfig';
+import { useResizableYAxisWidth, YAxisResizeHandle } from './shared';
 
 export interface GroupedBarChartEngineProps {
   data: GroupedChartData;
@@ -66,7 +67,8 @@ export function GroupedBarChartEngine({
 
   // Y-axis width: ~13px per Chinese char, min 60, max 130
   const maxLabelLen = Math.max(...items.map(d => String(d.label).length), 4);
-  const yWidth = Math.min(130, Math.max(60, maxLabelLen * 13));
+  const yAxis = useResizableYAxisWidth(Math.min(130, Math.max(60, maxLabelLen * 13)));
+  const yWidth = yAxis.width;
 
   // Dynamic height: ensure each bar is at least minBarSize px tall
   const minBarH      = config.minBarSize;
@@ -80,7 +82,7 @@ export function GroupedBarChartEngine({
   const rightMargin = config.showLabel && !isStacked ? 46 : 12;
 
   return (
-    <div className={className} style={{ height: actualHeight, background: config.backgroundColor, fontFamily: config.fontFamily, padding: config.chartPadding }}>
+    <div className={`relative ${className ?? ''}`} style={{ height: actualHeight, background: config.backgroundColor, fontFamily: config.fontFamily, padding: config.chartPadding }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           layout="vertical"
@@ -176,6 +178,15 @@ export function GroupedBarChartEngine({
           ))}
         </BarChart>
       </ResponsiveContainer>
+      {config.showYAxis && (
+        <YAxisResizeHandle
+          width={yAxis.width}
+          offset={config.chartPadding}
+          onResizeStart={yAxis.onResizeStart}
+          onResizeKeyDown={yAxis.onResizeKeyDown}
+          onReset={yAxis.resetWidth}
+        />
+      )}
     </div>
   );
 }

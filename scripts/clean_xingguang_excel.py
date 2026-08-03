@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -201,6 +202,17 @@ def main() -> None:
         sheet.append(row)
     workbook.save(args.output)
 
+    subprocess.run(
+        [
+            "node", "--experimental-strip-types",
+            str(ROOT / "scripts" / "reclassify-xingguang-vehicles.mjs"),
+            str(args.source), str(args.output),
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+    final_column_count = load_workbook(args.output, read_only=True).active.max_column
+
     education_col = headers.index("学历")
     education = [text(row[education_col]) for row in output_rows if text(row[education_col])]
     if "高中/中专/职校/技校" not in education:
@@ -210,7 +222,7 @@ def main() -> None:
     valid_tiers = set(CITY_TIERS) | {"四线城市及以下"}
     if any(text(row[5]) and row[7] not in valid_tiers for row in output_rows):
         raise AssertionError("存在未分级城市")
-    print(f"清洗完成：{args.output} ({len(output_rows)} 行 × {len(headers)} 列)")
+    print(f"清洗完成：{args.output} ({len(output_rows)} 行 × {final_column_count} 列)")
 
 
 if __name__ == "__main__":

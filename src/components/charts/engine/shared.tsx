@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChartDataItem } from './types';
 import type { ChartConfig, LabelType } from '@/lib/chartConfig';
+import { clampYAxisWidth } from '@/lib/chartLayout';
 import { cn } from '@/lib/utils';
 
 const CHART_TYPE_LABELS: Record<string, string> = {
@@ -92,6 +93,94 @@ export function useResizableChartHeight(baseHeight: number, minHeight = 120) {
   };
 
   return { height, onResizeStart, onResizeKeyDown, resetHeight: () => setManualHeight(null) };
+}
+
+export function useResizableYAxisWidth(baseWidth: number, minWidth = 64, maxWidth = 320) {
+  const [manualWidth, setManualWidth] = useState<number | null>(null);
+  const width = clampYAxisWidth(manualWidth ?? baseWidth, minWidth, maxWidth);
+  const dragRef = useRef<{ x: number; width: number } | null>(null);
+  const cleanupRef = useRef<() => void>(() => {});
+
+  useEffect(() => () => cleanupRef.current(), []);
+
+  const onResizeStart = (event: React.MouseEvent) => {
+    event.preventDefault();
+    cleanupRef.current();
+    dragRef.current = { x: event.clientX, width };
+    const previousCursor = document.body.style.cursor;
+    const previousSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (moveEvent: MouseEvent) => {
+      if (!dragRef.current) return;
+      setManualWidth(clampYAxisWidth(
+        dragRef.current.width + moveEvent.clientX - dragRef.current.x,
+        minWidth,
+        maxWidth,
+      ));
+    };
+    const cleanup = () => {
+      dragRef.current = null;
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousSelect;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', cleanup);
+      cleanupRef.current = () => {};
+    };
+    cleanupRef.current = cleanup;
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', cleanup);
+  };
+
+  const onResizeKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'Home') {
+      event.preventDefault();
+      setManualWidth(null);
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      setManualWidth(clampYAxisWidth(
+        width + (event.key === 'ArrowRight' ? 12 : -12),
+        minWidth,
+        maxWidth,
+      ));
+    }
+  };
+
+  return { width, onResizeStart, onResizeKeyDown, resetWidth: () => setManualWidth(null) };
+}
+
+export function YAxisResizeHandle({
+  width, offset = 0, minWidth = 64, maxWidth = 320,
+  onResizeStart, onResizeKeyDown, onReset,
+}: {
+  width: number;
+  offset?: number;
+  minWidth?: number;
+  maxWidth?: number;
+  onResizeStart: (event: React.MouseEvent) => void;
+  onResizeKeyDown: (event: React.KeyboardEvent) => void;
+  onReset: () => void;
+}) {
+  return (
+    <div
+      role="separator"
+      tabIndex={0}
+      aria-label="调整 Y 轴标签宽度"
+      aria-orientation="vertical"
+      aria-valuemin={minWidth}
+      aria-valuemax={maxWidth}
+      aria-valuenow={Math.round(width)}
+      title="拖动调整 Y 轴宽度；双击恢复默认"
+      onMouseDown={onResizeStart}
+      onKeyDown={onResizeKeyDown}
+      onDoubleClick={onReset}
+      className="group absolute inset-y-2 z-10 w-3 -translate-x-1/2 cursor-col-resize outline-none"
+      style={{ left: width + offset }}
+    >
+      <span className="absolute inset-y-0 left-1/2 w-px bg-slate-200 transition-colors group-hover:bg-blue-400 group-focus:bg-blue-500" />
+      <span className="absolute left-1/2 top-1/2 h-8 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white shadow-sm transition-colors group-hover:border-blue-400 group-focus:border-blue-500" />
+    </div>
+  );
 }
 
 // Keeps the first topN items (by existing order) and aggregates the rest as "其他".

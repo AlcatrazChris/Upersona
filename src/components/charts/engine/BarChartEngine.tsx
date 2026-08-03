@@ -5,7 +5,10 @@ import {
   ResponsiveContainer, Cell, LabelList, CartesianGrid,
 } from 'recharts';
 import { getColors, isSingleColorScheme } from '@/lib/chartConfig';
-import { ChartTooltip, BarLabelContent, cfgLabelRight, applyTopN } from './shared';
+import {
+  ChartTooltip, BarLabelContent, cfgLabelRight, applyTopN,
+  useResizableYAxisWidth, YAxisResizeHandle,
+} from './shared';
 import type { ChartEngineProps } from './types';
 
 const OTHERS_COLOR = '#b0bec5';
@@ -50,7 +53,8 @@ export function BarChartEngine({
   const minH    = Math.max(compact ? 120 : 150, data.length * barH + (compact ? 24 : 36));
   const chartH  = config.chartHeight != null ? Math.max(config.chartHeight, minH) : minH;
   const rightM  = cfgLabelRight(config);
-  const yAxisW  = config.showYAxis ? 104 : 0;
+  const yAxis = useResizableYAxisWidth(104);
+  const yAxisW = config.showYAxis ? yAxis.width : 0;
 
   function barFill(label: string, index: number): string {
     if (label === '其他') return OTHERS_COLOR;
@@ -59,7 +63,7 @@ export function BarChartEngine({
   }
 
   return (
-    <div style={{ height: chartH, background: config.backgroundColor, fontFamily: config.fontFamily, padding: config.chartPadding }}>
+    <div className="relative" style={{ height: chartH, background: config.backgroundColor, fontFamily: config.fontFamily, padding: config.chartPadding }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={data}
@@ -149,6 +153,15 @@ export function BarChartEngine({
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+      {config.showYAxis && (
+        <YAxisResizeHandle
+          width={yAxis.width}
+          offset={config.chartPadding}
+          onResizeStart={yAxis.onResizeStart}
+          onResizeKeyDown={yAxis.onResizeKeyDown}
+          onReset={yAxis.resetWidth}
+        />
+      )}
     </div>
   );
 }

@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import { classifyPreviousVehicle as classify } from '../src/lib/vehicleClassifier.ts';
+
+assert.deepEqual(classify('宝骏730'), { brand: '宝骏', type: '五菱宝骏' });
+assert.deepEqual(classify('一汽大众ID4'), { brand: '大众', type: '合资新能源' });
+assert.deepEqual(classify('比亚迪F3'), { brand: '比亚迪', type: '国产燃油车' });
+assert.deepEqual(classify('比亚迪秦plusdmi'), { brand: '比亚迪', type: '国产新能源' });
+assert.deepEqual(classify('特斯拉model3p'), { brand: '特斯拉', type: '新势力' });
+assert.deepEqual(classify('保时捷macan 极星2'), { brand: '保时捷┋极星', type: '进口车┋新势力' });
+assert.deepEqual(classify('宏光MINIEV'), { brand: '五菱', type: '五菱宝骏' });
+assert.deepEqual(classify('上汽五菱宝骏560'), { brand: '宝骏', type: '五菱宝骏' });
+assert.deepEqual(classify('东风日产轩逸'), { brand: '日产', type: '合资燃油车' });
+assert.deepEqual(classify('长安铃木奥拓'), { brand: '铃木', type: '合资燃油车' });
+assert.deepEqual(classify('宝马mini'), { brand: 'MINI', type: '进口车' });
+assert.deepEqual(classify('奇瑞风云2'), { brand: '奇瑞', type: '国产燃油车' });
+assert.deepEqual(classify('东风启辰T70X'), { brand: '启辰', type: '国产燃油车' });
+assert.deepEqual(classify('传祺 gs4，比亚迪汉 ev'), { brand: '传祺┋比亚迪', type: '国产燃油车┋国产新能源' });
+assert.deepEqual(classify('(跳过)'), { brand: '', type: '' });
+assert.deepEqual(classify('油车'), { brand: '品牌无法识别', type: '无法识别' });
+console.log('vehicle classifier: ok');
