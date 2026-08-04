@@ -71,7 +71,7 @@ export function RankingHeatmapEngine({ data, fieldName }: Props) {
                       style={{ background: bg }}>
                     <div className="px-1 py-2" style={{ color: text }}>
                       {pct > 0
-                        ? <><span className="font-semibold text-[11px]">{pct.toFixed(0)}</span><span className="text-[9px]">%</span></>
+                        ? <><span className="font-semibold text-[11px]">{pct.toFixed(1)}</span><span className="text-[9px]">%</span></>
                         : <span className="text-gray-200">·</span>
                       }
                     </div>

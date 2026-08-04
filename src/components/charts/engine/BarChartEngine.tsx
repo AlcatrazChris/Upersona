@@ -85,7 +85,7 @@ export function BarChartEngine({
             tick={{ fontSize: config.axisFontSize, fill: '#64748b' }}
             axisLine={false}
             tickLine={false}
-            tickFormatter={v => `${v}%`}
+            tickFormatter={v => `${Number(v).toFixed(1)}%`}
             label={config.xAxisTitle ? { value: config.xAxisTitle, position: 'insideBottom', offset: -2, fontSize: config.axisFontSize } : undefined}
           />
           <YAxis

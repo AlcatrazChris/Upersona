@@ -106,11 +106,11 @@ function CompactDemoBar({
                 <div className="h-full rounded-full" style={{ width: `${it.segPct * 100}%`, background: bar }} />
               </div>
               <div className="text-[10px] w-8 text-right flex-shrink-0 font-medium" style={{ color: accent }}>
-                {(it.segPct * 100).toFixed(0)}%
+                {(it.segPct * 100).toFixed(1)}%
               </div>
               {Math.abs(delta) > 0.03 && (
                 <div className={cn('text-[9px] w-8 text-right flex-shrink-0', delta > 0 ? 'text-emerald-500' : 'text-red-400')}>
-                  {delta > 0 ? '+' : ''}{(delta * 100).toFixed(0)}%
+                  {delta > 0 ? '+' : ''}{(delta * 100).toFixed(1)}%
                 </div>
               )}
             </div>

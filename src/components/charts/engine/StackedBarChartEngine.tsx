@@ -115,7 +115,7 @@ export function StackedBarChartEngine({
           {config.showYAxis && (
             <YAxis
               domain={[0, 100]}
-              tickFormatter={(v: number) => `${v}%`}
+              tickFormatter={(v: number) => `${Number(v).toFixed(1)}%`}
               tick={{ fontSize: config.axisFontSize, fill: '#64748b' }}
               axisLine={false}
               tickLine={false}
@@ -173,7 +173,7 @@ export function StackedBarChartEngine({
                         fontSize={config.labelFontSize}
                         fontWeight={600}
                       >
-                        {`${value.toFixed(0)}%`}
+                        {`${value.toFixed(1)}%`}
                       </text>
                     );
                   }}

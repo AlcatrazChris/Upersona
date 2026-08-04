@@ -14,7 +14,7 @@ export function LollipopChartEngine({ data: raw, config, isMultiSelect, totalSam
       <ResponsiveContainer width="100%" height="100%">
         <ScatterChart layout="vertical" margin={{ top: 8, right: 42, bottom: 8, left: 8 }}>
           {config.showGrid && <CartesianGrid stroke="#e2e8f0" horizontal={false} />}
-          <XAxis dataKey="percentage" type="number" hide={!config.showXAxis} domain={[0, 'dataMax']} unit="%" tick={{ fontSize: config.axisFontSize, fill: '#64748b' }} axisLine={false} tickLine={false} />
+          <XAxis dataKey="percentage" type="number" hide={!config.showXAxis} domain={[0, 'dataMax']} tickFormatter={(value: number) => `${Number(value).toFixed(1)}%`} tick={{ fontSize: config.axisFontSize, fill: '#64748b' }} axisLine={false} tickLine={false} />
           <YAxis type="category" dataKey="label" hide={!config.showYAxis} width={104} tick={{ fontSize: config.axisFontSize, fill: '#475569' }} axisLine={false} tickLine={false} />
           <ZAxis range={[72, 72]} />
           {config.showTooltip && <Tooltip cursor={{ stroke: '#cbd5e1' }} content={({ active, payload }) => (

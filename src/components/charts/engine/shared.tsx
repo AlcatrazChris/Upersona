@@ -224,7 +224,7 @@ const RADIAN = Math.PI / 180;
 export function PieSliceLabel(props: any) {
   const {
     cx, cy, midAngle, innerRadius, outerRadius,
-    percentage, count, showLabel, labelType, decimalPlaces = 0, valuePrefix = '', valueSuffix = '', showZeroLabels = false,
+    percentage, count, showLabel, labelType, valuePrefix = '', valueSuffix = '', showZeroLabels = false,
   } = props as {
     cx: number; cy: number; midAngle: number;
     innerRadius: number; outerRadius: number;
@@ -235,7 +235,7 @@ export function PieSliceLabel(props: any) {
   const r = innerRadius + (outerRadius - innerRadius) * 0.52;
   const x = cx + r * Math.cos(-midAngle * RADIAN);
   const y = cy + r * Math.sin(-midAngle * RADIAN);
-  const value = labelType === 'count' ? `${count}` : `${percentage.toFixed(decimalPlaces)}%`;
+  const value = labelType === 'count' ? `${count}` : `${percentage.toFixed(1)}%`;
   const text = `${valuePrefix}${value}${valueSuffix}`;
   return (
     <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central"
@@ -258,9 +258,9 @@ export function BarLabelContent(props: any & { items: ChartDataItem[]; labelType
   const lx = x + width + 6;
   const ly = y + height / 2 + 1;
   let text = '';
-  if (labelType === 'pct')   text = `${Number(value).toFixed(decimalPlaces)}%`;
+  if (labelType === 'pct')   text = `${Number(value).toFixed(1)}%`;
   if (labelType === 'count') text = `${item.count}`;
-  if (labelType === 'both')  text = `${Number(value).toFixed(decimalPlaces)}% / ${item.count}`;
+  if (labelType === 'both')  text = `${Number(value).toFixed(1)}% / ${item.count}`;
   text = `${valuePrefix}${text}${valueSuffix}`;
   return (
     <text x={lx} y={ly} dominantBaseline="middle"

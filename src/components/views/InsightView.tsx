@@ -76,7 +76,7 @@ function MiniBar({ value, pct, bar }: { value: string; pct: number; bar: string 
       <div className="flex-1 h-1.5 bg-white/60 rounded-full overflow-hidden">
         <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: bar }} />
       </div>
-      <div className="text-[10px] font-semibold w-7 text-right flex-shrink-0" style={{ color: bar }}>{pct.toFixed(0)}%</div>
+      <div className="text-[10px] font-semibold w-10 text-right flex-shrink-0" style={{ color: bar }}>{pct.toFixed(1)}%</div>
     </div>
   );
 }
@@ -138,7 +138,7 @@ function DataBar({ value, pct, bar, dimColor, wide }: {
         className={`text-[10px] w-6 text-right flex-shrink-0 ${dimColor ? 'text-gray-400' : 'font-semibold'}`}
         style={dimColor ? {} : { color: bar }}
       >
-        {pct.toFixed(0)}%
+        {pct.toFixed(1)}%
       </div>
     </div>
   );
@@ -214,7 +214,7 @@ function SegmentCard({
           典型人群{index + 1}：{seg.name}
         </span>
         {pct != null && (
-          <span className="text-sm font-bold flex-shrink-0" style={{ color: c.accent }}>（{pct}%）</span>
+          <span className="text-sm font-bold flex-shrink-0" style={{ color: c.accent }}>（{Number(pct).toFixed(1)}%）</span>
         )}
         {/* Keywords inline */}
         {(seg.keywords?.length ?? 0) > 0 && (

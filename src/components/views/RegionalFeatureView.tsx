@@ -130,14 +130,14 @@ function ValueCell({ items }: { items: ValueItem[] }) {
                 'text-[10px] tabular-nums flex-shrink-0',
                 isUp ? 'text-red-400' : isDown ? 'text-blue-400' : 'text-gray-400',
               )}>
-                {item.pct.toFixed(0)}%
+                {item.pct.toFixed(1)}%
               </span>
               {Math.abs(item.delta) >= 5 && (
                 <span className={cn(
                   'text-[8px] tabular-nums px-[3px] py-[1px] rounded leading-none flex-shrink-0 font-medium',
                   isUp ? 'bg-red-50 text-red-400' : 'bg-blue-50 text-blue-400',
                 )}>
-                  {item.delta > 0 ? `+${item.delta.toFixed(0)}` : item.delta.toFixed(0)}
+                  {item.delta > 0 ? `+${item.delta.toFixed(1)}` : item.delta.toFixed(1)}
                 </span>
               )}
             </div>
@@ -166,7 +166,7 @@ function exportCSV(
       String(p.n),
       ...p.fieldValues.map(items =>
         items.slice(0, 3)
-          .map(v => `${v.value} ${v.pct.toFixed(0)}%(${v.delta >= 0 ? '+' : ''}${v.delta.toFixed(0)}%)`)
+          .map(v => `${v.value} ${v.pct.toFixed(1)}%(${v.delta >= 0 ? '+' : ''}${v.delta.toFixed(1)}%)`)
           .join(' / ')
       ),
     ]);
@@ -341,7 +341,7 @@ function AISummaryTable({ profiles, fields, datasetName, cachedResult, onCache, 
           features: fields.map((f, fi) => ({
             dimension: f.name,
             topValues: (p.fieldValues[fi] ?? []).slice(0, 3)
-              .map(v => `${v.value}(${v.pct.toFixed(0)}%, Δ${v.delta >= 0 ? '+' : ''}${v.delta.toFixed(0)}%)`)
+              .map(v => `${v.value}(${v.pct.toFixed(1)}%, Δ${v.delta >= 0 ? '+' : ''}${v.delta.toFixed(1)}%)`)
               .join(', '),
           })),
         })),

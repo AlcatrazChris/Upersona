@@ -45,7 +45,7 @@ export function LineChartEngine({
       tick={{ fontSize: config.axisFontSize, fill: '#64748b' }}
       axisLine={false}
       tickLine={false}
-      tickFormatter={v => `${v}%`}
+      tickFormatter={v => `${Number(v).toFixed(1)}%`}
       label={config.yAxisTitle ? { value: config.yAxisTitle, angle: -90, position: 'insideLeft', fontSize: config.axisFontSize } : undefined}
     />
   ) : null;
@@ -85,7 +85,7 @@ export function LineChartEngine({
     <LabelList
       dataKey="percentage"
       position="top"
-      formatter={(v: number) => `${config.valuePrefix}${v.toFixed(config.decimalPlaces)}%${config.valueSuffix}`}
+      formatter={(v: number) => `${config.valuePrefix}${v.toFixed(1)}%${config.valueSuffix}`}
       style={{ fontSize: config.labelFontSize - 1, fill: 'rgba(0,0,0,0.40)', fontWeight: 500 }}
     />
   ) : null;

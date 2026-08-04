@@ -61,7 +61,7 @@ function MiniBarChart({ items, accent }: { items: DistItem[]; accent: string }) 
             />
           </div>
           <div className="text-[10px] text-gray-400 w-8 text-right flex-shrink-0">
-            {(it.pct * 100).toFixed(0)}%
+            {(it.pct * 100).toFixed(1)}%
           </div>
         </div>
       ))}
@@ -87,7 +87,7 @@ function DemoBar({ field, items, accent, bar }: { field: string; items: DistItem
               />
             </div>
             <div className="text-[10px] font-medium w-10 text-right flex-shrink-0" style={{ color: accent }}>
-              {(it.pct * 100).toFixed(0)}%
+              {(it.pct * 100).toFixed(1)}%
             </div>
           </div>
         ))}

@@ -101,7 +101,7 @@ export function GroupedBarChartEngine({
           <XAxis
             type="number"
             hide={!config.showXAxis}
-            tickFormatter={(v: number) => `${v}%`}
+            tickFormatter={(v: number) => `${Number(v).toFixed(1)}%`}
             domain={[config.axisMin ?? (config.startAtZero ? 0 : 'auto'), config.axisMax ?? 'auto']}
             tickCount={config.tickCount}
             label={config.xAxisTitle ? { value: config.xAxisTitle, position: 'insideBottom', offset: -2, fontSize: config.axisFontSize } : undefined}
@@ -170,7 +170,7 @@ export function GroupedBarChartEngine({
                 <LabelList
                   dataKey={key}
                   position="right"
-                  formatter={(v: number) => v > 0 ? `${v.toFixed(0)}%` : ''}
+                  formatter={(v: number) => v > 0 ? `${v.toFixed(1)}%` : ''}
                   style={{ fontSize: config.labelFontSize, fill: '#475569', fontWeight: 500 }}
                 />
               )}
