@@ -41,6 +41,41 @@ def text(value: Any) -> str:
     return "" if value is None else str(value).strip()
 
 
+def classify_use_scene(value: Any) -> str:
+    """Collapse work/life location answers into the three agreed driving scenes."""
+    raw = text(value)
+    if not raw or raw in SKIP_VALUES:
+        return ""
+
+    # The two questionnaire options are authoritative even when a respondent
+    # added an unrelated note in 〖〗.
+    option = raw.split("〖", 1)[0].strip()
+    if option == "生活：市区上班：市区":
+        return "城区用车"
+    if option == "生活：在本市下属县城/乡镇/区县上班：在市区":
+        return "县市通勤"
+
+    detail = raw.lower()
+    rural = any(word in detail for word in ("县城", "县里", "县乡", "乡镇", "农村", "村里", "村", "镇上", "镇区", "郊区", "城郊"))
+    urban = "市区" in detail
+    if rural and urban:
+        return "县市通勤"
+    if rural:
+        return "县乡用车"
+    if urban and any(word in detail for word in ("生活", "上班", "工作", "都在")):
+        return "城区用车"
+    return ""
+
+
+def check_use_scene_rules() -> None:
+    assert classify_use_scene("生活：市区上班：市区") == "城区用车"
+    assert classify_use_scene("生活：在本市下属县城/乡镇/区县上班：在市区") == "县市通勤"
+    assert classify_use_scene("其他〖生活在市区，上班在乡镇〗") == "县市通勤"
+    assert classify_use_scene("其他〖生活上班都在县城〗") == "县乡用车"
+    assert classify_use_scene("其他〖退休〗") == ""
+    assert classify_use_scene("(跳过)") == ""
+
+
 # 2025 第一财经·新一线城市研究所《城市商业魅力排行榜》。项目将四、五线合并展示。
 CITY_TIERS = {
     "一线城市": set("上海市 北京市 深圳市 广州市 新界".split()),
@@ -145,6 +180,7 @@ def fallback_recommend(value: Any) -> tuple[str, str, str]:
 
 
 def main() -> None:
+    check_use_scene_rules()
     parser = argparse.ArgumentParser()
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)
@@ -193,6 +229,11 @@ def main() -> None:
     for row in output_rows:
         row[7] = city_tier(row[5])
 
+    # Keep location-derived context next to the geographic columns.
+    headers.insert(8, "用车场景")
+    for raw, row in zip(source_rows, output_rows):
+        row.insert(8, classify_use_scene(raw[14]))
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
     workbook = Workbook()
     sheet = workbook.active
@@ -222,6 +263,9 @@ def main() -> None:
     valid_tiers = set(CITY_TIERS) | {"四线城市及以下"}
     if any(text(row[5]) and row[7] not in valid_tiers for row in output_rows):
         raise AssertionError("存在未分级城市")
+    valid_scenes = {"", "城区用车", "县市通勤", "县乡用车"}
+    if any(row[8] not in valid_scenes for row in output_rows):
+        raise AssertionError("存在未定义的用车场景")
     print(f"清洗完成：{args.output} ({len(output_rows)} 行 × {final_column_count} 列)")
 
 

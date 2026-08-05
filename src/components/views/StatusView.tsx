@@ -12,6 +12,7 @@ import { ChartTypeSwitcher, useResizableChartHeight } from '@/components/charts/
 import { ChartSettingsPanel }       from '@/components/charts/ChartSettingsPanel';
 import { AIInsightPanel }           from '@/components/shared/AIInsightPanel';
 import { StatusFilterGroups }       from '@/components/shared/StatusFilterGroups';
+import { GeoFilterGroup }           from '@/components/shared/GeoFilterGroup';
 import {
   filterRecords,
   getGeoOptionsWithCount,
@@ -657,13 +658,13 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
     return (viewConfig.personaFieldKeys ?? []).slice(0, 6);
   })();
 
-  const [selectedGroupKeys, setSelectedGroupKeys] = useUrlArrayState('status_month');
+  const [selectedGroupKeys, setSelectedGroupKeys] = useUrlArrayState('filter_time');
   const [selectedOrderStatuses, setSelectedOrderStatuses] =
-    useUrlArrayState('status_order', ['__all']);
+    useUrlArrayState('filter_order', ['__all']);
   const [geoLevel, setGeoLevel] = useUrlStringState<GeoLevel>(
-    'status_geo_level', 'region', ['region', 'province', 'city'],
+    'filter_geo_level', 'all', ['all', 'region', 'province', 'city'],
   );
-  const [selectedGeo, setSelectedGeo] = useUrlArrayState('status_geo');
+  const [selectedGeo, setSelectedGeo] = useUrlArrayState('filter_geo');
   const [selectedDimKeys, setSelectedDimKeys] =
     useUrlArrayState('status_dimensions', initFieldKeys);
   const [compareDatasetId,  setCompareDatasetId]  = useState<string | null>(null);
@@ -705,7 +706,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
   ] as const).filter(level => level.fieldKey);
 
   useEffect(() => {
-    if (geoLevels.length === 0 || geoLevels.some(level => level.key === geoLevel)) return;
+    if (geoLevel === 'all' || geoLevels.length === 0 || geoLevels.some(level => level.key === geoLevel)) return;
     setGeoLevel(geoLevels[0].key);
     setSelectedGeo([]);
   }, [geoLevel, geoLevels, setGeoLevel, setSelectedGeo]);
@@ -956,36 +957,14 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
         </div>
 
         {geoLevels.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-400 flex-shrink-0">筛选地区</span>
-            <div className="flex items-center gap-0.5 rounded-xl bg-gray-100 p-0.5">
-              {geoLevels.map(level => (
-                <button
-                  type="button"
-                  key={level.key}
-                  onClick={() => {
-                    setGeoLevel(level.key);
-                    setSelectedGeo([]);
-                  }}
-                  className={cn(
-                    'rounded-lg px-2.5 py-1 text-xs transition-all',
-                    geoLevel === level.key
-                      ? 'bg-white font-medium text-gray-800 shadow-sm'
-                      : 'text-gray-400 hover:text-gray-600',
-                  )}
-                >
-                  {level.label}
-                </button>
-              ))}
-            </div>
-            <GeoMultiSelect
-              dataset={dataset}
-              viewConfig={viewConfig}
-              geoLevel={geoLevel}
-              selected={selectedGeo}
-              onChange={setSelectedGeo}
-            />
-          </div>
+          <GeoFilterGroup
+            dataset={dataset}
+            viewConfig={viewConfig}
+            level={geoLevel}
+            selected={selectedGeo}
+            onLevelChange={setGeoLevel}
+            onChange={setSelectedGeo}
+          />
         )}
 
         {/* Row 2: Cross-dataset picker */}

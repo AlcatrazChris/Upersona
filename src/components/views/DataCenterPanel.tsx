@@ -2,16 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  X, Table2, BarChart2, Bookmark, Sparkles, UserRoundSearch,
-  Database, Trash2, ChevronRight, CloudUpload, CalendarRange,
+  X, Table2, Settings2,
+  Database, Trash2, ChevronRight, CloudUpload,
   Cloud, RefreshCw, Loader2, HardDrive,
 } from 'lucide-react';
-import { FieldList }         from '@/components/fields/FieldList';
-import { ChartBuilder }      from '@/components/charts/ChartBuilder';
-import { SavedChartGrid }    from '@/components/charts/SavedChartGrid';
-import { AIPanel }           from '@/components/ai/AIPanel';
-import { PersonaTemplatePanel } from '@/components/persona/PersonaTemplatePanel';
-import { DateBlockEditor } from '@/components/views/DateBlockEditor';
+import { FieldWorkspace } from '@/components/fields/FieldWorkspace';
+import { DatasetSettingsPanel } from '@/components/views/DatasetSettingsPanel';
 import { UploadDropzone }    from '@/components/upload/UploadDropzone';
 import { SchemaDiffDialog }  from '@/components/upload/SchemaDiffDialog';
 import { EnrichmentDialog }  from '@/components/upload/EnrichmentDialog';
@@ -31,13 +27,9 @@ import type { EnrichableField }           from '@/lib/fieldEnricher';
 // ── Tabs ──────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'data',    label: '数据管理', icon: Database,  needsDataset: false },
-  { id: 'fields',  label: '字段概览', icon: Table2,    needsDataset: true  },
-  { id: 'dates',   label: '时间分块', icon: CalendarRange, needsDataset: true },
-  { id: 'persona', label: '画像模板', icon: UserRoundSearch, needsDataset: true },
-  { id: 'builder', label: '图表构建', icon: BarChart2, needsDataset: true  },
-  { id: 'saved',   label: '图表浏览', icon: Bookmark,  needsDataset: true  },
-  { id: 'ai',      label: 'AI 分析',  icon: Sparkles,  needsDataset: true  },
+  { id: 'data',    label: '数据集', icon: Database,  needsDataset: false },
+  { id: 'fields',  label: '字段处理', icon: Table2,    needsDataset: true  },
+  { id: 'settings', label: '全局设置', icon: Settings2, needsDataset: true },
 ] as const;
 type TabId = typeof TABS[number]['id'];
 
@@ -568,12 +560,23 @@ interface Props {
 
 export function DataCenterPanel({ dataset, onClose }: Props) {
   const [tab, setTab] = useState<TabId>('data');
-  const dialogRef = useModalA11y<HTMLDivElement>(onClose);
+  const [fieldDirty, setFieldDirty] = useState(false);
+  function requestClose() {
+    if (fieldDirty && !confirm('字段修改尚未保存，确认放弃并关闭数据中心？')) return;
+    onClose();
+  }
+  function changeTab(next: TabId) {
+    if (next === tab) return;
+    if (fieldDirty && !confirm('字段修改尚未保存，确认放弃并切换页面？')) return;
+    setFieldDirty(false);
+    setTab(next);
+  }
+  const dialogRef = useModalA11y<HTMLDivElement>(requestClose);
 
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-50 bg-black/25 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-50 bg-black/25 backdrop-blur-sm" onClick={requestClose} />
 
       {/* Panel */}
       <div
@@ -582,7 +585,7 @@ export function DataCenterPanel({ dataset, onClose }: Props) {
         aria-modal="true"
         aria-labelledby="data-center-title"
         tabIndex={-1}
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-5xl flex-col overflow-hidden overscroll-contain bg-gray-50 shadow-2xl"
+        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-6xl flex-col overflow-hidden overscroll-contain bg-slate-100 shadow-2xl"
       >
 
         {/* Header */}
@@ -596,21 +599,21 @@ export function DataCenterPanel({ dataset, onClose }: Props) {
           )}
 
           {/* Tabs */}
-          <div className="ml-1 flex flex-1 items-center gap-0.5 overflow-x-auto sm:ml-4">
+          <div className="ml-1 flex flex-1 items-center gap-1 overflow-x-auto sm:ml-5">
             {TABS.map(t => {
               const Icon     = t.icon;
               const disabled = t.needsDataset && !dataset;
               return (
                 <button
                   key={t.id}
-                  onClick={() => !disabled && setTab(t.id)}
+                  onClick={() => !disabled && changeTab(t.id)}
                   disabled={disabled}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-xl transition-all whitespace-nowrap flex-shrink-0',
+                    'flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-colors',
                     disabled
                       ? 'text-gray-300 cursor-not-allowed'
                       : tab === t.id
-                        ? 'bg-blue-50 text-blue-600'
+                        ? 'bg-slate-900 text-white'
                         : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700',
                   )}
                 >
@@ -622,7 +625,7 @@ export function DataCenterPanel({ dataset, onClose }: Props) {
           </div>
 
           <button
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="关闭数据中心"
             className="flex-shrink-0 p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all"
           >
@@ -631,14 +634,10 @@ export function DataCenterPanel({ dataset, onClose }: Props) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-5">
-          {tab === 'data'    && <DataManagementTab />}
-          {tab === 'fields'  && dataset && <FieldList      dataset={dataset} />}
-          {tab === 'dates'   && dataset && <DateBlockEditor dataset={dataset} />}
-          {tab === 'persona' && dataset && <PersonaTemplatePanel dataset={dataset} />}
-          {tab === 'builder' && dataset && <ChartBuilder   dataset={dataset} />}
-          {tab === 'saved'   && dataset && <SavedChartGrid dataset={dataset} />}
-          {tab === 'ai'      && dataset && <AIPanel        dataset={dataset} />}
+        <div className={cn('min-h-0 flex-1 overflow-y-auto', tab === 'fields' ? 'p-0' : 'px-3 py-4 sm:px-6 sm:py-5')}>
+          {tab === 'data' && <DataManagementTab />}
+          {tab === 'fields' && dataset && <FieldWorkspace dataset={dataset} onDirtyChange={setFieldDirty} />}
+          {tab === 'settings' && dataset && <DatasetSettingsPanel dataset={dataset} />}
         </div>
       </div>
     </>

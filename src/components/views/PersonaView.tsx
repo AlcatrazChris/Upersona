@@ -14,7 +14,8 @@ import type { ViewConfig } from '@/lib/viewConfig';
 import { useDatasetStore } from '@/store/datasetStore';
 import { cn } from '@/lib/utils';
 import { StatusFilterGroups } from '@/components/shared/StatusFilterGroups';
-import { detectTimeField, filterByMonths, getMonthOptions } from '@/lib/timeStatus';
+import { GeoFilterGroup } from '@/components/shared/GeoFilterGroup';
+import { detectTimeField, filterByDateBlocks, getDefaultDateBlocks } from '@/lib/timeStatus';
 import { useUrlArrayState, useUrlStringState } from '@/hooks/useUrlParamState';
 import { useResizableChartHeight } from '@/components/charts/engine/shared';
 import {
@@ -269,34 +270,33 @@ const PERSONA_DEFAULT: ChartConfig = {
 export function PersonaView({ dataset, viewConfig }: Props) {
   // ── All hooks MUST be declared before any conditional return ──
   const [geoLevel, setGeoLevel] = useUrlStringState<GeoLevel>(
-    'persona_geo_level', 'all', ['all', 'region', 'province', 'city'],
+    'filter_geo_level', 'all', ['all', 'region', 'province', 'city'],
   );
-  const [selectedGeo, setSelectedGeo] = useUrlArrayState('persona_geo');
-  const [selStatus, setSelStatus] = useUrlArrayState('persona_order', ['__all']);
-  const [selMonths, setSelMonths] = useUrlArrayState('persona_month', ['__all']);
+  const [selectedGeo, setSelectedGeo] = useUrlArrayState('filter_geo');
+  const [selStatus, setSelStatus] = useUrlArrayState('filter_order', ['__all']);
+  const [selMonths, setSelMonths] = useUrlArrayState('filter_time', ['__all']);
   const [globalConfig, handleConfigChange] =
     useStoredChartConfig('persona', PERSONA_DEFAULT);
 
-  const geoOptions    = useMemo(
-    () => getGeoOptions(dataset.records, viewConfig, geoLevel),
-    [dataset, viewConfig, geoLevel],
-  );
   const statusOptions = useMemo(
     () => getStatusOptions(dataset.records, viewConfig),
     [dataset, viewConfig],
   );
   const timeField = useMemo(() => detectTimeField(dataset), [dataset]);
-  const monthOptions = useMemo(
-    () => getMonthOptions(dataset, timeField),
-    [dataset, timeField],
+  const dateBlocks = useMemo(
+    () => viewConfig.dateBlocks?.length ? viewConfig.dateBlocks : getDefaultDateBlocks(dataset, timeField),
+    [dataset, timeField, viewConfig.dateBlocks],
   );
+  const monthOptions = useMemo(() => dateBlocks.map(block => block.key), [dateBlocks]);
+  const monthLabels = useMemo(() => Object.fromEntries(dateBlocks.map(block => [block.key, block.label])), [dateBlocks]);
   const filteredRecords = useMemo(
-    () => filterByMonths(
+    () => filterByDateBlocks(
       filterRecords(dataset.records, viewConfig, geoLevel, selectedGeo, selStatus),
       timeField,
       selMonths,
+      dateBlocks,
     ),
-    [dataset.records, viewConfig, geoLevel, selectedGeo, selStatus, timeField, selMonths],
+    [dataset.records, viewConfig, geoLevel, selectedGeo, selStatus, timeField, selMonths, dateBlocks],
   );
   const personaFields = useMemo(
     () => (viewConfig.personaFieldKeys ?? [])
@@ -325,55 +325,14 @@ export function PersonaView({ dataset, viewConfig }: Props) {
 
         {/* Row 1: Geo filter + chart settings + view toggles */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-gray-500 flex items-center gap-1 flex-shrink-0">
-            <Filter size={11} />
-            筛选地区
-          </span>
-
-          <button
-            onClick={() => { setGeoLevel('all'); setSelectedGeo([]); }}
-            className={cn(
-              'text-xs px-2.5 py-1 rounded-lg transition-all',
-              geoLevel === 'all' && selectedGeo.length === 0
-                ? 'bg-blue-600 text-white font-medium'
-                : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
-            )}
-          >
-            全国
-          </button>
-
-          {geoLevels.map(l => (
-            <button
-              key={l.key}
-              onClick={() => changeGeoLevel(l.key)}
-              className={cn(
-                'text-xs px-2.5 py-1 rounded-lg transition-all',
-                geoLevel === l.key
-                  ? 'bg-blue-600 text-white font-medium'
-                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
-              )}
-            >
-              {l.label}
-            </button>
-          ))}
-
-          {geoLevel !== 'all' && geoOptions.length > 0 && (
-            <GeoDropdown
-              options={geoOptions}
-              selected={selectedGeo}
-              onChange={setSelectedGeo}
-              placeholder={`选择${geoLevels.find(l => l.key === geoLevel)?.label ?? ''}`}
-            />
-          )}
-
-          {selectedGeo.length > 0 && (
-            <button
-              onClick={() => setSelectedGeo([])}
-              className="text-xs text-gray-400 hover:text-gray-600 px-1"
-            >
-              清空
-            </button>
-          )}
+          <GeoFilterGroup
+            dataset={dataset}
+            viewConfig={viewConfig}
+            level={geoLevel}
+            selected={selectedGeo}
+            onLevelChange={setGeoLevel}
+            onChange={setSelectedGeo}
+          />
 
           {/* Right-side controls */}
           <div className="ml-auto flex items-center gap-2 flex-shrink-0">
@@ -407,6 +366,7 @@ export function PersonaView({ dataset, viewConfig }: Props) {
           monthOptions={monthOptions}
           selectedMonths={selMonths}
           onMonthsChange={setSelMonths}
+          monthLabels={monthLabels}
         />
       </div>
 

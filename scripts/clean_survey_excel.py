@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import argparse
 import re
+import subprocess
 from collections import Counter, defaultdict
 from copy import copy
 from datetime import datetime
@@ -263,7 +265,12 @@ def copy_header_style(reference_sheet: Any, output_sheet: Any, offset: int = 1) 
 
 
 def main() -> None:
-    source_book = load_workbook(SOURCE, read_only=True, data_only=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("source", nargs="?", type=Path, default=SOURCE)
+    parser.add_argument("output", nargs="?", type=Path, default=OUTPUT)
+    args = parser.parse_args()
+
+    source_book = load_workbook(args.source, read_only=True, data_only=True)
     reference_book = load_workbook(REFERENCE, data_only=True)
     source_sheet = source_book.active
     reference_sheet = reference_book.active
@@ -338,8 +345,18 @@ def main() -> None:
         )
     output_sheet.row_dimensions[1].height = reference_sheet.row_dimensions[1].height
 
-    output_book.save(OUTPUT)
-    print(f"输出文件: {OUTPUT}")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    output_book.save(args.output)
+    subprocess.run(
+        [
+            "node", "--experimental-strip-types",
+            str(ROOT / "scripts" / "reclassify-xingguang-vehicles.mjs"),
+            str(args.source), str(args.output),
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+    print(f"输出文件: {args.output}")
     print(f"源数据行: {len(source_rows)}")
     print(f"输出数据行: {output_count}")
     print(f"删除全空行: {removed_blank_rows}")

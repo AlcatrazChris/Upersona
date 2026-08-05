@@ -14,7 +14,8 @@ import { useDatasetStore } from '@/store/datasetStore';
 import { useIsAdmin } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { StatusFilterGroups } from '@/components/shared/StatusFilterGroups';
-import { detectTimeField, filterByMonths, getMonthOptions } from '@/lib/timeStatus';
+import { GeoFilterGroup } from '@/components/shared/GeoFilterGroup';
+import { detectTimeField, filterByDateBlocks, getDefaultDateBlocks } from '@/lib/timeStatus';
 import { useUrlArrayState, useUrlStringState } from '@/hooks/useUrlParamState';
 import type { Dataset, Field } from '@/types/dataSchema';
 import type { ViewConfig } from '@/lib/viewConfig';
@@ -514,11 +515,11 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
   const activeConfig = (personaConfigs[dataset.id] ?? []).find(c => c.id === activePersonaConfigId);
 
   const [geoLevel, setGeoLevel] = useUrlStringState<GeoLevel>(
-    'feature_geo_level', 'region', ['region', 'province', 'city'],
+    'filter_geo_level', 'region', ['region', 'province', 'city'],
   );
-  const [selStatus, setSelStatus] = useUrlArrayState('feature_order', ['__all']);
-  const [selMonths, setSelMonths] = useUrlArrayState('feature_month', ['__all']);
-  const [selectedRegions, setSelectedRegions] = useUrlArrayState('feature_regions');
+  const [selStatus, setSelStatus] = useUrlArrayState('filter_order', ['__all']);
+  const [selMonths, setSelMonths] = useUrlArrayState('filter_time', ['__all']);
+  const [selectedRegions, setSelectedRegions] = useUrlArrayState('filter_geo');
 
   // Available geo levels (only those with a configured field key)
   const geoLevels = ([
@@ -538,18 +539,21 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
     [dataset.records, viewConfig],
   );
   const timeField = useMemo(() => detectTimeField(dataset), [dataset]);
-  const monthOptions = useMemo(
-    () => getMonthOptions(dataset, timeField),
-    [dataset, timeField],
+  const dateBlocks = useMemo(
+    () => viewConfig.dateBlocks?.length ? viewConfig.dateBlocks : getDefaultDateBlocks(dataset, timeField),
+    [dataset, timeField, viewConfig.dateBlocks],
   );
+  const monthOptions = useMemo(() => dateBlocks.map(block => block.key), [dateBlocks]);
+  const monthLabels = useMemo(() => Object.fromEntries(dateBlocks.map(block => [block.key, block.label])), [dateBlocks]);
 
   const filteredRecords = useMemo(
-    () => filterByMonths(
+    () => filterByDateBlocks(
       filterRecords(dataset.records, viewConfig, 'all', [], selStatus),
       timeField,
       selMonths,
+      dateBlocks,
     ),
-    [dataset.records, viewConfig, selStatus, timeField, selMonths],
+    [dataset.records, viewConfig, selStatus, timeField, selMonths, dateBlocks],
   );
 
   const allRegions = useMemo(() => {
@@ -611,20 +615,15 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
 
         {/* Row 1: Geo level tabs + stats + export */}
         <div className="flex items-center gap-2 flex-wrap">
-          {geoLevels.map(l => (
-            <button
-              key={l.key}
-              onClick={() => { setGeoLevel(l.key); setSelectedRegions([]); }}
-              className={cn(
-                'text-xs px-3 py-1.5 rounded-xl font-medium transition-all',
-                geoLevel === l.key
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
-              )}
-            >
-              {l.label}
-            </button>
-          ))}
+          <GeoFilterGroup
+            dataset={dataset}
+            viewConfig={viewConfig}
+            level={geoLevel}
+            selected={selectedRegions}
+            onLevelChange={setGeoLevel}
+            onChange={setSelectedRegions}
+            allowAll={false}
+          />
 
           <span className="text-xs text-gray-400 ml-auto">
             共 <span className="font-semibold text-gray-800">{filteredRecords.length.toLocaleString()}</span> 人
@@ -641,49 +640,6 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
           </button>
         </div>
 
-        {/* Row 2: Region selector chips + picker */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs text-gray-400 flex-shrink-0">对比地区</span>
-
-          {/* Selected chips */}
-          {selectedRegions.map(r => (
-            <span
-              key={r}
-              className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 pl-2.5 pr-1.5 py-1 rounded-full"
-            >
-              {r}
-              <button
-                onClick={() => setSelectedRegions(prev => prev.filter(x => x !== r))}
-                className="hover:text-blue-900"
-              >
-                <X size={10} />
-              </button>
-            </span>
-          ))}
-
-          {/* Add region dropdown */}
-          <RegionPickerDropdown
-            allOptions={allRegions}
-            selected={selectedRegions}
-            onAdd={v => setSelectedRegions(prev => [...prev, v])}
-          />
-
-          {/* "Show all" shortcut when nothing selected */}
-          {selectedRegions.length === 0 && allRegions.length > 0 && (
-            <span className="text-xs text-gray-300 ml-1">（当前展示全部 {allRegions.length} 个{geoLabel}）</span>
-          )}
-
-          {/* Clear button */}
-          {selectedRegions.length > 0 && (
-            <button
-              onClick={() => setSelectedRegions([])}
-              className="text-xs text-gray-400 hover:text-gray-600 ml-1"
-            >
-              清空
-            </button>
-          )}
-        </div>
-
         <StatusFilterGroups
           orderOptions={statusOptions}
           selectedOrders={selStatus}
@@ -691,6 +647,7 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
           monthOptions={monthOptions}
           selectedMonths={selMonths}
           onMonthsChange={setSelMonths}
+          monthLabels={monthLabels}
         />
       </div>
 

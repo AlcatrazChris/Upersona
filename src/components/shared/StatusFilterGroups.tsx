@@ -26,16 +26,16 @@ function StatusGroup({
     onChange(next.length > 0 ? next : [ALL_STATUS]);
   };
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <span className="text-xs text-gray-400 flex-shrink-0">{label}</span>
+    <div className="flex min-h-8 items-center gap-2 flex-wrap">
+      <span className="w-16 flex-shrink-0 text-xs text-slate-400">{label}</span>
       <button
         type="button"
         onClick={() => onChange([ALL_STATUS])}
         className={cn(
-          'text-xs px-3 py-1 rounded-full transition-all border',
+          'rounded-lg border px-3 py-1 text-xs transition-all',
           all
-            ? 'bg-gray-800 border-gray-800 text-white font-medium'
-            : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100',
+            ? 'border-slate-800 bg-slate-800 font-medium text-white'
+            : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50',
         )}
       >
         全部
@@ -48,10 +48,10 @@ function StatusGroup({
             key={option}
             onClick={() => toggle(option)}
             className={cn(
-              'text-xs px-3 py-1 rounded-full transition-all border',
+              'rounded-lg border px-3 py-1 text-xs transition-all',
               active
                 ? 'bg-blue-600 border-blue-600 text-white font-medium'
-                : 'bg-blue-50 border-blue-100 text-blue-600 hover:border-blue-300',
+                : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600',
             )}
           >
             {format(option)}

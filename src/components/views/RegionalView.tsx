@@ -14,7 +14,8 @@ import { useDatasetStore } from '@/store/datasetStore';
 import type { Dataset } from '@/types/dataSchema';
 import type { ViewConfig } from '@/lib/viewConfig';
 import { StatusFilterGroups } from '@/components/shared/StatusFilterGroups';
-import { detectTimeField, filterByMonths, getMonthOptions } from '@/lib/timeStatus';
+import { GeoFilterGroup } from '@/components/shared/GeoFilterGroup';
+import { detectTimeField, filterByDateBlocks, getDefaultDateBlocks } from '@/lib/timeStatus';
 import { useUrlArrayState, useUrlStringState } from '@/hooks/useUrlParamState';
 
 // ── Region chip ────────────────────────────────────────────────
@@ -152,12 +153,12 @@ interface Props {
 
 export function RegionalView({ dataset, viewConfig }: Props) {
   const [geoLevel, setGeoLevel] = useUrlStringState<GeoLevel>(
-    'regional_geo_level', 'region', ['region', 'province', 'city'],
+    'filter_geo_level', 'region', ['region', 'province', 'city'],
   );
-  const [selectedGeo, setSelectedGeo] = useUrlArrayState('regional_geo');
+  const [selectedGeo, setSelectedGeo] = useUrlArrayState('filter_geo');
   const { updateViewConfig, personaConfigs, activePersonaConfigId } = useDatasetStore();
-  const [selStatus, setSelStatus] = useUrlArrayState('regional_order', ['__all']);
-  const [selMonths, setSelMonths] = useUrlArrayState('regional_month', ['__all']);
+  const [selStatus, setSelStatus] = useUrlArrayState('filter_order', ['__all']);
+  const [selMonths, setSelMonths] = useUrlArrayState('filter_time', ['__all']);
   const [dimOpen,      setDimOpen]      = useState(false);
   const [chartMode, setChartMode] = useUrlStringState<ChartMode>(
     'regional_chart', 'stacked', ['stacked', 'grouped'],
@@ -179,17 +180,22 @@ export function RegionalView({ dataset, viewConfig }: Props) {
     { key: 'city'     as GeoLevel, label: '城市', fieldKey: viewConfig.geoCityKey     },
   ] as const).filter(l => l.fieldKey);
 
-  const geoOptions    = useMemo(() => getGeoOptions(dataset.records, viewConfig, geoLevel),   [dataset, viewConfig, geoLevel]);
   const statusOptions = useMemo(() => getStatusOptions(dataset.records, viewConfig), [dataset, viewConfig]);
-  const monthOptions = useMemo(() => getMonthOptions(dataset, timeField), [dataset, timeField]);
+  const dateBlocks = useMemo(
+    () => viewConfig.dateBlocks?.length ? viewConfig.dateBlocks : getDefaultDateBlocks(dataset, timeField),
+    [dataset, timeField, viewConfig.dateBlocks],
+  );
+  const monthOptions = useMemo(() => dateBlocks.map(block => block.key), [dateBlocks]);
+  const monthLabels = useMemo(() => Object.fromEntries(dateBlocks.map(block => [block.key, block.label])), [dateBlocks]);
 
   const statusFiltered = useMemo(
-    () => filterByMonths(
+    () => filterByDateBlocks(
       filterRecords(dataset.records, viewConfig, 'all', [], selStatus),
       timeField,
       selMonths,
+      dateBlocks,
     ),
-    [dataset.records, viewConfig, selStatus, timeField, selMonths],
+    [dataset.records, viewConfig, selStatus, timeField, selMonths, dateBlocks],
   );
 
   const dimensionField = dataset.fields.find(f => f.key === dimKey);
@@ -227,7 +233,7 @@ export function RegionalView({ dataset, viewConfig }: Props) {
   const handleLevelChange = (lv: GeoLevel) => { setGeoLevel(lv); setSelectedGeo([]); };
 
   // AI insight helpers
-  const insightCacheKey = `regional_${geoLevel}_${selectedGeo.join(',')}_${dimKey}_${selStatus.join(',')}`;
+  const insightCacheKey = `regional_${geoLevel}_${selectedGeo.join(',')}_${dimKey}_${selStatus.join(',')}_${selMonths.join(',')}`;
   const insightLabel = selectedGeo.length === 0
     ? '（请先选择地区）'
     : `${selectedGeo.join(' vs ')} · ${dimensionField?.name ?? ''}`;
@@ -265,20 +271,15 @@ export function RegionalView({ dataset, viewConfig }: Props) {
 
         {/* Row 1: Geo level + dimension picker + chart settings */}
         <div className="flex items-center gap-2 flex-wrap">
-          {geoLevels.map(l => (
-            <button
-              key={l.key}
-              onClick={() => handleLevelChange(l.key)}
-              className={cn(
-                'text-xs px-3 py-1.5 rounded-xl font-medium transition-all',
-                geoLevel === l.key
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200',
-              )}
-            >
-              {l.label}
-            </button>
-          ))}
+          <GeoFilterGroup
+            dataset={dataset}
+            viewConfig={viewConfig}
+            level={geoLevel}
+            selected={selectedGeo}
+            onLevelChange={setGeoLevel}
+            onChange={setSelectedGeo}
+            allowAll={false}
+          />
 
           <div className="w-px h-4 bg-gray-200 mx-1" />
 
@@ -322,33 +323,6 @@ export function RegionalView({ dataset, viewConfig }: Props) {
           </div>
         </div>
 
-        {/* Row 2: Region chips */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <MapPin size={11} className="text-gray-400 flex-shrink-0" />
-          {selectedGeo.map(v => (
-            <RegionChip
-              key={v}
-              value={v}
-              onRemove={() => setSelectedGeo(prev => prev.filter(s => s !== v))}
-            />
-          ))}
-          {geoOptions.length > 0 && (
-            <AddRegionDropdown
-              options={geoOptions}
-              selected={selectedGeo}
-              onAdd={v => setSelectedGeo(prev => [...prev, v])}
-            />
-          )}
-          {selectedGeo.length > 0 && (
-            <button
-              onClick={() => setSelectedGeo([])}
-              className="text-xs text-gray-400 hover:text-gray-600"
-            >
-              清空
-            </button>
-          )}
-        </div>
-
         <StatusFilterGroups
           orderOptions={statusOptions}
           selectedOrders={selStatus}
@@ -356,6 +330,7 @@ export function RegionalView({ dataset, viewConfig }: Props) {
           monthOptions={monthOptions}
           selectedMonths={selMonths}
           onMonthsChange={setSelMonths}
+          monthLabels={monthLabels}
         />
       </div>
 

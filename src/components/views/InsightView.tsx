@@ -3,14 +3,16 @@
 import { useState, useMemo } from 'react';
 import { Loader2, RefreshCw, MapPin } from 'lucide-react';
 import { MarkdownContent } from '@/components/ui/MarkdownContent';
-import { filterRecords, getGeoOptionsWithCount, type GeoLevel } from '@/lib/filterRecords';
+import { filterRecords, getGeoOptionsWithCount, getStatusOptions, type GeoLevel } from '@/lib/filterRecords';
 import { aggregateField } from '@/lib/dataAggregator';
 import { computeClusters, CLUSTER_METHODS, type ClusterMethod } from '@/lib/clusterEngine';
 import { useDatasetStore } from '@/store/datasetStore';
 import type { ViewConfig, ClusterInsightResult, ClusterSegment, DataPoint } from '@/lib/viewConfig';
 import type { Dataset, Field } from '@/types/dataSchema';
-import { detectTimeField } from '@/lib/timeStatus';
+import { detectTimeField, filterByDateBlocks, getDefaultDateBlocks } from '@/lib/timeStatus';
 import { useUrlArrayState, useUrlStringState } from '@/hooks/useUrlParamState';
+import { StatusFilterGroups } from '@/components/shared/StatusFilterGroups';
+import { GeoFilterGroup } from '@/components/shared/GeoFilterGroup';
 
 // ── McKinsey palette (one per segment) ───────────────────────
 
@@ -493,9 +495,11 @@ interface Props {
 export function InsightView({ dataset, viewConfig }: Props) {
   const { updateViewConfig } = useDatasetStore();
   const [geoLevel, setGeoLevel] = useUrlStringState<GeoLevel>(
-    'insight_geo_level', 'region', ['region', 'province', 'city'],
+    'filter_geo_level', 'all', ['all', 'region', 'province', 'city'],
   );
-  const [selectedGeo, setSelectedGeo] = useUrlArrayState('insight_geo');
+  const [selectedGeo, setSelectedGeo] = useUrlArrayState('filter_geo');
+  const [selStatus, setSelStatus] = useUrlArrayState('filter_order', ['__all']);
+  const [selMonths, setSelMonths] = useUrlArrayState('filter_time', ['__all']);
   const [clusterMethod, setClusterMethod] = useUrlStringState<ClusterMethod>(
     'insight_method', 'kmeans', ['kmeans', 'twostage'],
   );
@@ -507,17 +511,30 @@ export function InsightView({ dataset, viewConfig }: Props) {
     { key: 'province' as GeoLevel, label: '省份',  fieldKey: viewConfig.geoProvinceKey },
     { key: 'city'     as GeoLevel, label: '城市',  fieldKey: viewConfig.geoCityKey     },
   ] as const).filter(l => l.fieldKey);
+  const timeField = useMemo(() => detectTimeField(dataset), [dataset]);
+  const statusOptions = useMemo(() => getStatusOptions(dataset.records, viewConfig), [dataset.records, viewConfig]);
+  const dateBlocks = useMemo(
+    () => viewConfig.dateBlocks?.length ? viewConfig.dateBlocks : getDefaultDateBlocks(dataset, timeField),
+    [dataset, timeField, viewConfig.dateBlocks],
+  );
+  const monthOptions = useMemo(() => dateBlocks.map(block => block.key), [dateBlocks]);
+  const monthLabels = useMemo(() => Object.fromEntries(dateBlocks.map(block => [block.key, block.label])), [dateBlocks]);
 
   const cacheKey = useMemo(
-    () => `${geoLevel}_${selectedGeo.join(',')}_r${dataset.rowCount}_m${clusterMethod}`,
-    [geoLevel, selectedGeo, dataset.rowCount, clusterMethod],
+    () => `${geoLevel}_${selectedGeo.join(',')}_s${selStatus.join(',')}_t${selMonths.join(',')}_r${dataset.rowCount}_m${clusterMethod}`,
+    [geoLevel, selectedGeo, selStatus, selMonths, dataset.rowCount, clusterMethod],
   );
 
   const cachedResult: ClusterInsightResult | undefined = viewConfig.clusterResults?.[cacheKey];
 
   const filteredRecords = useMemo(
-    () => filterRecords(dataset.records, viewConfig, geoLevel, selectedGeo, ['__all']),
-    [dataset, viewConfig, geoLevel, selectedGeo],
+    () => filterByDateBlocks(
+      filterRecords(dataset.records, viewConfig, geoLevel, selectedGeo, selStatus),
+      timeField,
+      selMonths,
+      dateBlocks,
+    ),
+    [dataset.records, viewConfig, geoLevel, selectedGeo, selStatus, timeField, selMonths, dateBlocks],
   );
 
   const { chartable, clusterFields, supplementFields } = useMemo(
@@ -527,8 +544,10 @@ export function InsightView({ dataset, viewConfig }: Props) {
 
   const contextLabel = useMemo(() => {
     const geo = selectedGeo.length > 0 ? selectedGeo.join(' / ') : '全国';
-    return `${geo}`;
-  }, [selectedGeo]);
+    const order = selStatus.includes('__all') ? '' : ` · ${selStatus.join('/')}`;
+    const time = selMonths.includes('__all') ? '' : ` · ${selMonths.map(key => monthLabels[key] ?? key).join('/')}`;
+    return `${geo}${order}${time}`;
+  }, [selectedGeo, selStatus, selMonths, monthLabels]);
 
   async function generate() {
     setLoading(true);
@@ -599,30 +618,17 @@ export function InsightView({ dataset, viewConfig }: Props) {
     <div className="space-y-4">
 
       {/* ── Filter + action bar ── */}
-      <div className="bg-white border border-gray-200 rounded-sm px-5 py-3.5 flex items-center gap-3 flex-wrap">
+      <div className="rounded-2xl border border-gray-100 bg-white px-5 py-4 space-y-3">
+
+        <div className="flex items-center gap-3 flex-wrap">
 
         {/* Geo level selector */}
-        <div className="flex items-center gap-1">
-          {geoLevels.map(l => (
-            <button
-              key={l.key}
-              onClick={() => { setGeoLevel(l.key); setSelectedGeo([]); }}
-              className={`text-xs px-2.5 py-1 font-medium transition-all rounded-sm ${
-                geoLevel === l.key
-                  ? 'bg-gray-900 text-white'
-                  : 'text-gray-500 hover:bg-gray-100'
-              }`}
-            >
-              {l.label}
-            </button>
-          ))}
-        </div>
-
-        <GeoFilterInline
+        <GeoFilterGroup
           dataset={dataset}
           viewConfig={viewConfig}
-          geoLevel={geoLevel}
+          level={geoLevel}
           selected={selectedGeo}
+          onLevelChange={setGeoLevel}
           onChange={setSelectedGeo}
         />
 
@@ -658,6 +664,17 @@ export function InsightView({ dataset, viewConfig }: Props) {
             : <><RefreshCw size={11} />{cachedResult ? '重新分析' : '开始聚类分析'}</>
           }
         </button>
+        </div>
+
+        <StatusFilterGroups
+          orderOptions={statusOptions}
+          selectedOrders={selStatus}
+          onOrdersChange={setSelStatus}
+          monthOptions={monthOptions}
+          selectedMonths={selMonths}
+          onMonthsChange={setSelMonths}
+          monthLabels={monthLabels}
+        />
       </div>
 
       {error && (

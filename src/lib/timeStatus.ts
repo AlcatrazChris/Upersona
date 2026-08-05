@@ -111,3 +111,19 @@ export function filterByMonths(
     return month !== null && selected.has(month);
   });
 }
+
+export function filterByDateBlocks(
+  records: Record<string, unknown>[],
+  field: Field | undefined,
+  selectedBlocks: string[],
+  blocks: DateBlock[],
+): Record<string, unknown>[] {
+  if (!field || selectedBlocks.length === 0 || selectedBlocks.includes(ALL_STATUS)) return records;
+  const validKeys = new Set(blocks.map(block => block.key));
+  const selected = new Set(selectedBlocks.filter(key => validKeys.has(key)));
+  if (selected.size === 0) return records;
+  return records.filter(record => {
+    const block = dateBlockForValue(record[field.key], blocks);
+    return block !== null && selected.has(block);
+  });
+}

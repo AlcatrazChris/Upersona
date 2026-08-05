@@ -166,7 +166,10 @@ export function normalizeViewConfig(dataset: Dataset, config: ViewConfig): ViewC
   return {
     ...config,
     statusFieldKey: explicit.key,
-    statusGroups: buildDefaultStatusGroups(values),
+    statusGroups:
+      config.statusFieldKey === explicit.key && config.statusGroups?.length
+        ? config.statusGroups
+        : buildDefaultStatusGroups(values),
   };
 }
 
