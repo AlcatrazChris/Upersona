@@ -110,16 +110,14 @@ function splitMultiChoice(raw: string, delimiter: string = '┋'): string[] {
 function aggregateMultiChoice(records: Record<string, unknown>[], field: Field): ChartDataItem[] {
   const delimiter = field.multiDelimiter ?? '┋';
   const allParts: string[] = [];
-  let validRows = 0;
 
   for (const r of records) {
     const raw = toStr(r[field.key]);
     if (!raw) continue;
-    validRows++;
     allParts.push(...splitMultiChoice(raw, delimiter));
   }
 
-  return toItems(countMap(allParts), validRows, field.orderedValues);
+  return toItems(countMap(allParts), allParts.length, field.orderedValues);
 }
 
 function aggregateText(records: Record<string, unknown>[], field: Field): ChartDataItem[] {
@@ -329,6 +327,12 @@ function getMainVals(record: Record<string, unknown>, f: Field): string[] {
   return [raw];
 }
 
+function percentageTotal(field: Field, counts: Record<string, number>, validRows: number): number {
+  return field.type === 'multi_choice'
+    ? Object.values(counts).reduce((sum, count) => sum + count, 0)
+    : validRows;
+}
+
 export function aggregateFieldGrouped(
   records: Record<string, unknown>[],
   mainField: Field,
@@ -365,7 +369,7 @@ export function aggregateFieldGrouped(
   const items = mainKeys.map(mv => {
     const row: Record<string, number | string> = { label: mv };
     for (const g of selectedGroups) {
-      const total = groupTotals[g];
+      const total = percentageTotal(mainField, rawCounts[g], groupTotals[g]);
       row[g] = total > 0 ? Math.round(((rawCounts[g][mv] ?? 0) / total) * 1000) / 10 : 0;
     }
     return row;
@@ -373,7 +377,7 @@ export function aggregateFieldGrouped(
 
   // Stacked vertical: rows = groups, series = mainValues (natural order for stacking)
   const stackItems = selectedGroups.map(g => {
-    const total = groupTotals[g];
+    const total = percentageTotal(mainField, rawCounts[g], groupTotals[g]);
     const row: Record<string, number | string> = { label: g };
     for (const mv of mainKeys) {
       row[mv] = total > 0 ? Math.round(((rawCounts[g][mv] ?? 0) / total) * 1000) / 10 : 0;
@@ -438,14 +442,14 @@ export function aggregateByStatusGroups(
   const items = mainKeys.map(mv => {
     const row: Record<string, number | string> = { label: mv };
     for (const g of groups) {
-      const total = groupTotals[g.label];
+      const total = percentageTotal(mainField, rawCounts[g.label], groupTotals[g.label]);
       row[g.label] = total > 0 ? Math.round(((rawCounts[g.label][mv] ?? 0) / total) * 1000) / 10 : 0;
     }
     return row;
   });
 
   const stackItems = groups.map(g => {
-    const total = groupTotals[g.label];
+    const total = percentageTotal(mainField, rawCounts[g.label], groupTotals[g.label]);
     const row: Record<string, number | string> = { label: g.label };
     for (const mv of mainKeys) {
       row[mv] = total > 0 ? Math.round(((rawCounts[g.label][mv] ?? 0) / total) * 1000) / 10 : 0;
@@ -463,10 +467,8 @@ export function aggregateByStatusGroups(
 // ── Cross-dataset status comparison ──────────────────────────
 // Two datasets share the same statusFieldKey and group definitions.
 // Series are interleaved: [A·g1, B·g1, A·g2, B·g2, ...]
-// Percentage denominator = total records in each dataset (option B:
-// "% of total dataset"), so bars reflect both group prevalence and
-// within-group distribution.  groupTotals stores the group size (for
-// the tooltip n= display).
+// Each dataset/status series is normalized independently: single-choice
+// fields use valid respondents; multi-choice fields use total mentions.
 
 export function aggregateCrossDatasetByStatus(
   primary: { records: Record<string, unknown>[]; label: string },
@@ -493,12 +495,6 @@ export function aggregateCrossDatasetByStatus(
   // groupTotals stores group sizes (for tooltip n= display)
   const groupTotals: Record<string, number> = {};
   for (const sk of seriesKeys) { rawCounts[sk] = {}; groupTotals[sk] = 0; }
-
-  // Dataset totals — denominator for percentages (option B)
-  const datasetTotal: Record<string, number> = {
-    [primary.label]: primary.records.length,
-    [compare.label]: compare.records.length,
-  };
 
   // Count function
   function processRecords(
@@ -533,14 +529,14 @@ export function aggregateCrossDatasetByStatus(
 
   const mainKeys = rankMainKeys(totalByMain, maxItems, mainField.isOrdered ? mainField.orderedValues : undefined);
 
-  // Compute percentages using dataset total as denominator (option B)
+  // Compute a complete distribution within every dataset/status series.
   const items = mainKeys.map(mv => {
     const row: Record<string, number | string> = { label: mv };
     for (const g of groups) {
       const skA = `${primary.label} · ${g.label}`;
       const skB = `${compare.label} · ${g.label}`;
-      const totA = datasetTotal[primary.label];
-      const totB = datasetTotal[compare.label];
+      const totA = percentageTotal(mainField, rawCounts[skA], groupTotals[skA]);
+      const totB = percentageTotal(mainField, rawCounts[skB], groupTotals[skB]);
       row[skA] = totA > 0 ? Math.round(((rawCounts[skA][mv] ?? 0) / totA) * 1000) / 10 : 0;
       row[skB] = totB > 0 ? Math.round(((rawCounts[skB][mv] ?? 0) / totB) * 1000) / 10 : 0;
     }
