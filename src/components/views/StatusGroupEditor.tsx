@@ -213,16 +213,13 @@ export function StatusGroupEditor({ allValues, groups, onSave, onClose }: Props)
                     <option value="weak">弱意向</option>
                   </select>
 
-                  {/* Remove group (only if >1 groups) */}
-                  {local.length > 1 && (
-                    <button
-                      onClick={() => removeGroup(gi)}
-                      className="p-1 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all"
-                      title="删除分组"
-                    >
-                      <X size={12} />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => removeGroup(gi)}
+                    className="p-1 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all"
+                    title="删除状态"
+                  >
+                    <X size={12} />
+                  </button>
                 </div>
 
                 {/* Values in group */}

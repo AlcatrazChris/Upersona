@@ -159,6 +159,11 @@ function explicitOrderStatusField(dataset: Dataset) {
 
 /** Prevent a blank 订单状态 column from falling through to unrelated fields such as 工作生活状态. */
 export function normalizeViewConfig(dataset: Dataset, config: ViewConfig): ViewConfig {
+  // A saved choice is authoritative; detection only fills unconfigured datasets.
+  if (config.statusFieldKey === '') return { ...config, statusGroups: [] };
+  if (config.statusFieldKey && dataset.fields.some(field => field.key === config.statusFieldKey)) {
+    return config;
+  }
   const explicit = explicitOrderStatusField(dataset);
   if (!explicit) return config;
   const values = fieldValues(dataset, explicit.key);

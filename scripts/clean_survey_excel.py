@@ -13,6 +13,8 @@ from typing import Any
 
 from openpyxl import Workbook, load_workbook
 
+from clean_xingguang_excel import city_tier
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / ".data" / "wechat" / "2026-07" / "366639047_3644_3644.xlsx"
@@ -108,8 +110,8 @@ def fallback_clean_token(value: str) -> str:
     return value
 
 
-def normalize_industry(value: Any) -> str:
-    raw = text(value)
+def normalize_industry(*values: Any) -> str:
+    primary = text(values[0]) if values else ""
     canonical = {
         "公共管理与事业单位", "制造与工业服务", "商贸零售与个体经营",
         "建筑与房地产", "教育培训", "信息技术与互联网通信",
@@ -117,28 +119,41 @@ def normalize_industry(value: Any) -> str:
         "能源矿产与公用事业", "交通物流与邮政", "科研与专业服务",
         "农林牧渔", "文化体育娱乐与旅游", "退休", "租赁服务", "其他",
     }
-    if raw in canonical:
-        return raw
+    if primary in canonical - {"其他"}:
+        return primary
     rules = (
         (r"退休|离休|退修|已退", "退休"),
-        (r"政府|事业单位|国企|国有企业|检察院|军队|部队|社区|社会组织|香港政府|退役军人", "公共管理与事业单位"),
+        (r"政府|事业单位|国企|国有企业|国有/集体企业|检察院|军队|部队|社区|社会组织|香港政府|退役军人|国际组织", "公共管理与事业单位"),
         (r"建筑|房地产|装修|装饰|物业", "建筑与房地产"),
-        (r"批发|零售|电商|外贸|贸易|销售|商业|酒类|彩票|手机批发|小买卖|商人|做生意|经营者|个体|创业|自营店主|市场管理|区域经理", "商贸零售与个体经营"),
+        (r"批发|零售|电商|外贸|贸易|销售|商业|酒类|彩票|手机批发|小买卖|商人|做生意|经营者|个体|创业|自营|合伙人|市场管理|区域经理|开店|投资|促销", "商贸零售与个体经营"),
         (r"教育|培训|教师", "教育培训"),
-        (r"医疗|卫生|社会保障|社会福利|医生|药品|生物实验|医疗器械", "医疗健康与社会服务"),
+        (r"医疗|卫生|社会保障|社会福利|医生|护士|药师|检验师|药品|生物实验|医疗器械", "医疗健康与社会服务"),
         (r"金融|财务|会计", "金融与财会"),
         (r"计算机|软件|互联网|通信|通讯|电信|物联网|自媒体|AI|光通信", "信息技术与互联网通信"),
         (r"物流|交通|仓储|邮政|司机|客运|公路|高速|收费员|外卖|校车", "交通物流与邮政"),
         (r"住宿|餐饮|生活服务|美容|美发|洗护|家政|服务业|服务〗", "住宿餐饮与生活服务"),
         (r"农、林、牧、渔|农民", "农林牧渔"),
-        (r"电力|燃气|水生产|采矿|能源|石油|化工|炼油|石化|危化|新能源|柴汽油", "能源矿产与公用事业"),
+        (r"电力|燃气|水生产|水利|环境|公共设施|采矿|能源|石油|化工|炼油|石化|危化|新能源|柴汽油", "能源矿产与公用事业"),
         (r"科学研究|技术服务|地质勘查|专业服务|法律|咨询|设计服务|广告服务|中介", "科研与专业服务"),
-        (r"文化|体育|娱乐|旅游|演员|摄影|舞美", "文化体育娱乐与旅游"),
+        (r"文化|体育|娱乐|旅游|媒体|作家|记者|设计师|演员|摄影|舞美", "文化体育娱乐与旅游"),
         (r"出租|租赁", "租赁服务"),
-        (r"制造|加工|汽车|汽配|纺织|服装|家具|家电|食品工厂|维修|汽修|机动车检测|弱电工|技术工|工人|飞机维修|建材|五金|试驾车", "制造与工业服务"),
+        (r"制造|生产|加工|工程师|技术员|研发人员|操作人员|操作工|汽车|汽配|纺织|服装|家具|家电|食品工厂|维修|汽修|机动车检测|弱电工|电工|技术工|工人|飞机维修|建材|五金|试驾车", "制造与工业服务"),
     )
     for pattern, category in rules:
-        if re.search(pattern, raw):
+        if re.search(pattern, primary):
+            return category
+    useful = [
+        value for value in map(text, values)
+        if value and value not in SKIP_VALUES
+        and not re.fullmatch(r"(?:其他[〖【]?)?(?:无|无业|待业|没有工作|不便透露|秘密|其他)[〗】]?", value)
+    ]
+    if not useful or all(re.search(r"没有工作|主妇|主夫|学生|无业|待业", value) for value in useful):
+        return ""
+    support = [text(value) for value in values[1:] if text(value) not in SKIP_VALUES]
+    support_raw = " ".join(support)
+    for pattern, category in rules:
+        haystack = support[0] if category == "公共管理与事业单位" and support else support_raw
+        if re.search(pattern, haystack):
             return category
     return "其他"
 
@@ -196,7 +211,8 @@ def resolve_geo(
 ) -> tuple[str, str, str, str, str]:
     raw = text(value)
     if raw in exact_map:
-        return exact_map[raw]  # type: ignore[return-value]
+        geo = exact_map[raw]
+        return (*geo[:4], geo[4] or city_tier(geo[2]))  # type: ignore[return-value]
 
     parts = [part.strip() for part in raw.split("-")]
     province = parts[0] if parts else ""
@@ -204,8 +220,9 @@ def resolve_geo(
     district = "-".join(parts[2:]) if len(parts) > 2 else ""
     known = city_map.get(city)
     if known:
-        return known[0], province or known[1], city or known[2], district, known[4]
-    return province_region.get(province, ""), province, city, district, ""
+        resolved_city = city or known[2]
+        return known[0], province or known[1], resolved_city, district, known[4] or city_tier(resolved_city)
+    return province_region.get(province, ""), province, city, district, city_tier(city)
 
 
 def build_car_map(
@@ -265,6 +282,8 @@ def copy_header_style(reference_sheet: Any, output_sheet: Any, offset: int = 1) 
 
 
 def main() -> None:
+    assert city_tier("北京市") == "一线城市"
+    assert city_tier("未收录市") == "四线城市及以下"
     parser = argparse.ArgumentParser()
     parser.add_argument("source", nargs="?", type=Path, default=SOURCE)
     parser.add_argument("output", nargs="?", type=Path, default=OUTPUT)
@@ -313,7 +332,7 @@ def main() -> None:
             cleaned_direct[source_col] = clean_cell(
                 source_row[source_col], source_col, whole_maps, token_maps
             )
-        cleaned_direct[13] = normalize_industry(source_row[13])
+        cleaned_direct[13] = normalize_industry(*(source_row[column] for column in range(13, 17)))
 
         # A row is blank only when all actual survey answers are empty after cleaning.
         if not any(cleaned_direct.values()):

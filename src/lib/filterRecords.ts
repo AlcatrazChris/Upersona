@@ -34,7 +34,10 @@ export function filterRecords(
   return records.filter(r => {
     if (filterStatus) {
       const val = String(r[config.statusFieldKey!] ?? '').trim();
-      if (!selectedStatuses.includes(val)) return false;
+      const selectedValues = selectedStatuses.flatMap(selected =>
+        config.statusGroups?.find(group => group.label === selected)?.values ?? [selected]
+      );
+      if (!selectedValues.includes(val)) return false;
     }
     if (filterGeo) {
       const val = String(r[geoKey!] ?? '').trim();
@@ -84,6 +87,7 @@ export function getStatusOptions(
   config:  ViewConfig,
 ): string[] {
   if (!config.statusFieldKey) return [];
+  if (config.statusGroups?.length) return config.statusGroups.map(group => group.label);
   const s = new Set<string>();
   for (const r of records) {
     const v = String(r[config.statusFieldKey] ?? '').trim();
