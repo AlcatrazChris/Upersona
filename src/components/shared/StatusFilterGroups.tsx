@@ -70,6 +70,8 @@ export function StatusFilterGroups({
   selectedMonths,
   onMonthsChange,
   monthLabels,
+  orderLabel = '订单状态',
+  monthLabelText = '时间状态',
 }: {
   orderOptions: string[];
   selectedOrders: string[];
@@ -78,17 +80,19 @@ export function StatusFilterGroups({
   selectedMonths: string[];
   onMonthsChange: (values: string[]) => void;
   monthLabels?: Record<string, string>;
+  orderLabel?: string;
+  monthLabelText?: string;
 }) {
   return (
     <>
       <StatusGroup
-        label="订单状态"
+        label={orderLabel}
         options={orderOptions}
         selected={selectedOrders}
         onChange={onOrdersChange}
       />
       <StatusGroup
-        label="时间状态"
+        label={monthLabelText}
         options={monthOptions}
         selected={selectedMonths}
         onChange={onMonthsChange}

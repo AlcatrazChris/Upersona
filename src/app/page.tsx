@@ -67,14 +67,6 @@ const VIEW_IMPORTS: Record<ViewId, () => Promise<unknown>> = {
   rfeature: () => import('@/components/views/RegionalFeatureView'),
 };
 
-const VIEW_SUBTITLES: Record<ViewId, string> = {
-  persona:  '全量及筛选用户的维度分布',
-  regional: '按地区对比人群特征差异',
-  status:   '不同状态用户的特征对比',
-  insight:  '数据驱动的关键洞察与典型人群画像',
-  rfeature: '地区 × 画像维度交叉特征表',
-};
-
 // ── Empty state ───────────────────────────────────────────────────
 
 function EmptyState({ onOpenDC, isAdmin }: { onOpenDC: () => void; isAdmin: boolean }) {
@@ -293,9 +285,6 @@ export default function MainPage() {
                 <h1 className="truncate text-[15px] font-semibold leading-tight text-gray-900">
                   {VIEWS.find(v => v.id === view)?.label}
                 </h1>
-                <div className="mt-0.5 hidden truncate text-xs leading-tight text-gray-500 sm:block">
-                  {VIEW_SUBTITLES[view]}
-                </div>
               </>
             ) : (
               <h1 className="text-sm font-medium text-gray-500">选择或上传数据集后开始分析</h1>

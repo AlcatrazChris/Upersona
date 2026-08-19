@@ -15,7 +15,10 @@ import { useIsAdmin } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { StatusFilterGroups } from '@/components/shared/StatusFilterGroups';
 import { GeoFilterGroup } from '@/components/shared/GeoFilterGroup';
+import { DimensionMultiSelect } from '@/components/shared/DimensionMultiSelect';
 import { detectTimeField, filterByDateBlocks, getDefaultDateBlocks } from '@/lib/timeStatus';
+import { reorderSelectedKeys } from '@/lib/statusInsight';
+import { PERSONA_ROLE_META, roleForField, type PersonaSemanticRole } from '@/lib/personaTemplate';
 import { useUrlArrayState, useUrlStringState } from '@/hooks/useUrlParamState';
 import type { Dataset, Field } from '@/types/dataSchema';
 import type { ViewConfig } from '@/lib/viewConfig';
@@ -567,7 +570,7 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
   }, [filteredRecords, geoFieldKey]);
 
   // Persona fields — prefer active persona config blocks
-  const personaFields = useMemo(() => {
+  const allPersonaFields = useMemo(() => {
     if (activeConfig) {
       return activeConfig.blocks
         .filter(b => b.visible && b.sourceFieldKey)
@@ -578,6 +581,31 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
       .map(k => dataset.fields.find(f => f.key === k))
       .filter((field): field is Field => !!field && field.key !== timeField?.key);
   }, [dataset.fields, viewConfig.personaFieldKeys, activeConfig, timeField]);
+
+  const [selectedDimKeys, setSelectedDimKeys] = useUrlArrayState(
+    'regional_feature_dimensions',
+    allPersonaFields.slice(0, 6).map(field => field.key),
+  );
+  const dimensionCategories = useMemo(() => {
+    const grouped = new Map<PersonaSemanticRole, Field[]>();
+    for (const field of allPersonaFields) {
+      const role = roleForField(field, viewConfig.personaRoles);
+      if (role === 'metadata') continue;
+      grouped.set(role, [...(grouped.get(role) ?? []), field]);
+    }
+    return [...grouped.entries()]
+      .sort(([a], [b]) => PERSONA_ROLE_META[a].order - PERSONA_ROLE_META[b].order)
+      .map(([key, fields]) => ({ key, label: PERSONA_ROLE_META[key].label, fields }));
+  }, [allPersonaFields, viewConfig.personaRoles]);
+  const personaFields = useMemo(
+    () => selectedDimKeys
+      .map(key => allPersonaFields.find(field => field.key === key))
+      .filter((field): field is Field => !!field),
+    [allPersonaFields, selectedDimKeys],
+  );
+  const toggleDim = (key: string) => setSelectedDimKeys(current =>
+    current.includes(key) ? current.filter(item => item !== key) : [...current, key],
+  );
 
   // selectedRegions empty = show all regions (auto mode)
   // selectedRegions non-empty = explicit selection only
@@ -641,6 +669,7 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
         </div>
 
         <StatusFilterGroups
+          orderLabel="状态筛选"
           orderOptions={statusOptions}
           selectedOrders={selStatus}
           onOrdersChange={setSelStatus}
@@ -649,6 +678,20 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
           onMonthsChange={setSelMonths}
           monthLabels={monthLabels}
         />
+
+        <div className="flex min-h-8 items-center gap-2">
+          <span className="w-16 flex-shrink-0 text-xs text-slate-400">分析字段</span>
+          <DimensionMultiSelect
+            fields={allPersonaFields}
+            categories={dimensionCategories}
+            selectedKeys={selectedDimKeys}
+            availableKeys={null}
+            onToggle={toggleDim}
+            onReorder={(fromKey, toKey) =>
+              setSelectedDimKeys(current => reorderSelectedKeys(current, fromKey, toKey))
+            }
+          />
+        </div>
       </div>
 
       {/* ── Legend ── */}

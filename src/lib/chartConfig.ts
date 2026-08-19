@@ -221,6 +221,29 @@ export function getContrastingColors(scheme: ColorScheme, count: number): string
   );
 }
 
+/** Status series are ordered, so their colors must encode that order. */
+export function getSequentialColors(scheme: ColorScheme, count: number): string[] {
+  if (count <= 0) return [];
+  const colors = getColors(scheme);
+  const luminance = (color: string) => {
+    const value = Number.parseInt(color.slice(1), 16);
+    return 0.2126 * (value >> 16) + 0.7152 * (value >> 8 & 255) + 0.0722 * (value & 255);
+  };
+  const base = colors.reduce((darkest, color) =>
+    luminance(color) < luminance(darkest) ? color : darkest,
+  colors[0]);
+  const value = Number.parseInt(base.slice(1), 16);
+  const channels = [value >> 16, value >> 8 & 255, value & 255];
+
+  return Array.from({ length: count }, (_, index) => {
+    const ratio = count === 1 ? 0 : (index / (count - 1)) * 0.68;
+    const hex = channels
+      .map(channel => Math.round(channel + (255 - channel) * ratio).toString(16).padStart(2, '0'))
+      .join('');
+    return `#${hex}`;
+  });
+}
+
 export function isSingleColorScheme(scheme: ColorScheme): boolean {
   return !!COLOR_SCHEMES[scheme].singleColor;
 }
