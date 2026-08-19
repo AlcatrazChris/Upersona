@@ -619,7 +619,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
   const configs      = personaConfigs[dataset.id] ?? [];
   const activeConfig = configs.find(c => c.id === activePersonaConfigId);
   const timeField = useMemo(() => detectTimeField(dataset), [dataset]);
-  const groups = useMemo<StatusGroup[]>(() => {
+  const timeGroups = useMemo<StatusGroup[]>(() => {
     if (!timeField) return [];
     const blocks = viewConfig.dateBlocks?.length
       ? viewConfig.dateBlocks
@@ -632,10 +632,10 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
       intent: 'neutral',
     }));
   }, [dataset, timeField, viewConfig.dateBlocks]);
-  const monthOptions = useMemo(() => groups.map(group => group.key), [groups]);
+  const monthOptions = useMemo(() => timeGroups.map(group => group.key), [timeGroups]);
   const monthLabels = useMemo(
-    () => Object.fromEntries(groups.map(group => [group.key, group.label])),
-    [groups],
+    () => Object.fromEntries(timeGroups.map(group => [group.key, group.label])),
+    [timeGroups],
   );
   const dateBlocks = useMemo(
     () => viewConfig.dateBlocks?.length
@@ -671,6 +671,9 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
   const [chartMode, setChartMode] = useUrlStringState<'dimension' | 'proportion'>(
     'status_mode', 'dimension', ['dimension', 'proportion'],
   );
+  const [compareBasis, setCompareBasis] = useUrlStringState<'time' | 'order'>(
+    'status_compare_by', timeField ? 'time' : 'order', ['time', 'order'],
+  );
   const [globalConfig,      setGlobalConfig]      = useState<ChartConfig>(
     () => {
       const saved = loadChartConfig('status');
@@ -699,6 +702,24 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
     () => getStatusOptions(dataset.records, viewConfig),
     [dataset.records, viewConfig],
   );
+  const orderGroups = useMemo<StatusGroup[]>(() => {
+    if (viewConfig.statusGroups?.length) return viewConfig.statusGroups;
+    return orderOptions.map((value, index) => ({
+      key: `status_${index}`,
+      label: value,
+      values: [value],
+      color: 'blue',
+      intent: 'neutral',
+    }));
+  }, [orderOptions, viewConfig.statusGroups]);
+
+  useEffect(() => {
+    if (compareBasis === 'time' && !timeField && orderGroups.length) setCompareBasis('order');
+    if (compareBasis === 'order' && !orderGroups.length && timeField) setCompareBasis('time');
+    if (compareBasis === 'order' && orderOptions.length && selectedOrderStatuses.includes('__all')) {
+      setSelectedOrderStatuses(orderOptions.slice(0, 2));
+    }
+  }, [compareBasis, orderGroups.length, orderOptions, selectedOrderStatuses, setCompareBasis, setSelectedOrderStatuses, timeField]);
   const geoLevels = ([
     { key: 'region' as GeoLevel, label: '大区', fieldKey: viewConfig.geoRegionKey },
     { key: 'province' as GeoLevel, label: '省份', fieldKey: viewConfig.geoProvinceKey },
@@ -711,24 +732,29 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
     setSelectedGeo([]);
   }, [geoLevel, geoLevels, setGeoLevel, setSelectedGeo]);
 
-  const selectedGroups  = groups.filter(g => selectedGroupKeys.includes(g.key));
+  const selectedTimeGroups = timeGroups.filter(group => selectedGroupKeys.includes(group.key));
+  const selectedOrderGroups = orderGroups.filter(group => selectedOrderStatuses.includes(group.label));
+  const selectedGroups = compareBasis === 'time' ? selectedTimeGroups : selectedOrderGroups;
+  const comparisonFieldKey = compareBasis === 'time' ? MONTH_FIELD_KEY : (viewConfig.statusFieldKey ?? '');
   const analysisDataset = useMemo<Dataset>(() => {
     const filtered = filterRecords(
       dataset.records,
       viewConfig,
       geoLevel,
       selectedGeo,
-      selectedOrderStatuses,
+      compareBasis === 'time' ? selectedOrderStatuses : ['__all'],
     );
+    const selectedTimes = new Set(selectedGroupKeys);
+    const records = filtered.map(record => ({
+      ...record,
+      [MONTH_FIELD_KEY]: timeField ? dateBlockForValue(record[timeField.key], dateBlocks) ?? '' : '',
+    })).filter(record => compareBasis === 'time' || !timeField || selectedTimes.has(String(record[MONTH_FIELD_KEY] ?? '')));
     return {
       ...dataset,
-      records: filtered.map(record => ({
-        ...record,
-        [MONTH_FIELD_KEY]: timeField ? dateBlockForValue(record[timeField.key], dateBlocks) ?? '' : '',
-      })),
-      rowCount: filtered.length,
+      records,
+      rowCount: records.length,
     };
-  }, [dataset, timeField, dateBlocks, viewConfig, geoLevel, selectedGeo, selectedOrderStatuses]);
+  }, [compareBasis, dataset, timeField, dateBlocks, viewConfig, geoLevel, selectedGeo, selectedOrderStatuses, selectedGroupKeys]);
 
   const selectedDataset = useMemo(
     () => compareDatasetId ? allDatasets.find(d => d.id === compareDatasetId) : undefined,
@@ -743,21 +769,22 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
       viewConfig,
       geoLevel,
       selectedGeo,
-      selectedOrderStatuses,
+      compareBasis === 'time' ? selectedOrderStatuses : ['__all'],
     );
     if (!compareTimeField) {
       return { ...selectedDataset, records: orderFiltered, rowCount: orderFiltered.length };
     }
+    const selectedTimes = new Set(selectedGroupKeys);
     const records = orderFiltered.map(record => ({
       ...record,
       [MONTH_FIELD_KEY]: dateBlockForValue(record[compareTimeField.key], dateBlocks) ?? '',
-    }));
+    })).filter(record => compareBasis === 'time' || selectedTimes.has(String(record[MONTH_FIELD_KEY] ?? '')));
     return {
       ...selectedDataset,
       records,
       rowCount: records.length,
     };
-  }, [selectedDataset, geoLevel, selectedGeo, selectedOrderStatuses, viewConfig, dateBlocks]);
+  }, [selectedDataset, geoLevel, selectedGeo, selectedOrderStatuses, viewConfig, dateBlocks, compareBasis, selectedGroupKeys]);
 
   const commonFieldKeys = useMemo(() => {
     if (!compareDataset) return null;
@@ -811,11 +838,10 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
   );
 
   const filteredRecords = useMemo(() => {
-    const selected = new Set(selectedGroupKeys);
-    return analysisDataset.records.filter(record =>
-      selected.has(String(record[MONTH_FIELD_KEY] ?? '')),
-    );
-  }, [analysisDataset.records, selectedGroupKeys]);
+    return analysisDataset.records.filter(record => selectedGroups.some(group =>
+      group.values.includes(String(record[comparisonFieldKey] ?? '')),
+    ));
+  }, [analysisDataset.records, comparisonFieldKey, selectedGroups]);
 
   const toggleDim = (key: string) =>
     setSelectedDimKeys(prev =>
@@ -823,9 +849,9 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
     );
 
   // ── AI Insight helpers ─────────────────────────────
-  const insightCacheKey = `status_month_${selectedGroupKeys.join(',')}_${geoLevel}_${selectedGeo.join(',')}_${selectedDimKeys.join(',')}_${compareDatasetId ?? ''}`;
+  const insightCacheKey = `status_${compareBasis}_${selectedGroups.map(group => group.key).join(',')}_${geoLevel}_${selectedGeo.join(',')}_${selectedDimKeys.join(',')}_${compareDatasetId ?? ''}`;
   const insightLabel = selectedGroups.length === 0
-    ? '（请先选择月份）'
+    ? `（请先选择${compareBasis === 'time' ? '时间' : '订单状态'}）`
     : `${selectedGroups.map(g => g.label).join(' vs ')} · ${
       selectedGeo.length > 0 ? selectedGeo.join(' / ') : '全国'
     } · ${personaFields.map(f => f.name).join('、').slice(0, 30)}`;
@@ -851,21 +877,21 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
         ? aggregateCrossDatasetByStatus(
             { records: analysisDataset.records, label: dataset.name },
             { records: compareDataset.records, label: compareDataset.name },
-            field, MONTH_FIELD_KEY, selectedGroups,
+            field, comparisonFieldKey, selectedGroups,
           )
         : aggregateByStatusGroups(
-            analysisDataset.records, field, MONTH_FIELD_KEY, selectedGroups,
+            analysisDataset.records, field, comparisonFieldKey, selectedGroups,
           );
       return formatStatusDimensionComparison(field.name, grouped);
     });
 
     return {
-      analysisType:  'month_comparison',
+      analysisType:  compareBasis === 'time' ? 'time_comparison' : 'order_status_comparison',
       dataset:       dataset.name,
-      months:        selectedGroups.map(g => g.label),
+      comparisonGroups: selectedGroups.map(g => g.label),
       dimensions:    personaFields.map(f => f.name),
       totalSamples:  filteredRecords.length,
-      timeField:     timeField?.name,
+      comparisonField: compareBasis === 'time' ? timeField?.name : viewConfig.statusFieldKey,
       geography:     selectedGeo.length > 0 ? selectedGeo : ['全国'],
       dimensionComparisons,
       note:          compareDataset
@@ -874,10 +900,10 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
     };
   }
 
-  if (!timeField || groups.length === 0) {
+  if ((!timeField || timeGroups.length === 0) && orderGroups.length === 0) {
     return (
       <div className="rounded-2xl border border-gray-100 bg-white px-6 py-16 text-center text-sm text-gray-500">
-        <p>未识别到有效的时间字段。请上传包含日期时间列的数据，系统会自动按月份生成对比图表。</p>
+        <p>未识别到可用于对比的订单状态或时间字段，请先在数据中心完成全局状态设置。</p>
         {onOpenDataCenter && (
           <button
             type="button"
@@ -899,13 +925,30 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
       {/* ── Filter bar ── */}
       <div className="bg-white rounded-2xl border border-gray-100 px-5 py-4 space-y-3">
 
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">对比方式</span>
+          <div className="flex items-center gap-0.5 rounded-xl bg-gray-100 p-0.5">
+            <button type="button" disabled={!orderGroups.length} onClick={() => {
+              setCompareBasis('order');
+              if (selectedOrderStatuses.includes('__all')) setSelectedOrderStatuses(orderOptions.slice(0, 2));
+            }} className={cn('rounded-lg px-3 py-1 text-xs transition-all disabled:opacity-40', compareBasis === 'order' ? 'bg-white font-medium text-gray-800 shadow-sm' : 'text-gray-500')}>订单状态对比</button>
+            <button type="button" disabled={!timeField || !timeGroups.length} onClick={() => setCompareBasis('time')}
+              className={cn('rounded-lg px-3 py-1 text-xs transition-all disabled:opacity-40', compareBasis === 'time' ? 'bg-white font-medium text-gray-800 shadow-sm' : 'text-gray-500')}>时间对比</button>
+          </div>
+          <span className="text-[10px] text-gray-400">
+            {compareBasis === 'time' ? '时间作为图表系列，订单状态用于筛选' : '订单状态作为图表系列，时间用于筛选'}
+          </span>
+        </div>
+
         {/* Row 1: Unified selectable status groups + chart settings */}
         <div className="flex items-start gap-2 flex-wrap">
           <div className="flex-1 min-w-0">
             <StatusFilterGroups
               orderOptions={orderOptions}
               selectedOrders={selectedOrderStatuses}
-              onOrdersChange={setSelectedOrderStatuses}
+              onOrdersChange={values => setSelectedOrderStatuses(
+                compareBasis === 'order' && values.includes('__all') ? orderOptions : values
+              )}
               monthOptions={monthOptions}
               monthLabels={monthLabels}
               selectedMonths={selectedGroupKeys}
@@ -1009,7 +1052,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
       </div>
 
       {/* ── AI Insight ── */}
-      {selectedGroupKeys.length > 0 && personaFields.length > 0 && (
+      {selectedGroups.length > 0 && personaFields.length > 0 && (
         <AIInsightPanel
           label={insightLabel}
           cacheKey={insightCacheKey}
@@ -1032,9 +1075,9 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
       )}
 
       {/* ── Charts grid ── */}
-      {selectedGroupKeys.length === 0 ? (
+      {selectedGroups.length === 0 ? (
         <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-gray-100">
-          请选择至少一个月份
+          请选择至少一个{compareBasis === 'time' ? '时间段' : '订单状态'}
         </div>
       ) : compareDataset && commonCount === 0 ? (
         <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-gray-100">
@@ -1051,7 +1094,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
               key={field.key}
               field={field}
               dataset={analysisDataset}
-              statusFieldKey={MONTH_FIELD_KEY}
+              statusFieldKey={comparisonFieldKey}
               selectedGroups={selectedGroups}
               config={globalConfig}
             />
@@ -1064,7 +1107,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
               key={field.key}
               field={field}
               dataset={analysisDataset}
-              statusFieldKey={MONTH_FIELD_KEY}
+              statusFieldKey={comparisonFieldKey}
               selectedGroups={selectedGroups}
               config={globalConfig}
               compareDataset={compareDataset}

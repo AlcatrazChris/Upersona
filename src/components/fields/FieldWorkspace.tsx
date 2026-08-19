@@ -2,14 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, ArrowUpDown, ChevronRight, FilterX, Loader2,
+  AlertTriangle, ChevronRight, FilterX, GripVertical, Loader2,
   Save, Search, Sparkles, Trash2, X,
 } from 'lucide-react';
 import { useDatasetStore } from '@/store/datasetStore';
 import { useIsAdmin } from '@/lib/auth';
 import { isSkipValue } from '@/lib/skipPatterns';
 import { cn } from '@/lib/utils';
-import { ManualOrderModal } from './ManualOrderModal';
 import { FieldAIEnrichModal } from './FieldAIEnrichModal';
 import type { Dataset, Field, FieldType } from '@/types/dataSchema';
 
@@ -65,6 +64,30 @@ function removeField(dataset: Dataset, fieldKey: string): Dataset {
   };
 }
 
+function renameFieldValue(dataset: Dataset, field: Field, from: string, to: string): Dataset {
+  const nextValue = to.trim();
+  if (!nextValue || nextValue === from) return dataset;
+  const delimiter = field.multiDelimiter ?? '┋';
+  const replace = (value: unknown) => {
+    const raw = String(value ?? '');
+    if (field.type !== 'multi_choice') return raw === from ? nextValue : value;
+    return raw.split(delimiter).map(part => part.trim() === from ? nextValue : part).join(delimiter);
+  };
+  return {
+    ...dataset,
+    records: dataset.records.map(record => ({ ...record, [field.key]: replace(record[field.key]) })),
+    fields: dataset.fields.map(item => item.key !== field.key ? item : {
+      ...item,
+      options: item.options?.map(value => value === from ? nextValue : value),
+      orderedValues: item.orderedValues?.map(value => value === from ? nextValue : value),
+      statistics: item.statistics ? {
+        ...item.statistics,
+        topValues: item.statistics.topValues?.map(entry => entry.value === from ? { ...entry, value: nextValue } : entry),
+      } : undefined,
+    }),
+  };
+}
+
 export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; onDirtyChange?: (dirty: boolean) => void }) {
   const isAdmin = useIsAdmin();
   const { updateDataset, viewConfigs, updateViewConfig } = useDatasetStore();
@@ -75,7 +98,7 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'issue' | 'unordered' | FieldType>('all');
   const [changes, setChanges] = useState<string[]>([]);
-  const [ordering, setOrdering] = useState<Field | null>(null);
+  const [dragValue, setDragValue] = useState<string | null>(null);
   const [enriching, setEnriching] = useState<Field | null>(null);
   const [aiSorting, setAiSorting] = useState(false);
   const personaKeys = viewConfigs[dataset.id]?.personaFieldKeys ?? [];
@@ -93,6 +116,15 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
     draft.fields.map(field => [field.key, skipCount(draft, field.key)]),
   ), [draft]);
   const selected = draft.fields.find(field => field.key === selectedKey) ?? draft.fields[0];
+  const previewValues = useMemo(() => {
+    if (!selected) return [];
+    const values = selected.options?.length
+      ? selected.options
+      : selected.statistics?.topValues?.map(item => item.value) ?? [];
+    const order = selected.orderedValues?.length ? selected.orderedValues : values;
+    const counts = new Map(selected.statistics?.topValues?.map(item => [item.value, item.count]));
+    return order.map(value => ({ value, count: counts.get(value) ?? 0 }));
+  }, [selected]);
   const visibleFields = useMemo(() => draft.fields.filter(field => {
     const matchesQuery = !query.trim() || `${field.name} ${field.key}`.toLowerCase().includes(query.trim().toLowerCase());
     const missingRate = (field.statistics?.missing ?? 0) / Math.max(1, field.statistics?.count ?? draft.rowCount);
@@ -115,6 +147,16 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
       fields: current.fields.map(field => field.key === selected.key ? { ...field, ...patch } : field),
     }));
     note(message);
+  }
+
+  function movePreviewValue(target: string) {
+    if (!selected || !dragValue || dragValue === target) return setDragValue(null);
+    const values = previewValues.map(item => item.value);
+    const from = values.indexOf(dragValue);
+    const to = values.indexOf(target);
+    values.splice(to, 0, values.splice(from, 1)[0]);
+    patchSelected({ isOrdered: true, orderedValues: values }, `调整 ${selected.name} 排序`);
+    setDragValue(null);
   }
 
   function discard() {
@@ -265,10 +307,23 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
               <div><div className="text-lg font-semibold text-slate-800">{counts[selected.key] ?? 0}</div><div className="text-[10px] text-slate-400">无效答案</div></div>
             </div>
 
-            {selected.statistics?.topValues?.length ? <div><div className="mb-2 text-xs font-medium text-slate-600">取值预览</div>
+            {previewValues.length ? <div><div className="mb-2 flex items-center justify-between text-xs font-medium text-slate-600"><span>取值预览</span><span className="text-[10px] font-normal text-slate-400">拖动排序 · 点击文字修改</span></div>
               <div className="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
-                {selected.statistics.topValues.map(item => <div key={item.value} className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-xs hover:bg-slate-50">
-                  <span className="truncate text-slate-600">{item.value}</span><span className="tabular-nums text-slate-400">{item.count}</span>
+                {previewValues.map(item => <div key={item.value} draggable={isAdmin}
+                  onDragStart={() => setDragValue(item.value)} onDragOver={event => event.preventDefault()}
+                  onDrop={() => movePreviewValue(item.value)} onDragEnd={() => setDragValue(null)}
+                  className={cn('flex items-center gap-2 rounded-lg px-2 py-1 text-xs hover:bg-slate-50', dragValue === item.value && 'opacity-40')}>
+                  {isAdmin && <GripVertical size={13} className="flex-shrink-0 cursor-grab text-slate-300" />}
+                  <input defaultValue={item.value} disabled={!isAdmin} aria-label={`修改取值 ${item.value}`}
+                    onBlur={event => {
+                      const next = event.target.value.trim();
+                      if (!next || next === item.value) return;
+                      setDraft(current => renameFieldValue(current, selected, item.value, next));
+                      note(`修改 ${selected.name} 取值描述`);
+                    }}
+                    onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}
+                    className="min-w-0 flex-1 truncate rounded border border-transparent bg-transparent px-1 py-0.5 text-slate-600 outline-none focus:border-blue-300 focus:bg-white disabled:opacity-100" />
+                  <span className="tabular-nums text-slate-400">{item.count}</span>
                 </div>)}
               </div></div> : null}
 
@@ -278,8 +333,8 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
             </label>
 
             {isAdmin && <div className="grid grid-cols-2 gap-2">
-              {['single_choice', 'multi_choice'].includes(selected.type) && <button onClick={() => setOrdering(selected)} className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 hover:border-blue-300">
-                <ArrowUpDown size={13} />{selected.isOrdered ? '调整排序' : '设置排序'}</button>}
+              {['single_choice', 'multi_choice'].includes(selected.type) && <button disabled={aiSorting} onClick={() => autoSort([selected.key])} className="flex items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-700 hover:border-indigo-300 disabled:opacity-50">
+                {aiSorting ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}AI排序</button>}
               <button disabled={changes.length > 0} title={changes.length ? '请先保存当前修改' : '使用AI生成派生字段'} onClick={() => setEnriching(selected)} className="flex items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-700 disabled:opacity-40"><Sparkles size={13} />AI派生</button>
               <button disabled={(counts[selected.key] ?? 0) === 0} onClick={() => { setDraft(current => cleanField(current, selected.key)); note(`清理 ${selected.name} 无效值`); }} className="flex items-center justify-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 disabled:opacity-40"><FilterX size={13} />清除无效值</button>
               <button onClick={() => { if (!confirm(`删除字段「${selected.name}」及其所有数据？保存前仍可放弃修改。`)) return; setDraft(current => removeField(current, selected.key)); note(`删除字段 ${selected.name}`); const next = draft.fields.find(field => field.key !== selected.key); setSelectedKey(next?.key ?? ''); }} className="flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600"><Trash2 size={13} />删除字段</button>
@@ -294,10 +349,6 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
         <button disabled={!changes.length} onClick={save} className="flex items-center gap-1.5 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:opacity-30"><Save size={14} />保存修改</button>
       </div>}
 
-      {ordering && <ManualOrderModal field={ordering} onClose={() => setOrdering(null)} onSave={(isOrdered, orderedValues) => {
-        setDraft(current => ({ ...current, fields: current.fields.map(field => field.key === ordering.key ? { ...field, isOrdered, orderedValues } : field) }));
-        note(`调整 ${ordering.name} 排序`); setOrdering(null);
-      }} />}
       {enriching && <FieldAIEnrichModal datasetId={dataset.id} field={enriching} onClose={() => {
         setEnriching(null); const latest = useDatasetStore.getState().getDataset(dataset.id); if (latest) setDraft(latest);
       }} />}
