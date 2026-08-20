@@ -98,6 +98,7 @@ interface DatasetStore {
     newFieldKey: string,
     newFieldName: string,
     mapping: Record<string, string>,
+    prompt: string,
   ) => void;
   activeDatasetId: string | null;
   setActiveDatasetId: (id: string | null) => void;
@@ -326,7 +327,7 @@ export const useDatasetStore = create<DatasetStore>()(
         });
       },
 
-      addAIDerivedField(datasetId, sourceFieldKey, newFieldKey, newFieldName, mapping) {
+      addAIDerivedField(datasetId, sourceFieldKey, newFieldKey, newFieldName, mapping, prompt) {
         set(state => {
           const dataset = state.datasets.find(d => d.id === datasetId);
           if (!dataset) return state;
@@ -358,6 +359,7 @@ export const useDatasetStore = create<DatasetStore>()(
             },
             recommendedCharts: ['bar', 'pie', 'donut'],
             derived: true,
+            aiRule: { kind: 'derived', sourceFieldKey, prompt, mapping },
           };
 
           const updatedDataset: Dataset = {

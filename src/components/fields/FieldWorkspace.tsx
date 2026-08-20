@@ -88,6 +88,38 @@ function renameFieldValue(dataset: Dataset, field: Field, from: string, to: stri
   };
 }
 
+function removeFieldValue(dataset: Dataset, field: Field, target: string): Dataset {
+  const delimiter = field.multiDelimiter ?? '┋';
+  const remove = (value: unknown) => {
+    const raw = String(value ?? '');
+    if (field.type !== 'multi_choice') return raw === target ? '' : value;
+    return raw.split(delimiter).map(part => part.trim()).filter(part => part && part !== target).join(delimiter);
+  };
+  const records = dataset.records.map(record => ({ ...record, [field.key]: remove(record[field.key]) }));
+  const values = records.map(record => String(record[field.key] ?? '').trim()).filter(Boolean);
+  const frequency = new Map<string, number>();
+  for (const value of values) {
+    const parts = field.type === 'multi_choice' ? value.split(delimiter).map(part => part.trim()).filter(Boolean) : [value];
+    for (const part of parts) frequency.set(part, (frequency.get(part) ?? 0) + 1);
+  }
+  return {
+    ...dataset,
+    records,
+    fields: dataset.fields.map(item => item.key !== field.key ? item : {
+      ...item,
+      options: item.options?.filter(value => value !== target),
+      orderedValues: item.orderedValues?.filter(value => value !== target),
+      statistics: {
+        count: records.length,
+        missing: records.length - values.length,
+        unique: frequency.size,
+        topValues: [...frequency].sort((a, b) => b[1] - a[1]).slice(0, 10)
+          .map(([value, count]) => ({ value, count })),
+      },
+    }),
+  };
+}
+
 export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; onDirtyChange?: (dirty: boolean) => void }) {
   const isAdmin = useIsAdmin();
   const { updateDataset, viewConfigs, updateViewConfig } = useDatasetStore();
@@ -96,7 +128,7 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
   const [selectedKey, setSelectedKey] = useState(dataset.fields[0]?.key ?? '');
   const [checked, setChecked] = useState<string[]>([]);
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<'all' | 'issue' | 'unordered' | FieldType>('all');
+  const [filter, setFilter] = useState<'all' | 'issue' | 'unordered' | 'ai' | FieldType>('all');
   const [changes, setChanges] = useState<string[]>([]);
   const [dragValue, setDragValue] = useState<string | null>(null);
   const [enriching, setEnriching] = useState<Field | null>(null);
@@ -132,6 +164,7 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
       ((field.type === 'multi_choice' || field.type === 'ranking') && (field.multiDelimiter ?? '┋') !== '┋');
     const matchesFilter = filter === 'all' || field.type === filter ||
       (filter === 'issue' && hasIssue) ||
+      (filter === 'ai' && Boolean(field.aiRule || field.derived)) ||
       (filter === 'unordered' && ['single_choice', 'multi_choice'].includes(field.type) && !field.isOrdered);
     return matchesQuery && matchesFilter;
   }), [counts, draft.fields, draft.rowCount, filter, query]);
@@ -198,7 +231,7 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
         if (!response.ok || result.error) throw new Error(result.error ?? 'AI排序失败');
         if (result.isOrdered && result.orderedValues?.length === field.options?.length) {
           next = { ...next, fields: next.fields.map(item => item.key === field.key
-            ? { ...item, isOrdered: true, orderedValues: result.orderedValues }
+            ? { ...item, isOrdered: true, orderedValues: result.orderedValues, aiRule: { kind: 'ordering' } }
             : item) };
         }
       }
@@ -221,7 +254,7 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
         </div>
         <select value={filter} onChange={event => setFilter(event.target.value as typeof filter)}
           className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600">
-          <option value="all">全部字段</option><option value="issue">仅看异常</option><option value="unordered">待排序字段</option>
+          <option value="all">全部字段</option><option value="issue">仅看异常</option><option value="unordered">待排序字段</option><option value="ai">AI 规则</option>
           {TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
         </select>
         {isAdmin && <button type="button" disabled={aiSorting} onClick={() => autoSort(checked.length ? checked : draft.fields.map(field => field.key))}
@@ -269,6 +302,7 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
                   {missingRate >= .05 && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">缺失 {(missingRate * 100).toFixed(1)}%</span>}
                   {(counts[field.key] ?? 0) > 0 && <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-600">无效 {counts[field.key]}</span>}
                   {badDelimiter && <AlertTriangle size={13} className="text-amber-500" />}
+                  {(field.aiRule || field.derived) && <span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-600">AI规则</span>}
                   {missingRate < .05 && !(counts[field.key] ?? 0) && !badDelimiter && <span className="text-emerald-600">正常</span>}
                 </span>
                 <ChevronRight size={14} className="text-slate-300" />
@@ -307,7 +341,22 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
               <div><div className="text-lg font-semibold text-slate-800">{counts[selected.key] ?? 0}</div><div className="text-[10px] text-slate-400">无效答案</div></div>
             </div>
 
-            {previewValues.length ? <div><div className="mb-2 flex items-center justify-between text-xs font-medium text-slate-600"><span>取值预览</span><span className="text-[10px] font-normal text-slate-400">拖动排序 · 点击文字修改</span></div>
+            {(selected.aiRule || selected.derived) && <div className="rounded-xl border border-violet-200 bg-violet-50/70 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div><div className="flex items-center gap-1.5 text-xs font-medium text-violet-800"><Sparkles size={12} />AI {selected.aiRule?.kind === 'ordering' ? '排序' : '派生'}规则</div>
+                  <p className="mt-1 line-clamp-3 text-[11px] leading-5 text-violet-600">{selected.aiRule?.prompt || (selected.aiRule?.kind === 'ordering' ? `按当前 ${selected.orderedValues?.length ?? 0} 个取值排序` : '历史派生字段')}</p></div>
+                {isAdmin && <button type="button" onClick={() => {
+                  if (selected.aiRule?.kind === 'ordering') {
+                    patchSelected({ isOrdered: false, orderedValues: [], aiRule: undefined }, `删除 ${selected.name} AI排序规则`);
+                  } else if (confirm(`删除 AI 派生规则及字段「${selected.name}」？保存前仍可放弃修改。`)) {
+                    setDraft(current => removeField(current, selected.key)); note(`删除 AI 派生规则 ${selected.name}`);
+                    setSelectedKey(draft.fields.find(field => field.key !== selected.key)?.key ?? '');
+                  }
+                }} aria-label={`删除 ${selected.name} 的 AI 规则`} className="rounded-lg p-1.5 text-violet-400 hover:bg-white hover:text-red-500"><Trash2 size={13} /></button>}
+              </div>
+            </div>}
+
+            {previewValues.length ? <div><div className="mb-2 flex items-center justify-between text-xs font-medium text-slate-600"><span>取值预览</span><span className="text-[10px] font-normal text-slate-400">拖动排序 · 编辑或删除取值</span></div>
               <div className="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
                 {previewValues.map(item => <div key={item.value} draggable={isAdmin}
                   onDragStart={() => setDragValue(item.value)} onDragOver={event => event.preventDefault()}
@@ -324,6 +373,12 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
                     onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}
                     className="min-w-0 flex-1 truncate rounded border border-transparent bg-transparent px-1 py-0.5 text-slate-600 outline-none focus:border-blue-300 focus:bg-white disabled:opacity-100" />
                   <span className="tabular-nums text-slate-400">{item.count}</span>
+                  {isAdmin && <button type="button" aria-label={`删除取值 ${item.value}`} title="删除取值"
+                    onClick={() => {
+                      if (!confirm(`删除取值「${item.value}」？该值在记录中将被清空。`)) return;
+                      setDraft(current => removeFieldValue(current, selected, item.value));
+                      note(`删除 ${selected.name} 取值 ${item.value}`);
+                    }} className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500"><Trash2 size={12} /></button>}
                 </div>)}
               </div></div> : null}
 

@@ -112,7 +112,7 @@ export function FieldAIEnrichModal({ datasetId, field, onClose }: Props) {
   function createField() {
     if (!mapping) return;
     const key = `${field.key}__ai_${Date.now().toString(36)}`;
-    addAIDerivedField(datasetId, field.key, key, newFieldName.trim() || `${field.name}_归类`, mapping);
+    addAIDerivedField(datasetId, field.key, key, newFieldName.trim() || `${field.name}_归类`, mapping, prompt.trim());
     onClose();
   }
 
