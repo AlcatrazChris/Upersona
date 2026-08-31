@@ -139,10 +139,12 @@ export function StackedBarChartEngine({
 
           {config.showLegend && (
             <Legend
-              verticalAlign="top"
+              verticalAlign={config.legendPosition === 'top' || config.legendPosition === 'bottom' ? config.legendPosition : 'middle'}
+              align={config.legendPosition === 'left' || config.legendPosition === 'right' ? config.legendPosition : 'center'}
+              layout={config.legendDirection}
               iconType="square"
               iconSize={8}
-              wrapperStyle={{ fontSize: config.legendFontSize, paddingBottom: 8 }}
+              wrapperStyle={{ fontSize: config.legendFontSize, paddingBottom: config.legendPosition === 'top' ? 8 : 0 }}
             />
           )}
 

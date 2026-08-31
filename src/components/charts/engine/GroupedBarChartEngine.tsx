@@ -137,7 +137,9 @@ export function GroupedBarChartEngine({
 
           {config.showLegend && (
             <Legend
-              verticalAlign="bottom"
+              verticalAlign={config.legendPosition === 'top' || config.legendPosition === 'bottom' ? config.legendPosition : 'middle'}
+              align={config.legendPosition === 'left' || config.legendPosition === 'right' ? config.legendPosition : 'center'}
+              layout={config.legendDirection}
               iconType="square"
               iconSize={8}
               formatter={(value: string) => {
@@ -148,7 +150,7 @@ export function GroupedBarChartEngine({
                   ? `${display}  (n=${(groupTotals[value] ?? 0).toLocaleString()})`
                   : display;
               }}
-              wrapperStyle={{ fontSize: config.legendFontSize, paddingTop: 8 }}
+              wrapperStyle={{ fontSize: config.legendFontSize, paddingTop: config.legendPosition === 'bottom' ? 8 : 0 }}
             />
           )}
 

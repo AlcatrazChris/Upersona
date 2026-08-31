@@ -9,7 +9,7 @@ import {
 } from '@/lib/dataAggregator';
 import { ChartRenderer, GroupChartRenderer } from '@/components/charts/engine/ChartRenderer';
 import { ChartTypeSwitcher, useResizableChartHeight } from '@/components/charts/engine/shared';
-import { ChartSettingsPanel }       from '@/components/charts/ChartSettingsPanel';
+import { ChartSettingsPanel, useStoredChartConfig } from '@/components/charts/ChartSettingsPanel';
 import { AIInsightPanel }           from '@/components/shared/AIInsightPanel';
 import { StatusFilterGroups }       from '@/components/shared/StatusFilterGroups';
 import { GeoFilterGroup }           from '@/components/shared/GeoFilterGroup';
@@ -21,11 +21,7 @@ import {
   type GeoLevel,
 } from '@/lib/filterRecords';
 import {
-  DEFAULT_CHART_CONFIG,
-  loadChartConfig,
-  saveChartConfig,
   getSequentialColors,
-  type ChartConfig,
 } from '@/lib/chartConfig';
 import { useDatasetStore }          from '@/store/datasetStore';
 import { cn } from '@/lib/utils';
@@ -124,14 +120,36 @@ interface StatusChartCardProps {
   dataset:        Dataset;
   statusFieldKey: string;
   selectedGroups: StatusGroup[];
-  config:         ChartConfig;
   compareDataset?: Dataset;
+  onUpdateOrdering: (fieldKey: string, isOrdered: boolean, orderedValues: string[]) => void;
 }
 
 function StatusChartCard({
-  field, dataset, statusFieldKey, selectedGroups, config, compareDataset,
+  field, dataset, statusFieldKey, selectedGroups, compareDataset, onUpdateOrdering,
 }: StatusChartCardProps) {
-  const [chartType, setChartType] = useState<FlatChartType | null>(null);
+  const configKey = `status-${dataset.id}-${statusFieldKey}-${compareDataset?.id ?? 'single'}-${field.key}`;
+  const [chartType, setChartType] = useState<FlatChartType | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const saved = window.localStorage.getItem(`${configKey}-type`);
+    return saved === 'bar' || saved === 'pie' || saved === 'donut' ? saved : null;
+  });
+  const [config, setConfig] = useStoredChartConfig(configKey);
+  useEffect(() => {
+    if (chartType) window.localStorage.setItem(`${configKey}-type`, chartType);
+  }, [chartType, configKey]);
+  const sortableField = useMemo(() => {
+    if (field.options?.length) return field;
+    const delimiter = field.multiDelimiter ?? '┋';
+    const values = new Set<string>();
+    for (const record of dataset.records) {
+      const raw = String(record[field.key] ?? '').trim();
+      if (!raw) continue;
+      for (const value of field.type === 'multi_choice' ? raw.split(delimiter) : [raw]) {
+        if (value.trim()) values.add(value.trim());
+      }
+    }
+    return { ...field, options: [...values] };
+  }, [dataset.records, field]);
 
   const isCross  = !!compareDataset;
   const isSingle = selectedGroups.length === 1 && !isCross;
@@ -178,11 +196,12 @@ function StatusChartCard({
   const seriesCnt = isSingle ? 1 : isCross ? selectedGroups.length * 2 : selectedGroups.length;
   const dataH     = Math.max(180, Math.min(rowCount * (seriesCnt * 14 + 8) + 54, 420));
   const { height: chartH, onResizeStart, onResizeKeyDown } = useResizableChartHeight(
-    Math.max(Math.min(config.chartHeight, 240), dataH),
+    Math.max(config.chartHeight, dataH),
     160,
   );
   const resolvedChartType: FlatChartType = chartType ?? 'bar';
   const useCircularCharts = !isCross && (resolvedChartType === 'pie' || resolvedChartType === 'donut');
+  const settingsChartType = isCross || (!isSingle && !useCircularCharts) ? 'grouped' : resolvedChartType;
 
   // ── Colors ──
   const crossColors = getSequentialColors(
@@ -228,8 +247,8 @@ function StatusChartCard({
     </span>
   );
 
-  const singleCfg = { ...config, showSampleCount: false, chartHeight: chartH };
-  const multiCfg  = { ...config, showSampleCount: true,  chartHeight: chartH };
+  const singleCfg = { ...config, chartHeight: chartH };
+  const multiCfg  = { ...config, chartHeight: chartH };
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-4 relative group select-none">
@@ -241,14 +260,17 @@ function StatusChartCard({
           <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>
         </div>
 
-        {/* Each card can independently switch chart type. */}
-        {!isCross && (
-          <ChartTypeSwitcher
-            value={resolvedChartType}
-            options={['bar', 'pie', 'donut'] as const}
-            onChange={setChartType}
+        <div className="flex items-center gap-2">
+          {!isCross && <ChartTypeSwitcher value={resolvedChartType} options={['bar', 'pie', 'donut'] as const} onChange={setChartType} />}
+          <ChartSettingsPanel
+            config={config}
+            onChange={setConfig}
+            field={sortableField}
+            onUpdateOrdering={(isOrdered, orderedValues) => onUpdateOrdering(field.key, isOrdered, orderedValues)}
+            chartTypes={[settingsChartType]}
+            iconOnly
           />
-        )}
+        </div>
       </div>
 
       {/* Chart */}
@@ -278,7 +300,7 @@ function StatusChartCard({
       ) : isSingle && singleData ? (
         <ChartRenderer
           type={resolvedChartType}
-          data={singleData.items.slice(0, 10)}
+          data={singleData.items}
           config={singleCfg}
           isMultiSelect={field.type === 'multi_choice'}
           totalSamples={singleData.n}
@@ -326,14 +348,28 @@ function ProportionStackedCard({
   dataset,
   statusFieldKey,
   selectedGroups,
-  config,
+  onUpdateOrdering,
 }: {
   field:          Field;
   dataset:        Dataset;
   statusFieldKey: string;
   selectedGroups: StatusGroup[];
-  config:         ChartConfig;
+  onUpdateOrdering: (fieldKey: string, isOrdered: boolean, orderedValues: string[]) => void;
 }) {
+  const [config, setConfig] = useStoredChartConfig(`status-proportion-${dataset.id}-${statusFieldKey}-${field.key}`);
+  const sortableField = useMemo(() => {
+    if (field.options?.length) return field;
+    const delimiter = field.multiDelimiter ?? '┋';
+    const values = new Set<string>();
+    for (const record of dataset.records) {
+      const raw = String(record[field.key] ?? '').trim();
+      if (!raw) continue;
+      for (const value of field.type === 'multi_choice' ? raw.split(delimiter) : [raw]) {
+        if (value.trim()) values.add(value.trim());
+      }
+    }
+    return { ...field, options: [...values] };
+  }, [dataset.records, field]);
   const data = useMemo(
     () => aggregateByStatusGroups(
       dataset.records,
@@ -343,12 +379,15 @@ function ProportionStackedCard({
     ),
     [dataset.records, field, selectedGroups, statusFieldKey],
   );
-  const chartH = Math.max(180, selectedGroups.length * 48 + 80);
+  const chartH = Math.max(config.chartHeight, selectedGroups.length * 48 + 80);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-4 col-span-2">
-      <div className="mb-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-gray-800">{field.name}</h3>
+        <ChartSettingsPanel config={config} onChange={setConfig} field={sortableField}
+          onUpdateOrdering={(isOrdered, orderedValues) => onUpdateOrdering(field.key, isOrdered, orderedValues)}
+          chartTypes={['stacked']} iconOnly />
       </div>
       <GroupChartRenderer
         type="stacked"
@@ -483,7 +522,8 @@ interface Props {
 }
 
 export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
-  const { updateViewConfig, datasets: allDatasets, personaConfigs, activePersonaConfigId } = useDatasetStore();
+  const { updateDataset, updateViewConfig, datasets: allDatasets, personaConfigs, activePersonaConfigId } = useDatasetStore();
+  const [orderingError, setOrderingError] = useState('');
 
   const configs      = personaConfigs[dataset.id] ?? [];
   const activeConfig = configs.find(c => c.id === activePersonaConfigId);
@@ -543,17 +583,6 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
   const [compareBasis, setCompareBasis] = useUrlStringState<'time' | 'order'>(
     'status_compare_by', timeField ? 'time' : 'order', ['time', 'order'],
   );
-  const [globalConfig,      setGlobalConfig]      = useState<ChartConfig>(
-    () => {
-      const saved = loadChartConfig('status');
-      return {
-        ...DEFAULT_CHART_CONFIG,
-        ...saved,
-        chartHeight: Math.min(saved.chartHeight, 220),
-        compact: true,
-      };
-    },
-  );
 
   useEffect(() => {
     setSelectedGroupKeys(current => {
@@ -562,9 +591,23 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
     });
   }, [dataset.id, monthOptions]);
 
-  const handleConfigChange = (c: ChartConfig) => {
-    setGlobalConfig(c);
-    saveChartConfig('status', c);
+  const updateFieldOrdering = async (fieldKey: string, isOrdered: boolean, orderedValues: string[]) => {
+    const previousFields = dataset.fields;
+    const fields = previousFields.map(field => field.key === fieldKey
+      ? { ...field, isOrdered, orderedValues: isOrdered ? orderedValues : [] }
+      : field);
+    setOrderingError('');
+    updateDataset(dataset.id, { fields });
+    if (dataset.source !== 'supabase') return;
+    try {
+      const response = await fetch(`/api/datasets/${dataset.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    } catch {
+      updateDataset(dataset.id, { fields: previousFields });
+      setOrderingError('排序保存失败，已恢复原顺序');
+    }
   };
 
   const orderOptions = useMemo(
@@ -791,6 +834,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
 
   return (
     <div className="space-y-4">
+      {orderingError && <div role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{orderingError}</div>}
 
       {/* ── Filter bar ── */}
       <div className="bg-white rounded-2xl border border-gray-100 px-5 py-4 space-y-3">
@@ -861,12 +905,6 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
               </button>
             </div>
 
-            {/* Global chart settings */}
-            <ChartSettingsPanel
-              config={globalConfig}
-              onChange={handleConfigChange}
-              chartTypes={['grouped', 'stacked']}
-            />
           </div>
         </div>
 
@@ -962,12 +1000,12 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
           {personaFields.map(field => (
             <ProportionStackedCard
-              key={field.key}
+              key={`${comparisonFieldKey}:${field.key}`}
               field={field}
               dataset={analysisDataset}
               statusFieldKey={comparisonFieldKey}
               selectedGroups={selectedGroups}
-              config={globalConfig}
+              onUpdateOrdering={updateFieldOrdering}
             />
           ))}
         </div>
@@ -975,13 +1013,13 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
           {personaFields.map(field => (
             <StatusChartCard
-              key={field.key}
+              key={`${comparisonFieldKey}:${compareDataset?.id ?? 'single'}:${field.key}`}
               field={field}
               dataset={analysisDataset}
               statusFieldKey={comparisonFieldKey}
               selectedGroups={selectedGroups}
-              config={globalConfig}
               compareDataset={compareDataset}
+              onUpdateOrdering={updateFieldOrdering}
             />
           ))}
         </div>
