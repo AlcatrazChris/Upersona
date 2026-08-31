@@ -22,6 +22,7 @@ import {
 } from '@/lib/filterRecords';
 import {
   getSequentialColors,
+  type ChartConfig,
 } from '@/lib/chartConfig';
 import { useDatasetStore }          from '@/store/datasetStore';
 import { cn } from '@/lib/utils';
@@ -121,11 +122,13 @@ interface StatusChartCardProps {
   statusFieldKey: string;
   selectedGroups: StatusGroup[];
   compareDataset?: Dataset;
+  globalConfig: ChartConfig;
+  globalConfigVersion: number;
   onUpdateOrdering: (fieldKey: string, isOrdered: boolean, orderedValues: string[]) => void;
 }
 
 function StatusChartCard({
-  field, dataset, statusFieldKey, selectedGroups, compareDataset, onUpdateOrdering,
+  field, dataset, statusFieldKey, selectedGroups, compareDataset, globalConfig, globalConfigVersion, onUpdateOrdering,
 }: StatusChartCardProps) {
   const configKey = `status-${dataset.id}-${statusFieldKey}-${compareDataset?.id ?? 'single'}-${field.key}`;
   const [chartType, setChartType] = useState<FlatChartType | null>(() => {
@@ -133,7 +136,10 @@ function StatusChartCard({
     const saved = window.localStorage.getItem(`${configKey}-type`);
     return saved === 'bar' || saved === 'pie' || saved === 'donut' ? saved : null;
   });
-  const [config, setConfig] = useStoredChartConfig(configKey);
+  const [config, setConfig] = useStoredChartConfig(configKey, globalConfig);
+  useEffect(() => {
+    if (globalConfigVersion > 0) setConfig(globalConfig);
+  }, [globalConfig, globalConfigVersion, setConfig]);
   useEffect(() => {
     if (chartType) window.localStorage.setItem(`${configKey}-type`, chartType);
   }, [chartType, configKey]);
@@ -221,6 +227,8 @@ function StatusChartCard({
       <span className="text-gray-300">·</span>
       有效样本 n={(singleData?.n ?? 0).toLocaleString()}
     </span>
+  ) : isCross && config.showLegend ? (
+    <span>{dataset.name} vs {compareDataset!.name} · {selectedGroups.length} 个状态</span>
   ) : isCross ? (
     <span className="flex items-center gap-2 flex-wrap">
       <span className="text-violet-500 font-medium">{dataset.name}</span>
@@ -233,6 +241,8 @@ function StatusChartCard({
         </span>
       ))}
     </span>
+  ) : config.showLegend ? (
+    <span>{selectedGroups.length} 个状态 · 有效样本 n={Object.values(multiData?.groupTotals ?? {}).reduce((sum, count) => sum + count, 0).toLocaleString()}</span>
   ) : (
     <span className="flex items-center gap-2 flex-wrap">
       {selectedGroups.map((g, index) => (
@@ -349,14 +359,21 @@ function ProportionStackedCard({
   statusFieldKey,
   selectedGroups,
   onUpdateOrdering,
+  globalConfig,
+  globalConfigVersion,
 }: {
   field:          Field;
   dataset:        Dataset;
   statusFieldKey: string;
   selectedGroups: StatusGroup[];
   onUpdateOrdering: (fieldKey: string, isOrdered: boolean, orderedValues: string[]) => void;
+  globalConfig: ChartConfig;
+  globalConfigVersion: number;
 }) {
-  const [config, setConfig] = useStoredChartConfig(`status-proportion-${dataset.id}-${statusFieldKey}-${field.key}`);
+  const [config, setConfig] = useStoredChartConfig(`status-proportion-${dataset.id}-${statusFieldKey}-${field.key}`, globalConfig);
+  useEffect(() => {
+    if (globalConfigVersion > 0) setConfig(globalConfig);
+  }, [globalConfig, globalConfigVersion, setConfig]);
   const sortableField = useMemo(() => {
     if (field.options?.length) return field;
     const delimiter = field.multiDelimiter ?? '┋';
@@ -580,6 +597,8 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
   const [chartMode, setChartMode] = useUrlStringState<'dimension' | 'proportion'>(
     'status_mode', 'dimension', ['dimension', 'proportion'],
   );
+  const [globalConfig, setGlobalConfig] = useStoredChartConfig('status-global');
+  const [globalConfigVersion, setGlobalConfigVersion] = useState(0);
   const [compareBasis, setCompareBasis] = useUrlStringState<'time' | 'order'>(
     'status_compare_by', timeField ? 'time' : 'order', ['time', 'order'],
   );
@@ -608,6 +627,11 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
       updateDataset(dataset.id, { fields: previousFields });
       setOrderingError('排序保存失败，已恢复原顺序');
     }
+  };
+
+  const updateGlobalConfig = (config: ChartConfig) => {
+    setGlobalConfig(config);
+    setGlobalConfigVersion(version => version + 1);
   };
 
   const orderOptions = useMemo(
@@ -905,6 +929,13 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
               </button>
             </div>
 
+            <ChartSettingsPanel
+              config={globalConfig}
+              onChange={updateGlobalConfig}
+              chartTypes={chartMode === 'proportion' ? ['stacked'] : ['bar', 'grouped', 'pie', 'donut']}
+              allowPartial
+            />
+
           </div>
         </div>
 
@@ -1006,6 +1037,8 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
               statusFieldKey={comparisonFieldKey}
               selectedGroups={selectedGroups}
               onUpdateOrdering={updateFieldOrdering}
+              globalConfig={globalConfig}
+              globalConfigVersion={globalConfigVersion}
             />
           ))}
         </div>
@@ -1020,6 +1053,8 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
               selectedGroups={selectedGroups}
               compareDataset={compareDataset}
               onUpdateOrdering={updateFieldOrdering}
+              globalConfig={globalConfig}
+              globalConfigVersion={globalConfigVersion}
             />
           ))}
         </div>

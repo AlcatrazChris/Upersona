@@ -19,7 +19,9 @@ import type { Field } from '@/types/dataSchema';
 
 export function useStoredChartConfig(page: string, defaults = DEFAULT_CHART_CONFIG) {
   const [config, setConfig] = useState<ChartConfig>(
-    () => ({ ...defaults, ...loadChartConfig(page) }),
+    () => typeof window !== 'undefined' && window.localStorage.getItem(`upersona-chart-config-${page}`)
+      ? { ...defaults, ...loadChartConfig(page) }
+      : { ...defaults },
   );
   const onChange = useCallback((next: ChartConfig) => {
     setConfig(next);
