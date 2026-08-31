@@ -4,31 +4,39 @@
 
 @layer base {
   :root {
-    --ui-canvas: #f7f8fa;
+    --ui-canvas: #f5f5f7;
     --ui-surface: #ffffff;
-    --ui-subtle: #f1f5f9;
-    --ui-ink: #172033;
-    --ui-ink-secondary: #475569;
-    --ui-ink-muted: #64748b;
-    --ui-border: #e2e8f0;
-    --ui-border-strong: #cbd5e1;
-    --ui-brand: #1e40af;
-    --ui-brand-active: #1e3a8a;
-    --ui-brand-soft: #eff6ff;
-    --ui-positive: #0f766e;
-    --ui-warning: #b45309;
-    --ui-negative: #b91c1c;
-    --ui-ai: #6d5bd0;
-    --chart-grid: #e2e8f0;
-    --chart-axis: #64748b;
-    --chart-primary: #2563eb;
-    --chart-reference: #94a3b8;
+    --ui-subtle: #fafafa;
+    --ui-control: #f5f5f7;
+    --ui-ink: #1d1d1f;
+    --ui-ink-secondary: #515154;
+    --ui-ink-muted: #86868b;
+    --ui-ink-tertiary: #aeaeb2;
+    --ui-border: rgba(0, 0, 0, 0.06);
+    --ui-border-strong: rgba(0, 0, 0, 0.1);
+    --ui-brand: #007aff;
+    --ui-brand-active: #0066d6;
+    --ui-brand-soft: rgba(0, 122, 255, 0.08);
+    --ui-positive: #34c759;
+    --ui-warning: #ff9f0a;
+    --ui-negative: #ff3b30;
+    --ui-info: #5ac8fa;
+    --ui-ai: #007aff;
+    --chart-grid: rgba(0, 0, 0, 0.06);
+    --chart-axis: #86868b;
+    --chart-primary: #4d8dff;
+    --chart-reference: #aeaeb2;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --shadow-overlay: 0 24px 80px rgba(0, 0, 0, 0.12);
   }
 
   body {
     color: var(--ui-ink);
     background: var(--ui-canvas);
-    font-family: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
     font-size: 14px;
     line-height: 1.5;
     font-variant-numeric: tabular-nums;
@@ -36,12 +44,58 @@
 }
 
 @layer components {
+  .product-surface .rounded-2xl { border-radius: var(--radius-lg); }
+  .product-surface .rounded-xl { border-radius: var(--radius-md); }
+
+  .product-surface .border-gray-100,
+  .product-surface .border-slate-100,
+  .product-surface .border-gray-200,
+  .product-surface .border-slate-200 { border-color: var(--ui-border); }
+
+  .product-surface .bg-gray-50,
+  .product-surface .bg-slate-50,
+  .product-surface .bg-slate-100 { background-color: var(--ui-control); }
+
+  .product-surface .bg-blue-600,
+  .product-surface .bg-blue-700,
+  .product-surface .bg-indigo-600,
+  .product-surface .bg-indigo-700 { background-color: var(--ui-brand); }
+
+  .product-surface .text-blue-500,
+  .product-surface .text-blue-600,
+  .product-surface .text-blue-700,
+  .product-surface .text-indigo-500,
+  .product-surface .text-indigo-600,
+  .product-surface .text-indigo-700,
+  .product-surface .text-purple-500,
+  .product-surface .text-purple-600 { color: var(--ui-brand); }
+
+  .product-surface .bg-blue-50,
+  .product-surface .bg-indigo-50,
+  .product-surface .bg-purple-50 { background-color: var(--ui-brand-soft); }
+
+  .product-surface .text-gray-900,
+  .product-surface .text-slate-900,
+  .product-surface .text-gray-800,
+  .product-surface .text-slate-800 { color: var(--ui-ink); }
+
+  .product-surface .text-gray-500,
+  .product-surface .text-slate-500,
+  .product-surface .text-gray-400,
+  .product-surface .text-slate-400 { color: var(--ui-ink-muted); }
+
+  .product-surface button,
+  .product-surface input,
+  .product-surface select,
+  .product-surface textarea { transition-duration: 180ms; }
+
   /* 兼容从旧项目搬运的 engine 组件所用的自定义类 */
   .glass-card {
-    @apply bg-white rounded-2xl;
+    @apply rounded-2xl bg-white;
   }
   .glass-card-elevated {
-    @apply bg-white rounded-xl border border-gray-100 shadow-xl;
+    @apply rounded-2xl bg-white;
+    box-shadow: var(--shadow-overlay);
   }
   .glass-card-subtle {
     @apply bg-black/[0.04] border border-transparent;
@@ -51,23 +105,22 @@
   }
 
   .ui-report-section {
-    @apply rounded-lg border bg-white p-5 md:p-6;
+    @apply rounded-2xl bg-white p-5 md:p-6;
     border-color: var(--ui-border);
   }
 
   .ui-control-panel {
-    @apply rounded-xl border p-4;
-    border-color: var(--ui-border);
-    background: var(--ui-subtle);
+    @apply rounded-xl p-4;
+    background: var(--ui-control);
   }
 
   .ui-card {
-    @apply rounded-lg border bg-white;
+    @apply rounded-2xl bg-white;
     border-color: var(--ui-border);
   }
 
   .ui-caption {
-    @apply text-xs leading-[18px];
+    @apply text-[13px] leading-[18px];
     color: var(--ui-ink-muted);
   }
 
@@ -103,6 +156,22 @@
 
   body {
     min-width: 320px;
+  }
+
+  ::selection {
+    color: var(--ui-ink);
+    background: rgba(0, 122, 255, 0.18);
+  }
+
+  * {
+    scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
+    scrollbar-width: thin;
+  }
+
+  input,
+  select,
+  textarea {
+    caret-color: var(--ui-brand);
   }
 }
 

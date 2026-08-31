@@ -25,6 +25,7 @@ export interface ParseOptions {
   skipRows?: number;
   maxRows?: number;
   delimiter?: string;
+  normalizeKnownSurveys?: boolean;
 }
 
 export function parseFileToDataset(
@@ -66,8 +67,10 @@ export function parseFileToDataset(
     records = records.slice(0, options.maxRows);
   }
 
-  const huajingRecords = normalizeHuajingSurvey(records);
-  records = huajingRecords === records ? normalizeIndustryFields(records) : huajingRecords;
+  if (options.normalizeKnownSurveys !== false) {
+    const huajingRecords = normalizeHuajingSurvey(records);
+    records = huajingRecords === records ? normalizeIndustryFields(records) : huajingRecords;
+  }
   const fields = detectSchema(records);
   const now = new Date().toISOString();
 

@@ -18,6 +18,7 @@ import type { PersonaConfig } from '@/types/personaSchema';
 import type { ViewConfig } from '@/lib/viewConfig';
 import { chartSchemaFromLegacy, type ChartSchema } from '@/types/chartSchema';
 import { isSkipValue } from '@/lib/skipPatterns';
+import { DEFAULT_AUTOMATION_SETTINGS, type AutomationSettings } from '@/lib/automationRules';
 
 export interface SavedChart {
   id: string;
@@ -62,6 +63,8 @@ function genId(): string {
 type DatasetSummary = Omit<Dataset, 'records'>;
 
 interface DatasetStore {
+  automationSettings: AutomationSettings;
+  updateAutomationSettings: (patch: Partial<AutomationSettings>) => void;
   // Persona dashboard configs
   personaConfigs: Record<string, PersonaConfig[]>;
   savePersonaConfig: (datasetId: string, config: PersonaConfig) => void;
@@ -128,6 +131,10 @@ function patchField(fields: Field[], key: string, patch: Partial<Field>): Field[
 export const useDatasetStore = create<DatasetStore>()(
   persist(
     (set, get) => ({
+      automationSettings: DEFAULT_AUTOMATION_SETTINGS,
+      updateAutomationSettings(patch) {
+        set(state => ({ automationSettings: { ...state.automationSettings, ...patch } }));
+      },
       datasets: [],
       activeDatasetId: null,
 
@@ -547,6 +554,11 @@ export const useDatasetStore = create<DatasetStore>()(
 
     {
       name: 'upersona-datasets',
+      version: 2,
+      migrate: persisted => ({
+        ...(persisted as object),
+        automationSettings: DEFAULT_AUTOMATION_SETTINGS,
+      }),
       storage: createJSONStorage(() => idbStorage),
       partialize: (state) => ({
         activeDatasetId: state.activeDatasetId,
@@ -556,6 +568,7 @@ export const useDatasetStore = create<DatasetStore>()(
         viewConfigs:     state.viewConfigs,
         personaConfigs:  state.personaConfigs,
         activePersonaConfigId: state.activePersonaConfigId,
+        automationSettings: state.automationSettings,
         datasets: state.datasets.map(d => ({
           ...d,
           records: d.records.slice(0, 50000),

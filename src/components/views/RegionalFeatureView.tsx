@@ -669,7 +669,7 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
         </div>
 
         <StatusFilterGroups
-          orderLabel="状态筛选"
+          orderLabel={viewConfig.statusVariableName?.trim() || '订单状态'}
           orderOptions={statusOptions}
           selectedOrders={selStatus}
           onOrdersChange={setSelStatus}
@@ -716,7 +716,7 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
         </div>
       ) : displayedRegions.length === 0 ? (
         <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-gray-100">
-          请通过「添加地区」选择要对比的{geoLabel}
+          暂未选择对比{geoLabel}
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">

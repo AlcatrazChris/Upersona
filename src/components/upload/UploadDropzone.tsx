@@ -106,7 +106,7 @@ export function UploadDropzone({
                 {dragging ? '松开以上传' : '拖放文件到此，或点击选择'}
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                支持 {ACCEPTED.join(' · ')}，最大 {MAX_SIZE_MB} MB
+                {ACCEPTED.join(' · ')} · 最大 {MAX_SIZE_MB} MB
               </p>
             </div>
           </div>

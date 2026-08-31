@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  X, Table2, Settings2,
+  X, Table2,
   Database, Trash2, ChevronRight, CloudUpload,
   Cloud, RefreshCw, Loader2, HardDrive,
 } from 'lucide-react';
@@ -23,13 +23,14 @@ import { cn } from '@/lib/utils';
 import { useModalA11y } from '@/hooks/useModalA11y';
 import type { Dataset, Field, FieldDiff } from '@/types/dataSchema';
 import type { EnrichableField }           from '@/lib/fieldEnricher';
+import { applyCleaningTemplate, DEFAULT_AUTOMATION_SETTINGS } from '@/lib/automationRules';
+import { readJsonResponse } from '@/lib/http';
 
 // ── Tabs ──────────────────────────────────────────────────────────
 
 const TABS = [
   { id: 'data',    label: '数据集', icon: Database,  needsDataset: false },
-  { id: 'fields',  label: '字段处理', icon: Table2,    needsDataset: true  },
-  { id: 'settings', label: '全局设置', icon: Settings2, needsDataset: true },
+  { id: 'settings', label: '数据集设置', icon: Table2, needsDataset: true },
 ] as const;
 type TabId = typeof TABS[number]['id'];
 
@@ -63,7 +64,7 @@ function fmtDate(iso: string) {
 
 // ── DataManagementTab ─────────────────────────────────────────────
 
-function DataManagementTab() {
+function DataManagementTab({ onDatasetSelected }: { onDatasetSelected: () => void }) {
   const {
     addDataset, removeDataset, setActiveDatasetId, getDataset,
     activeDatasetId, updateDataset, viewConfigs, personaConfigs,
@@ -76,6 +77,7 @@ function DataManagementTab() {
   const [uploading,     setUploading]     = useState(false);
   const [uploadStatus,  setUploadStatus]  = useState('');
   const [uploadError,   setUploadError]   = useState('');
+  const [cleanThisUpload, setCleanThisUpload] = useState(true);
   const cancelParseRef = useRef<(() => void) | null>(null);
   const [pendingData,   setPendingData]   =
     useState<{ dataset: Dataset; diff: FieldDiff; targetId: string } | null>(null);
@@ -102,7 +104,7 @@ function DataManagementTab() {
         if (res.status === 401) { setDbError('未登录，无法拉取云端数据集'); return; }
         throw new Error(`HTTP ${res.status}`);
       }
-      const data = await res.json() as DBDatasetMeta[];
+      const data = await readJsonResponse<DBDatasetMeta[]>(res, 'GET /api/datasets');
       setDbDatasets(data);
     } catch (e) {
       setDbError(e instanceof Error ? e.message : '拉取失败');
@@ -115,7 +117,16 @@ function DataManagementTab() {
 
   // ── Local upload flow ────────────────────────────────────────
 
-  function finalizeDataset(ds: Dataset) { addDataset(ds); }
+  function finalizeDataset(ds: Dataset) { addDataset(ds); onDatasetSelected(); }
+
+  async function applyUploadAutomation(dataset: Dataset) {
+    if (cleanThisUpload) {
+      const templateId = /华境|huajing/i.test(dataset.name) ? 'huajing' : 'xingguang';
+      const template = DEFAULT_AUTOMATION_SETTINGS.cleaningTemplates.find(item => item.id === templateId);
+      return applyCleaningTemplate(dataset, template);
+    }
+    return dataset;
+  }
 
   function parseInWorker(buffer: ArrayBuffer, filename: string): Promise<Dataset> {
     return new Promise((resolve, reject) => {
@@ -151,7 +162,9 @@ function DataManagementTab() {
       setUploadStatus('正在读取文件…');
       const buffer = await file.arrayBuffer();
       setUploadStatus('正在后台解析，页面仍可正常操作…');
-      const newDs = await parseInWorker(buffer, file.name);
+      let newDs = await parseInWorker(buffer, file.name);
+      setUploadStatus('正在执行标准清洗…');
+      newDs = await applyUploadAutomation(newDs);
 
       const existing = datasets.find(d => d.name === newDs.name);
       if (existing) {
@@ -214,7 +227,7 @@ function DataManagementTab() {
             body: JSON.stringify({ type: 'occupation', values: uniqueVals }),
           });
           if (res.ok) {
-            const { mapping } = await res.json() as { mapping: Record<string, string> };
+            const { mapping } = await readJsonResponse<{ mapping: Record<string, string> }>(res, 'POST /api/enrich');
             ds = applyOccupationEnrichment(ds, enrich, mapping);
           }
         } catch { /* AI enrichment failure is non-fatal */ }
@@ -230,14 +243,15 @@ function DataManagementTab() {
   async function handleLoadDB(meta: DBDatasetMeta) {
     // Already loaded locally?
     const existing = datasets.find(d => d.id === meta.id);
-    if (existing) { setActiveDatasetId(existing.id); return; }
+    if (existing) { setActiveDatasetId(existing.id); onDatasetSelected(); return; }
 
     setLoadingId(meta.id);
     try {
       const res = await fetch(`/api/datasets/${meta.id}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const { dataset: ds } = await res.json() as { dataset: Dataset };
+      const { dataset: ds } = await readJsonResponse<{ dataset: Dataset }>(res, `GET /api/datasets/${meta.id}`);
       addDataset(ds);
+      onDatasetSelected();
     } catch (e) {
       alert(`加载失败: ${(e as Error).message}`);
     } finally {
@@ -311,12 +325,11 @@ function DataManagementTab() {
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
           上传新数据集
         </h3>
-        <UploadDropzone
-          onFile={handleFile}
-          loading={uploading}
-          status={uploadStatus}
-          onCancel={uploading ? cancelUpload : undefined}
-        />
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-3">
+          <UploadDropzone onFile={handleFile} loading={uploading} status={uploadStatus} onCancel={uploading ? cancelUpload : undefined} />
+            <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5"><div className="flex items-center gap-2"><p className="text-sm font-medium text-slate-700">数据清洗</p><span className="rounded-md bg-white px-2 py-0.5 text-xs text-slate-500">内置标准</span></div>
+              <button type="button" role="switch" aria-checked={cleanThisUpload} aria-label="本次上传启用数据清洗" onClick={() => setCleanThisUpload(value => !value)} className={cn('relative h-6 w-11 flex-shrink-0 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-blue-400', cleanThisUpload ? 'bg-blue-700' : 'bg-slate-300')}><span className={cn('absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform', cleanThisUpload ? 'translate-x-5' : 'translate-x-0')} /></button></div>
+        </div>
         {uploadError && (
           <div
             role="alert"
@@ -342,7 +355,7 @@ function DataManagementTab() {
             {datasets.map(ds => (
               <div
                 key={ds.id}
-                onClick={() => setActiveDatasetId(ds.id)}
+                onClick={() => { setActiveDatasetId(ds.id); onDatasetSelected(); }}
                 className={cn(
                   'group flex items-center gap-3 p-3.5 rounded-xl cursor-pointer transition-all border',
                   ds.id === activeDatasetId
@@ -420,8 +433,7 @@ function DataManagementTab() {
       {datasets.length === 0 && !uploading && (
         <div className="text-center py-8 text-gray-300">
           <HardDrive size={28} className="mx-auto mb-3 opacity-40" />
-          <p className="text-sm">上传数据文件后开始分析</p>
-          <p className="text-xs mt-1">支持 Excel (.xlsx/.xls)、CSV、JSON</p>
+          <p className="text-sm">暂无本地数据集</p>
         </div>
       )}
 
@@ -459,9 +471,6 @@ function DataManagementTab() {
           <div className="text-center py-8 text-gray-300">
             <Cloud size={28} className="mx-auto mb-3 opacity-40" />
             <p className="text-sm">暂无云端数据集</p>
-            {isAdmin && (
-              <p className="text-xs mt-1">在本地数据集上点击 <CloudUpload size={10} className="inline" /> 推送到 Supabase</p>
-            )}
           </div>
         )}
 
@@ -576,7 +585,7 @@ export function DataCenterPanel({ dataset, onClose }: Props) {
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-50 bg-black/25 backdrop-blur-sm" onClick={requestClose} />
+      <div className="fixed inset-0 z-50 bg-black/20" onClick={requestClose} />
 
       {/* Panel */}
       <div
@@ -585,21 +594,18 @@ export function DataCenterPanel({ dataset, onClose }: Props) {
         aria-modal="true"
         aria-labelledby="data-center-title"
         tabIndex={-1}
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-6xl flex-col overflow-hidden overscroll-contain bg-slate-100 shadow-2xl"
+        className="product-surface fixed inset-3 z-50 flex flex-col overflow-hidden overscroll-contain rounded-3xl bg-[#F5F5F7] shadow-[0_24px_80px_rgba(0,0,0,0.12)] sm:inset-6"
       >
 
         {/* Header */}
-        <div className="flex items-center gap-2 border-b border-gray-100 bg-white px-3 py-3 sm:gap-3 sm:px-6 sm:py-4">
-          <div className="hidden h-7 w-7 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 sm:flex">
-            <Database size={14} className="text-blue-500" />
-          </div>
-          <h2 id="data-center-title" className="text-sm font-semibold text-gray-800">数据中心</h2>
+        <div className="flex min-h-20 items-center gap-3 border-b border-black/[0.06] bg-white px-4 sm:px-8">
+          <h2 id="data-center-title" className="text-[28px] font-medium tracking-[-0.03em] text-[#1D1D1F]">数据中心</h2>
           {dataset && (
             <span className="hidden truncate text-xs text-gray-500 lg:inline">— {dataset.name}</span>
           )}
 
           {/* Tabs */}
-          <div className="ml-1 flex flex-1 items-center gap-1 overflow-x-auto sm:ml-5">
+          <div className="ml-2 flex flex-1 items-center gap-1 overflow-x-auto sm:ml-8">
             {TABS.map(t => {
               const Icon     = t.icon;
               const disabled = t.needsDataset && !dataset;
@@ -609,12 +615,12 @@ export function DataCenterPanel({ dataset, onClose }: Props) {
                   onClick={() => !disabled && changeTab(t.id)}
                   disabled={disabled}
                   className={cn(
-                    'flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-colors',
+                    'flex h-10 flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 text-sm font-medium transition-colors',
                     disabled
-                      ? 'text-gray-300 cursor-not-allowed'
+                      ? 'cursor-not-allowed text-[#AEAEB2]'
                       : tab === t.id
-                        ? 'bg-slate-900 text-white'
-                        : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700',
+                        ? 'bg-[#007AFF]/[0.08] text-[#007AFF]'
+                        : 'text-[#515154] hover:bg-black/[0.04] hover:text-[#1D1D1F]',
                   )}
                 >
                   <Icon size={13} />
@@ -627,17 +633,16 @@ export function DataCenterPanel({ dataset, onClose }: Props) {
           <button
             onClick={requestClose}
             aria-label="关闭数据中心"
-            className="flex-shrink-0 p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all"
+            className="flex-shrink-0 rounded-xl p-2 text-[#86868B] transition-colors hover:bg-black/[0.04] hover:text-[#1D1D1F]"
           >
             <X size={16} />
           </button>
         </div>
 
         {/* Content */}
-        <div className={cn('min-h-0 flex-1 overflow-y-auto', tab === 'fields' ? 'p-0' : 'px-3 py-4 sm:px-6 sm:py-5')}>
-          {tab === 'data' && <DataManagementTab />}
-          {tab === 'fields' && dataset && <FieldWorkspace dataset={dataset} onDirtyChange={setFieldDirty} />}
-          {tab === 'settings' && dataset && <DatasetSettingsPanel dataset={dataset} />}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
+          {tab === 'data' && <DataManagementTab onDatasetSelected={() => changeTab('settings')} />}
+          {tab === 'settings' && dataset && <div className="space-y-6"><DatasetSettingsPanel dataset={dataset} /><section><h3 className="mb-3 text-lg font-semibold text-slate-900">字段管理</h3><div className="min-h-[720px] overflow-hidden rounded-2xl bg-white"><FieldWorkspace dataset={dataset} onDirtyChange={setFieldDirty} /></div></section></div>}
         </div>
       </div>
     </>

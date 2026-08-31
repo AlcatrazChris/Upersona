@@ -114,10 +114,7 @@ export function PersonaTemplatePanel({ dataset }: { dataset: Dataset }) {
   return (
     <div className="space-y-4">
       <div className="ui-control-panel flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-base font-semibold text-slate-900">用户画像模板</h2>
-          <p className="mt-1 text-xs text-slate-500">这里是画像页面的唯一配置来源，修改后立即同步。</p>
-        </div>
+        <h2 className="min-w-0 flex-1 text-base font-semibold text-slate-900">用户画像模板</h2>
         <button type="button" onClick={analyze} disabled={loading}
           className="flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50">
           {loading ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}

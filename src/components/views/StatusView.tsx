@@ -602,6 +602,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
   }, [geoLevel, geoLevels, setGeoLevel, setSelectedGeo]);
 
   const selectedTimeGroups = timeGroups.filter(group => selectedGroupKeys.includes(group.key));
+  const statusVariableName = viewConfig.statusVariableName?.trim() || '订单状态';
   const selectedOrderGroups = orderGroups.filter(group => selectedOrderStatuses.includes(group.label));
   const selectedGroups = compareBasis === 'time' ? selectedTimeGroups : selectedOrderGroups;
   const comparisonFieldKey = compareBasis === 'time' ? MONTH_FIELD_KEY : (viewConfig.statusFieldKey ?? '');
@@ -720,7 +721,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
   // ── AI Insight helpers ─────────────────────────────
   const insightCacheKey = `status_${compareBasis}_${selectedGroups.map(group => group.key).join(',')}_${geoLevel}_${selectedGeo.join(',')}_${selectedDimKeys.join(',')}_${compareDatasetId ?? ''}`;
   const insightLabel = selectedGroups.length === 0
-    ? `（请先选择${compareBasis === 'time' ? '时间' : '订单状态'}）`
+    ? `（请先选择${compareBasis === 'time' ? '时间' : statusVariableName}）`
     : `${selectedGroups.map(g => g.label).join(' vs ')} · ${
       selectedGeo.length > 0 ? selectedGeo.join(' / ') : '全国'
     } · ${personaFields.map(f => f.name).join('、').slice(0, 30)}`;
@@ -772,7 +773,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
   if ((!timeField || timeGroups.length === 0) && orderGroups.length === 0) {
     return (
       <div className="rounded-2xl border border-gray-100 bg-white px-6 py-16 text-center text-sm text-gray-500">
-        <p>未识别到可用于对比的订单状态或时间字段，请先在数据中心完成全局状态设置。</p>
+        <p>未识别到可用于对比的{statusVariableName}或时间字段，请先在数据中心完成数据集设置。</p>
         {onOpenDataCenter && (
           <button
             type="button"
@@ -800,12 +801,12 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
             <button type="button" disabled={!orderGroups.length} onClick={() => {
               setCompareBasis('order');
               if (selectedOrderStatuses.includes('__all')) setSelectedOrderStatuses(orderOptions.slice(0, 2));
-            }} className={cn('rounded-lg px-3 py-1 text-xs transition-all disabled:opacity-40', compareBasis === 'order' ? 'bg-white font-medium text-gray-800 shadow-sm' : 'text-gray-500')}>订单状态对比</button>
+            }} className={cn('rounded-lg px-3 py-1 text-xs transition-all disabled:opacity-40', compareBasis === 'order' ? 'bg-white font-medium text-gray-800 shadow-sm' : 'text-gray-500')}>{statusVariableName}对比</button>
             <button type="button" disabled={!timeField || !timeGroups.length} onClick={() => setCompareBasis('time')}
               className={cn('rounded-lg px-3 py-1 text-xs transition-all disabled:opacity-40', compareBasis === 'time' ? 'bg-white font-medium text-gray-800 shadow-sm' : 'text-gray-500')}>时间对比</button>
           </div>
           <span className="text-[10px] text-gray-400">
-            {compareBasis === 'time' ? '时间作为图表系列，订单状态用于筛选' : '订单状态作为图表系列，时间用于筛选'}
+            {compareBasis === 'time' ? `时间作为图表系列，${statusVariableName}用于筛选` : `${statusVariableName}作为图表系列，时间用于筛选`}
           </span>
         </div>
 
@@ -813,6 +814,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
         <div className="flex items-start gap-2 flex-wrap">
           <div className="flex-1 min-w-0">
             <StatusFilterGroups
+              orderLabel={statusVariableName}
               orderOptions={orderOptions}
               selectedOrders={selectedOrderStatuses}
               onOrdersChange={values => setSelectedOrderStatuses(

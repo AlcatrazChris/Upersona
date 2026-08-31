@@ -135,7 +135,6 @@ export function ChartSettingsPanel({
             <div>
               <span className="text-sm font-semibold text-slate-800">图表设置</span>
               <span className="ml-2 rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold text-blue-600">SCHEMA V2</span>
-              <p className="mt-0.5 text-[10px] text-slate-400">修改即时应用到当前图表</p>
             </div>
             <button
               onClick={() => onChange(DEFAULT_CHART_CONFIG)}

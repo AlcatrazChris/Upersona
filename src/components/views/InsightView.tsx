@@ -667,6 +667,7 @@ export function InsightView({ dataset, viewConfig }: Props) {
         </div>
 
         <StatusFilterGroups
+          orderLabel={viewConfig.statusVariableName?.trim() || '订单状态'}
           orderOptions={statusOptions}
           selectedOrders={selStatus}
           onOrdersChange={setSelStatus}

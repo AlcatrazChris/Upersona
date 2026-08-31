@@ -45,7 +45,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     // 元信息
     const { data: ds, error: dsErr } = await sb
       .from('upersona_datasets')
-      .select('id, name, source_type, row_count, fields, created_at, updated_at, uploaded_by')
+      .select('id, name, source_type, row_count, fields, active_upload_id, created_at, updated_at, uploaded_by')
       .eq('id', id)
       .eq('is_active', true)
       .single();
@@ -59,6 +59,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       .from('upersona_dataset_chunks')
       .select('chunk_index, rows')
       .eq('dataset_id', id)
+      .eq('upload_id', ds.active_upload_id)
       .order('chunk_index', { ascending: true });
 
     if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });

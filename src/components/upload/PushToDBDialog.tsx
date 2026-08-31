@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import type { Dataset } from '@/types/dataSchema';
 import type { ViewConfig } from '@/lib/viewConfig';
 import { useModalA11y } from '@/hooks/useModalA11y';
+import { readJsonResponse } from '@/lib/http';
 
 interface Props {
   dataset:        Dataset;
@@ -56,7 +57,7 @@ export function PushToDBDialog({
 
   const fieldCount  = dataset.fields.length;
   const recordCount = dataset.rowCount;
-  const chunkCount  = Math.ceil(recordCount / 1000);
+  const chunkCount  = Math.ceil(recordCount / 500);
 
   const fieldTypeSummary = dataset.fields.reduce<Record<string, number>>((acc, f) => {
     acc[f.type] = (acc[f.type] ?? 0) + 1;
@@ -70,22 +71,45 @@ export function PushToDBDialog({
     try {
       setProgress(`正在上传 ${recordCount.toLocaleString()} 条记录（约 ${chunkCount} 个数据块）…`);
 
-      const res = await fetch('/api/datasets', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dataset,
-          viewConfig,
-          personaConfigs,
-          savedCharts,
-          canvasElements,
-        }),
-      });
+      const post = async <T,>(payload: unknown, label: string): Promise<T> => {
+        const res = await fetch('/api/datasets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const json = await readJsonResponse<T & { error?: string }>(res, label);
+        if (!res.ok) throw new Error(json.error ?? `${label} failed (HTTP ${res.status})`);
+        return json;
+      };
+      const retry = async <T,>(operation: () => Promise<T>): Promise<T> => {
+        let lastError: unknown;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try { return await operation(); } catch (e) {
+            lastError = e;
+            if (attempt < 3) await new Promise(resolve => setTimeout(resolve, attempt * 500));
+          }
+        }
+        throw lastError;
+      };
 
-      const json = await res.json() as { ok?: boolean; error?: string; chunkCount?: number };
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error ?? `上传失败 (${res.status})`);
+      const { uploadId } = await post<{ uploadId: string }>({
+        action: 'init',
+        dataset: { ...dataset, records: [] },
+      }, '初始化数据集上传');
+
+      for (let index = 0; index < chunkCount; index++) {
+        setProgress(`正在上传第 ${index + 1}/${chunkCount} 个数据块…`);
+        const rows = dataset.records.slice(index * 500, (index + 1) * 500);
+        await retry(() => post({ action: 'chunk', datasetId: dataset.id, uploadId, index, rows }, `上传数据块 ${index + 1}/${chunkCount}`));
       }
+
+      const json = await post<{ ok: boolean; chunkCount: number }>({
+        action: 'commit', uploadId,
+        dataset: { ...dataset, records: [] },
+        rowCount: dataset.records.length,
+        chunkCount,
+        viewConfig, personaConfigs, savedCharts, canvasElements,
+      }, '提交数据集版本');
 
       setProgress(`上传完成，共 ${json.chunkCount} 个数据块`);
       setPhase('done');
@@ -112,10 +136,7 @@ export function PushToDBDialog({
           <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
             <CloudUpload size={16} className="text-blue-500" />
           </div>
-          <div className="flex-1">
-            <h2 id="push-db-title" className="text-sm font-semibold text-gray-800">推送到数据库</h2>
-            <div className="text-xs text-gray-400 mt-0.5">将本地数据集上传至 Supabase 云端</div>
-          </div>
+          <h2 id="push-db-title" className="flex-1 text-sm font-semibold text-gray-800">推送到数据库</h2>
           {phase === 'preview' && (
             <button aria-label="关闭数据库推送" onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400">
               <X size={15} />
@@ -194,9 +215,6 @@ export function PushToDBDialog({
                 </div>
               ))}
             </div>
-            <p className="text-[11px] text-gray-400 mt-2">
-              如需修改字段（删除、重命名、调整类型），请先在「字段概览」完成，再执行推送。
-            </p>
           </div>
 
           {/* Note */}

@@ -76,12 +76,7 @@ export function EnrichmentDialog({
           <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center flex-shrink-0">
             <Sparkles size={16} className="text-purple-500" />
           </div>
-          <div className="flex-1 min-w-0">
-            <h2 id="enrichment-title" className="text-sm font-semibold text-gray-800">检测到可派生字段</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              以下字段可自动生成分析维度，添加到「{dataset.name}」
-            </p>
-          </div>
+          <h2 id="enrichment-title" className="min-w-0 flex-1 text-sm font-semibold text-gray-800">检测到可派生字段</h2>
           <button aria-label="关闭派生字段建议" onClick={onCancel} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
             <X size={14} />
           </button>

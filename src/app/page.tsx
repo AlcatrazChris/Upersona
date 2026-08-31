@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
-import { Users, MapPin, GitCompare, Lightbulb, Database, BarChart2, Map, Loader2, CloudDownload, Menu, X } from 'lucide-react';
+import { Users, MapPin, GitCompare, Lightbulb, Database, Map, Loader2, CloudDownload, Menu, X } from 'lucide-react';
 import { useDatasetStore, useActiveDataset } from '@/store/datasetStore';
 import { useIsAdmin } from '@/lib/auth';
 import { UserSection } from '@/components/auth/UserSection';
@@ -50,11 +50,11 @@ const DataCenterPanel = dynamic(
 // ── View definitions ──────────────────────────────────────────────
 
 const VIEWS = [
-  { id: 'persona',  label: '用户画像', sub: 'Profile',   icon: Users      },
-  { id: 'regional', label: '地域对比', sub: 'Compare',   icon: MapPin      },
-  { id: 'status',   label: '状态对比', sub: 'Status',    icon: GitCompare  },
-  { id: 'insight',  label: '核心洞察', sub: 'Insights',  icon: Lightbulb   },
-  { id: 'rfeature', label: '区域特征', sub: 'Features',  icon: Map         },
+  { id: 'persona',  label: '用户画像', icon: Users      },
+  { id: 'regional', label: '地域对比', icon: MapPin     },
+  { id: 'status',   label: '状态对比', icon: GitCompare },
+  { id: 'insight',  label: '核心洞察', icon: Lightbulb  },
+  { id: 'rfeature', label: '区域特征', icon: Map        },
 ] as const;
 type ViewId = typeof VIEWS[number]['id'];
 const VIEW_IDS = new Set<ViewId>(VIEWS.map(view => view.id));
@@ -71,22 +71,15 @@ const VIEW_IMPORTS: Record<ViewId, () => Promise<unknown>> = {
 
 function EmptyState({ onOpenDC, isAdmin }: { onOpenDC: () => void; isAdmin: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full text-center px-8">
-      <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-5">
-        <BarChart2 size={28} className="text-blue-400" />
-      </div>
-      <h2 className="text-lg font-semibold text-gray-700 mb-2">还没有数据集</h2>
-      <p className="text-sm text-gray-400 mb-6 max-w-xs leading-relaxed">
-        {isAdmin
-          ? '在数据中心上传 Excel / CSV 文件，或从云端选择已有数据集'
-          : '从云端选择一个已有数据集开始分析'}
-      </p>
+    <div className="flex h-full -translate-y-8 flex-col items-center justify-center px-8 text-center sm:-translate-y-12">
+      <Database size={28} strokeWidth={1.5} className="mb-4 text-[#AEAEB2]" />
+      <h2 className="mb-6 text-lg font-semibold text-[#1D1D1F]">暂无数据集</h2>
       <div className="flex items-center gap-3">
         <CloudDatasetSelector />
         {isAdmin && (
           <button
             onClick={onOpenDC}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-all shadow-sm"
+            className="flex h-11 items-center gap-2 rounded-xl bg-[#007AFF] px-5 text-sm font-medium text-white transition-colors hover:bg-[#0066D6]"
           >
             <Database size={15} />
             打开数据中心
@@ -153,7 +146,7 @@ export default function MainPage() {
   );
 
   return (
-    <div className="flex min-h-dvh bg-slate-100 md:h-dvh md:overflow-hidden">
+    <div className="flex min-h-dvh bg-[#F5F5F7] md:h-dvh md:overflow-hidden">
 
       {mobileNavOpen && (
         <button
@@ -168,28 +161,24 @@ export default function MainPage() {
       <aside
         aria-label="主要导航"
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-[200px] flex-shrink-0 flex-col overflow-hidden transition-transform md:static md:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 flex w-[232px] flex-shrink-0 flex-col overflow-hidden border-r border-black/[0.06] bg-white transition-transform md:static md:translate-x-0',
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
         )}
-        style={{ background: '#20252b' }}
       >
         {/* Brand */}
-        <div className="flex items-center gap-3 px-4 py-[18px] border-b border-white/5">
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
-            <Image src="/icon02.png" alt="" width={30} height={30} className="h-7 w-7 object-contain" priority />
+        <div className="flex h-20 items-center gap-3 px-5">
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-white">
+            <Image src="/icon02.png" alt="" width={32} height={32} className="h-8 w-8 object-contain" priority />
           </div>
           <div className="min-w-0">
-            <div className="text-[13px] font-semibold text-white leading-tight tracking-tight">
+            <div className="text-[15px] font-semibold leading-tight tracking-[-0.02em] text-[#1D1D1F]">
               Upersona
-            </div>
-            <div className="mt-0.5 text-[10px] leading-tight text-slate-400">
-              用户画像平台
             </div>
           </div>
           <button
             type="button"
             aria-label="关闭导航"
-            className="ml-auto rounded-lg p-1.5 text-slate-400 hover:bg-white/5 hover:text-white md:hidden"
+            className="ml-auto rounded-lg p-1.5 text-[#86868B] hover:bg-black/[0.04] hover:text-[#1D1D1F] md:hidden"
             onClick={() => setMobileNavOpen(false)}
           >
             <X size={18} aria-hidden="true" />
@@ -197,7 +186,7 @@ export default function MainPage() {
         </div>
 
         {/* Nav tabs */}
-        <nav className="flex-1 px-2.5 py-3 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
           {VIEWS.map(v => {
             const Icon = v.icon;
             const active   = view === v.id;
@@ -212,24 +201,16 @@ export default function MainPage() {
                 aria-current={active ? 'page' : undefined}
                 title={disabled ? '请先选择数据集' : v.label}
                 className={cn(
-                  'w-full flex items-center gap-3 px-3 py-[9px] rounded-xl transition-all text-left',
+                  'flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition-colors',
                   disabled
-                    ? 'opacity-25 cursor-not-allowed'
+                    ? 'cursor-not-allowed opacity-45'
                     : active
-                      ? 'bg-blue-600 text-white'
-                      : 'text-slate-400 hover:bg-white/5 hover:text-slate-200',
+                      ? 'bg-[#007AFF]/[0.08] text-[#007AFF]'
+                      : 'text-[#515154] hover:bg-black/[0.04] hover:text-[#1D1D1F]',
                 )}
               >
                 <Icon size={17} className="flex-shrink-0" aria-hidden="true" />
-                <div className="min-w-0">
-                  <div className="text-[12.5px] font-medium leading-tight">{v.label}</div>
-                  <div
-                    className="mt-0.5 text-xs leading-tight"
-                    style={{ color: active ? 'rgba(239,246,255,0.82)' : '#9aa8b6' }}
-                  >
-                    {v.sub}
-                  </div>
-                </div>
+                <span className="truncate font-medium">{v.label}</span>
               </button>
             );
           })}
@@ -239,27 +220,21 @@ export default function MainPage() {
         <div className="flex flex-col">
           {isAdmin && (
             <div
-              className="px-2.5 pt-2 pb-1 space-y-0.5"
-              style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}
+              className="mx-3 border-t border-black/[0.06] pb-1 pt-3"
             >
               <button
                 type="button"
                 onMouseEnter={() => void import('@/components/views/DataCenterPanel')}
                 onFocus={() => void import('@/components/views/DataCenterPanel')}
                 onClick={() => setDcOpen(true)}
-                className="w-full flex items-center gap-3 px-3 py-[9px] rounded-xl text-slate-400 hover:bg-white/5 hover:text-slate-200 transition-all text-left"
+                className="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium text-[#515154] transition-colors hover:bg-black/[0.04] hover:text-[#1D1D1F]"
               >
                 <Database size={17} className="flex-shrink-0" aria-hidden="true" />
-                <div className="min-w-0">
-                  <div className="text-[12.5px] font-medium leading-tight">数据中心</div>
-                  <div className="mt-0.5 text-xs leading-tight" style={{ color: '#9aa8b6' }}>
-                    Management
-                  </div>
-                </div>
+                <span>数据中心</span>
               </button>
             </div>
           )}
-          <div className="px-2.5 pb-2 pt-1">
+          <div className="px-3 pb-3 pt-1">
             <UserSection />
           </div>
         </div>
@@ -269,7 +244,7 @@ export default function MainPage() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
 
         {/* Top bar */}
-        <header className="flex min-h-14 flex-shrink-0 flex-wrap items-center gap-3 border-b border-gray-100/80 bg-white px-3 py-2 md:px-6">
+        <header className="flex min-h-20 flex-shrink-0 flex-wrap items-center gap-4 border-b border-black/[0.06] bg-white px-4 py-3 md:px-8">
           <button
             type="button"
             aria-label="打开导航"
@@ -282,12 +257,12 @@ export default function MainPage() {
           <div className="flex-1 min-w-0">
             {dataset ? (
               <>
-                <h1 className="truncate text-[15px] font-semibold leading-tight text-gray-900">
+                <h1 className="truncate text-[28px] font-medium leading-tight tracking-[-0.03em] text-[#1D1D1F]">
                   {VIEWS.find(v => v.id === view)?.label}
                 </h1>
               </>
             ) : (
-              <h1 className="text-sm font-medium text-gray-500">选择或上传数据集后开始分析</h1>
+              <h1 className="text-[28px] font-medium tracking-[-0.03em] text-[#1D1D1F]">暂无数据集</h1>
             )}
           </div>
 
@@ -295,7 +270,7 @@ export default function MainPage() {
           {cloudSyncing && !dataset && (
             <div className="flex flex-shrink-0 items-center gap-1.5 text-xs text-indigo-600" aria-live="polite">
               <Loader2 size={12} className="animate-spin" aria-hidden="true" />
-              <span>正在同步云端数据…</span>
+              <span className="hidden sm:inline">正在同步云端数据…</span>
             </div>
           )}
           {syncedName && (
@@ -324,11 +299,11 @@ export default function MainPage() {
         </header>
 
         {/* Scrollable content */}
-        <main id="main-content" className="flex-1 overflow-y-auto overflow-x-hidden" tabIndex={-1}>
+        <main id="main-content" className="product-surface flex-1 overflow-y-auto overflow-x-hidden" tabIndex={-1}>
           {!dataset || !viewConfig ? (
             <EmptyState onOpenDC={() => setDcOpen(true)} isAdmin={isAdmin} />
           ) : (
-            <div className="mx-auto max-w-7xl px-3 py-4 md:px-6 md:py-5">
+            <div className="mx-auto max-w-[1440px] px-4 py-6 md:px-8 md:py-8">
               {view === 'persona'  && (
                 <PersonaView dataset={dataset} viewConfig={viewConfig} />
               )}

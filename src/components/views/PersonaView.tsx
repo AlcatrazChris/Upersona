@@ -166,7 +166,7 @@ function PersonaChartCard({
     useResizableChartHeight(effective.chartHeight);
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-5 relative group select-none">
+    <div className="group relative select-none rounded-2xl bg-white p-5">
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div>
@@ -321,7 +321,7 @@ export function PersonaView({ dataset, viewConfig }: Props) {
     <div className="space-y-4">
 
       {/* ── Filter bar ─────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-100 px-5 py-4 space-y-3">
+      <div className="space-y-3 rounded-2xl bg-white px-5 py-4">
 
         {/* Row 1: Geo filter + chart settings + view toggles */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -360,6 +360,7 @@ export function PersonaView({ dataset, viewConfig }: Props) {
         </div>
 
         <StatusFilterGroups
+          orderLabel={viewConfig.statusVariableName?.trim() || '订单状态'}
           orderOptions={statusOptions}
           selectedOrders={selStatus}
           onOrdersChange={setSelStatus}

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, ChevronRight, FilterX, GripVertical, Loader2,
+  AlertTriangle, ChevronDown, ChevronUp, FilterX, GripVertical, Loader2,
   Save, Search, Sparkles, Trash2, X,
 } from 'lucide-react';
 import { useDatasetStore } from '@/store/datasetStore';
@@ -10,6 +10,11 @@ import { useIsAdmin } from '@/lib/auth';
 import { isSkipValue } from '@/lib/skipPatterns';
 import { cn } from '@/lib/utils';
 import { FieldAIEnrichModal } from './FieldAIEnrichModal';
+import {
+  PERSONA_CHART_LABELS, PERSONA_ROLE_META, autoPersonaChartSpec,
+  defaultPersonaChart, inferPersonaRole, personaChartOptions,
+  type PersonaChartSpec, type PersonaChartType, type PersonaSemanticRole,
+} from '@/lib/personaTemplate';
 import type { Dataset, Field, FieldType } from '@/types/dataSchema';
 
 const TYPES: Array<{ value: FieldType; label: string }> = [
@@ -133,7 +138,10 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
   const [dragValue, setDragValue] = useState<string | null>(null);
   const [enriching, setEnriching] = useState<Field | null>(null);
   const [aiSorting, setAiSorting] = useState(false);
-  const personaKeys = viewConfigs[dataset.id]?.personaFieldKeys ?? [];
+  const [personaAnalyzing, setPersonaAnalyzing] = useState(false);
+  const [personaError, setPersonaError] = useState('');
+  const viewConfig = viewConfigs[dataset.id] ?? {};
+  const personaKeys = viewConfig.personaFieldKeys ?? [];
 
   useEffect(() => onDirtyChange?.(changes.length > 0), [changes.length, onDirtyChange]);
 
@@ -215,6 +223,55 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
     });
   }
 
+  function patchPersonaRole(key: string, role: PersonaSemanticRole) {
+    updateViewConfig(dataset.id, {
+      personaRoles: { ...(viewConfig.personaRoles ?? {}), [key]: role },
+      personaFieldKeys: role === 'metadata'
+        ? personaKeys.filter(item => item !== key)
+        : [...new Set([...personaKeys, key])],
+    });
+  }
+
+  function patchPersonaChart(key: string, patch: Partial<PersonaChartSpec>) {
+    const field = draft.fields.find(item => item.key === key);
+    if (!field) return;
+    updateViewConfig(dataset.id, { personaCharts: {
+      ...(viewConfig.personaCharts ?? {}),
+      [key]: { type: viewConfig.personaCharts?.[key]?.type ?? defaultPersonaChart(field), ...viewConfig.personaCharts?.[key], ...patch },
+    } });
+  }
+
+  function movePersona(key: string, direction: -1 | 1) {
+    const keys = [...personaKeys];
+    const from = keys.indexOf(key);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= keys.length) return;
+    [keys[from], keys[to]] = [keys[to], keys[from]];
+    updateViewConfig(dataset.id, { personaFieldKeys: keys });
+  }
+
+  async function analyzePersona() {
+    setPersonaAnalyzing(true); setPersonaError('');
+    try {
+      const response = await fetch('/api/fields/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        mode: 'persona', fields: draft.fields.map(field => ({ key: field.key, name: field.name, type: field.type,
+          unique: field.statistics?.unique ?? field.options?.length ?? 0,
+          missingRate: (field.statistics?.missing ?? 0) / Math.max(1, draft.rowCount),
+          values: field.options?.slice(0, 20) ?? field.statistics?.topValues?.map(item => item.value).slice(0, 20) ?? [] })),
+      }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? 'AI 语义识别失败');
+      updateViewConfig(dataset.id, {
+        personaFieldKeys: result.personaFieldKeys, personaRoles: result.roles, personaRoleReasons: result.reasons,
+        personaCharts: Object.fromEntries(Object.entries(result.chartTypes ?? {}).map(([key, rawType]) => {
+          const field = draft.fields.find(item => item.key === key); const type = rawType as PersonaChartType;
+          return [key, field ? autoPersonaChartSpec(field, type, draft.fields) : { type }];
+        })),
+      });
+    } catch (cause) { setPersonaError(cause instanceof Error ? cause.message : 'AI 语义识别失败'); }
+    finally { setPersonaAnalyzing(false); }
+  }
+
   async function autoSort(keys: string[]) {
     const candidates = draft.fields.filter(field => keys.includes(field.key) &&
       ['single_choice', 'multi_choice'].includes(field.type) && (field.options?.length ?? 0) >= 3);
@@ -254,14 +311,19 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
         </div>
         <select value={filter} onChange={event => setFilter(event.target.value as typeof filter)}
           className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600">
-          <option value="all">全部字段</option><option value="issue">仅看异常</option><option value="unordered">待排序字段</option><option value="ai">AI 规则</option>
+          <option value="all">全部字段</option><option value="issue">仅看异常</option><option value="unordered">待排序字段</option><option value="ai">AI 处理</option>
           {TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
         </select>
         {isAdmin && <button type="button" disabled={aiSorting} onClick={() => autoSort(checked.length ? checked : draft.fields.map(field => field.key))}
           className="flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-sm text-indigo-700 disabled:opacity-50">
           {aiSorting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} AI自动排序
         </button>}
+        {isAdmin && <button type="button" disabled={personaAnalyzing} onClick={analyzePersona}
+          className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 disabled:opacity-50">
+          {personaAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} 识别画像字段
+        </button>}
       </div>
+      {personaError && <div role="alert" className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-700">{personaError}</div>}
 
       {checked.length > 0 && isAdmin && (
         <div className="flex flex-wrap items-center gap-2 border-b border-blue-100 bg-blue-50 px-4 py-2 text-xs text-blue-800">
@@ -279,9 +341,9 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
 
       <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(420px,1fr)_360px]">
         <div className="min-h-0 overflow-auto border-r border-slate-200 bg-white">
-          <div className="sticky top-0 z-10 grid grid-cols-[32px_minmax(180px,1fr)_90px_110px_20px] items-center gap-3 border-b border-slate-200 bg-slate-50/95 px-4 py-2 text-[11px] font-medium text-slate-500 backdrop-blur">
+          <div className="sticky top-0 z-10 grid grid-cols-[32px_minmax(180px,1fr)_90px_120px_110px] items-center gap-3 border-b border-slate-200 bg-slate-50/95 px-4 py-2 text-xs font-medium text-slate-500 backdrop-blur">
             <input type="checkbox" checked={checkedAll} onChange={() => setChecked(checkedAll ? [] : visibleFields.map(field => field.key))} aria-label="选择全部字段" />
-            <span>字段</span><span>类型</span><span>质量</span><span />
+            <span>字段</span><span>类型</span><span>角色</span><span>质量</span>
           </div>
           {visibleFields.map(field => {
             const count = field.statistics?.count ?? draft.rowCount;
@@ -289,24 +351,28 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
             const missingRate = count ? missing / count : 0;
             const badDelimiter = (field.type === 'multi_choice' || field.type === 'ranking') && (field.multiDelimiter ?? '┋') !== '┋';
             return (
-              <button type="button" key={field.key} onClick={() => setSelectedKey(field.key)}
-                className={cn('grid w-full grid-cols-[32px_minmax(180px,1fr)_90px_110px_20px] items-center gap-3 border-b border-slate-100 px-4 py-3 text-left transition-colors',
+              <div key={field.key}
+                className={cn('grid w-full grid-cols-[32px_minmax(180px,1fr)_90px_120px_110px] items-center gap-3 border-b border-slate-100 px-4 py-3 text-left transition-colors',
                   selected?.key === field.key ? 'bg-blue-50/70' : 'hover:bg-slate-50')}>
                 <input type="checkbox" checked={checked.includes(field.key)} onClick={event => event.stopPropagation()}
                   onChange={() => setChecked(current => current.includes(field.key) ? current.filter(key => key !== field.key) : [...current, field.key])}
                   aria-label={`选择字段 ${field.name}`} />
-                <span className="min-w-0"><span className="block truncate text-sm font-medium text-slate-800">{field.name}</span>
-                  <span className="block truncate font-mono text-[10px] text-slate-400">{field.key}</span></span>
+                <button type="button" onClick={() => setSelectedKey(field.key)} className="min-w-0 text-left"><span className="block truncate text-sm font-medium text-slate-800">{field.name}</span>
+                  <span className="block truncate font-mono text-[10px] text-slate-400">{field.key}</span></button>
                 <span className="text-xs text-slate-600">{TYPE_LABEL[field.type]}</span>
+                <span className="flex flex-wrap gap-1 text-[10px]">
+                  {viewConfigs[dataset.id]?.statusFieldKey === field.key && <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-blue-700">状态</span>}
+                  {personaKeys.includes(field.key) && <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-blue-700">画像</span>}
+                  {[viewConfigs[dataset.id]?.geoRegionKey, viewConfigs[dataset.id]?.geoProvinceKey, viewConfigs[dataset.id]?.geoCityKey].includes(field.key) && <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-600">地区</span>}
+                  {(field.aiRule || field.derived) && <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-blue-700">AI</span>}
+                </span>
                 <span className="flex flex-wrap items-center gap-1 text-[10px]">
                   {missingRate >= .05 && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">缺失 {(missingRate * 100).toFixed(1)}%</span>}
                   {(counts[field.key] ?? 0) > 0 && <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-600">无效 {counts[field.key]}</span>}
                   {badDelimiter && <AlertTriangle size={13} className="text-amber-500" />}
-                  {(field.aiRule || field.derived) && <span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-600">AI规则</span>}
                   {missingRate < .05 && !(counts[field.key] ?? 0) && !badDelimiter && <span className="text-emerald-600">正常</span>}
                 </span>
-                <ChevronRight size={14} className="text-slate-300" />
-              </button>
+              </div>
             );
           })}
           {!visibleFields.length && <div className="p-12 text-center text-sm text-slate-400">没有符合条件的字段</div>}
@@ -343,7 +409,7 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
 
             {(selected.aiRule || selected.derived) && <div className="rounded-xl border border-violet-200 bg-violet-50/70 p-3">
               <div className="flex items-center justify-between gap-3">
-                <div><div className="flex items-center gap-1.5 text-xs font-medium text-violet-800"><Sparkles size={12} />AI {selected.aiRule?.kind === 'ordering' ? '排序' : '派生'}规则</div>
+                <div><div className="flex items-center gap-1.5 text-xs font-medium text-violet-800"><Sparkles size={12} />AI {selected.aiRule?.kind === 'ordering' ? '排序' : '派生'}</div>
                   <p className="mt-1 line-clamp-3 text-[11px] leading-5 text-violet-600">{selected.aiRule?.prompt || (selected.aiRule?.kind === 'ordering' ? `按当前 ${selected.orderedValues?.length ?? 0} 个取值排序` : '历史派生字段')}</p></div>
                 {isAdmin && <button type="button" onClick={() => {
                   if (selected.aiRule?.kind === 'ordering') {
@@ -352,7 +418,7 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
                     setDraft(current => removeField(current, selected.key)); note(`删除 AI 派生规则 ${selected.name}`);
                     setSelectedKey(draft.fields.find(field => field.key !== selected.key)?.key ?? '');
                   }
-                }} aria-label={`删除 ${selected.name} 的 AI 规则`} className="rounded-lg p-1.5 text-violet-400 hover:bg-white hover:text-red-500"><Trash2 size={13} /></button>}
+                }} aria-label={`删除 ${selected.name} 的 AI 处理`} className="rounded-lg p-1.5 text-violet-400 hover:bg-white hover:text-red-500"><Trash2 size={13} /></button>}
               </div>
             </div>}
 
@@ -386,6 +452,40 @@ export function FieldWorkspace({ dataset, onDirtyChange }: { dataset: Dataset; o
               加入用户画像
               <input type="checkbox" disabled={!isAdmin} checked={personaKeys.includes(selected.key)} onChange={event => setPersona(event.target.checked)} />
             </label>
+
+            {personaKeys.includes(selected.key) && <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between"><span className="text-xs font-medium text-slate-700">画像配置</span>
+                <div className="flex gap-1">
+                  <button type="button" aria-label={`上移 ${selected.name}`} disabled={!isAdmin || personaKeys[0] === selected.key} onClick={() => movePersona(selected.key, -1)} className="rounded-md border border-slate-200 p-1 text-slate-500 disabled:opacity-25"><ChevronUp size={13} /></button>
+                  <button type="button" aria-label={`下移 ${selected.name}`} disabled={!isAdmin || personaKeys.at(-1) === selected.key} onClick={() => movePersona(selected.key, 1)} className="rounded-md border border-slate-200 p-1 text-slate-500 disabled:opacity-25"><ChevronDown size={13} /></button>
+                </div>
+              </div>
+              <label className="block text-xs text-slate-600">语义角色
+                <select disabled={!isAdmin} value={viewConfig.personaRoles?.[selected.key] ?? inferPersonaRole(selected)} onChange={event => patchPersonaRole(selected.key, event.target.value as PersonaSemanticRole)} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                  {Object.entries(PERSONA_ROLE_META).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
+                </select>
+              </label>
+              <label className="block text-xs text-slate-600">图表类型
+                <select disabled={!isAdmin} value={viewConfig.personaCharts?.[selected.key]?.type ?? defaultPersonaChart(selected)} onChange={event => { const type = event.target.value as PersonaChartType; patchPersonaChart(selected.key, autoPersonaChartSpec(selected, type, draft.fields)); }} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                  {personaChartOptions(selected).map(type => <option key={type} value={type}>{PERSONA_CHART_LABELS[type]}</option>)}
+                </select>
+              </label>
+              {['scatter', 'heatmap', 'dumbbell'].includes(viewConfig.personaCharts?.[selected.key]?.type ?? '') && <label className="block text-xs text-slate-600">关联字段
+                <select disabled={!isAdmin} value={viewConfig.personaCharts?.[selected.key]?.secondaryFieldKey ?? ''} onChange={event => patchPersonaChart(selected.key, { secondaryFieldKey: event.target.value || undefined })} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                  <option value="">未选择</option>{draft.fields.filter(field => field.key !== selected.key).map(field => <option key={field.key} value={field.key}>{field.name}</option>)}
+                </select>
+              </label>}
+              {viewConfig.personaCharts?.[selected.key]?.type === 'dumbbell' && <label className="block text-xs text-slate-600">结束字段
+                <select disabled={!isAdmin} value={viewConfig.personaCharts?.[selected.key]?.endFieldKey ?? ''} onChange={event => patchPersonaChart(selected.key, { endFieldKey: event.target.value || undefined })} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                  <option value="">未选择</option>{draft.fields.filter(field => field.key !== selected.key).map(field => <option key={field.key} value={field.key}>{field.name}</option>)}
+                </select>
+              </label>}
+              {viewConfig.personaCharts?.[selected.key]?.type === 'heatmap' && <label className="block text-xs text-slate-600">数值字段
+                <select disabled={!isAdmin} value={viewConfig.personaCharts?.[selected.key]?.valueFieldKey ?? ''} onChange={event => patchPersonaChart(selected.key, { valueFieldKey: event.target.value || undefined })} className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                  <option value="">计数</option>{draft.fields.filter(field => field.type === 'number').map(field => <option key={field.key} value={field.key}>{field.name}</option>)}
+                </select>
+              </label>}
+            </div>}
 
             {isAdmin && <div className="grid grid-cols-2 gap-2">
               {['single_choice', 'multi_choice'].includes(selected.type) && <button disabled={aiSorting} onClick={() => autoSort([selected.key])} className="flex items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-700 hover:border-indigo-300 disabled:opacity-50">

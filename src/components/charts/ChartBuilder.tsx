@@ -527,7 +527,6 @@ export function ChartBuilder({ dataset }: { dataset: Dataset }) {
           <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
             <BarChart2 size={32} className="mx-auto mb-3 text-gray-200" />
             <div className="text-sm font-medium text-gray-400 mb-1">选择一个字段开始</div>
-            <div className="text-xs text-gray-300">支持单选、多选、数值、日期、布尔类型</div>
           </div>
         )}
       </div>

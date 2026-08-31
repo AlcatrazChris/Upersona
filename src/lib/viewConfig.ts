@@ -41,6 +41,7 @@ export function buildDefaultStatusGroups(values: string[]): StatusGroup[] {
 // ── View config ───────────────────────────────────────────────
 
 export interface ViewConfig {
+  statusVariableName?: string;
   statusFieldKey?:    string;
   statusGroups?:      StatusGroup[];
   dateBlocks?:        DateBlock[];
