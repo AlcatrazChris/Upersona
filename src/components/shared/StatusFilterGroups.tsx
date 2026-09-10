@@ -2,6 +2,8 @@
 
 import { cn } from '@/lib/utils';
 import { ALL_STATUS, monthLabel } from '@/lib/timeStatus';
+import { useDatasetStore } from '@/store/datasetStore';
+import type { ViewConfig } from '@/lib/viewConfig';
 
 function StatusGroup({
   label,
@@ -63,6 +65,9 @@ function StatusGroup({
 }
 
 export function StatusFilterGroups({
+  datasetId,
+  viewConfig,
+  onStatusVariableChange,
   orderOptions,
   selectedOrders,
   onOrdersChange,
@@ -73,6 +78,9 @@ export function StatusFilterGroups({
   orderLabel = '订单状态',
   monthLabelText = '时间状态',
 }: {
+  datasetId: string;
+  viewConfig: ViewConfig;
+  onStatusVariableChange?: () => void;
   orderOptions: string[];
   selectedOrders: string[];
   onOrdersChange: (values: string[]) => void;
@@ -83,8 +91,37 @@ export function StatusFilterGroups({
   orderLabel?: string;
   monthLabelText?: string;
 }) {
+  const updateViewConfig = useDatasetStore(state => state.updateViewConfig);
+  const variables = (viewConfig.statusVariables ?? []).filter(variable => variable.fieldKey);
+  const activeId = viewConfig.activeStatusVariableId ?? variables[0]?.id;
+  const variableName = (name: string, index: number) => name.trim() || `\u72b6\u6001\u53d8\u91cf ${index + 1}`;
+
+  const selectVariable = (id: string) => {
+    const selected = variables.find(item => item.id === id);
+    if (!selected) return;
+    const index = variables.findIndex(item => item.id === id);
+    updateViewConfig(datasetId, {
+      activeStatusVariableId: selected.id,
+      statusVariableName: variableName(selected.name, index),
+      statusFieldKey: selected.fieldKey,
+      statusGroups: selected.groups,
+    });
+    onStatusVariableChange?.();
+  };
+
   return (
     <>
+      {variables.length > 1 && <label className="flex min-h-8 items-center gap-2 text-xs text-slate-600">
+        <span className="w-16 flex-shrink-0 text-slate-500">{'\u72b6\u6001\u53d8\u91cf'}</span>
+        <select
+          value={activeId}
+          onChange={event => selectVariable(event.target.value)}
+          className="h-8 min-w-40 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-[#007AFF]"
+          aria-label={'\u9009\u62e9\u72b6\u6001\u53d8\u91cf'}
+        >
+          {variables.map((variable, index) => <option key={variable.id} value={variable.id}>{variableName(variable.name, index)}</option>)}
+        </select>
+      </label>}
       <StatusGroup
         label={orderLabel}
         options={orderOptions}

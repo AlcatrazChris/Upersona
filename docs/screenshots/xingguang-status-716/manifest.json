@@ -1,0 +1,167 @@
+[
+  {
+    "field": "性别",
+    "filename": "01-性别.png",
+    "box": {
+      "x": 444,
+      "y": 380,
+      "width": 610,
+      "height": 462
+    },
+    "screenshotScale": 1.5,
+    "viewport": {
+      "width": 1920,
+      "height": 1200
+    }
+  },
+  {
+    "field": "年龄段",
+    "filename": "02-年龄段.png",
+    "box": {
+      "x": 1066,
+      "y": 380,
+      "width": 610,
+      "height": 462
+    },
+    "screenshotScale": 1.5,
+    "viewport": {
+      "width": 1920,
+      "height": 1200
+    }
+  },
+  {
+    "field": "工作年限",
+    "filename": "03-工作年限.png",
+    "box": {
+      "x": 444,
+      "y": 376,
+      "width": 610,
+      "height": 504
+    },
+    "screenshotScale": 1.5,
+    "viewport": {
+      "width": 1920,
+      "height": 1200
+    }
+  },
+  {
+    "field": "工作单位类型",
+    "filename": "04-工作单位类型.png",
+    "box": {
+      "x": 1066,
+      "y": 376,
+      "width": 610,
+      "height": 504
+    },
+    "screenshotScale": 1.5,
+    "viewport": {
+      "width": 1920,
+      "height": 1200
+    }
+  },
+  {
+    "field": "家庭年收入",
+    "filename": "05-家庭年收入.png",
+    "box": {
+      "x": 444,
+      "y": 379,
+      "width": 610,
+      "height": 498
+    },
+    "screenshotScale": 1.5,
+    "viewport": {
+      "width": 1920,
+      "height": 1200
+    }
+  },
+  {
+    "field": "购车类型",
+    "filename": "06-购车类型.png",
+    "box": {
+      "x": 1066,
+      "y": 379,
+      "width": 610,
+      "height": 498
+    },
+    "screenshotScale": 1.5,
+    "viewport": {
+      "width": 1920,
+      "height": 1200
+    }
+  },
+  {
+    "field": "购车配置",
+    "filename": "07-购车配置.png",
+    "box": {
+      "x": 444,
+      "y": 376,
+      "width": 610,
+      "height": 504
+    },
+    "screenshotScale": 1.5,
+    "viewport": {
+      "width": 1920,
+      "height": 1200
+    }
+  },
+  {
+    "field": "了解渠道",
+    "filename": "08-了解渠道.png",
+    "box": {
+      "x": 1066,
+      "y": 376,
+      "width": 610,
+      "height": 504
+    },
+    "screenshotScale": 1.5,
+    "viewport": {
+      "width": 1920,
+      "height": 1200
+    }
+  },
+  {
+    "field": "决策信息类型",
+    "filename": "09-决策信息类型.png",
+    "box": {
+      "x": 444,
+      "y": 376,
+      "width": 610,
+      "height": 504
+    },
+    "screenshotScale": 1.5,
+    "viewport": {
+      "width": 1920,
+      "height": 1200
+    }
+  },
+  {
+    "field": "核心关注因素",
+    "filename": "10-核心关注因素.png",
+    "box": {
+      "x": 1066,
+      "y": 376,
+      "width": 610,
+      "height": 504
+    },
+    "screenshotScale": 1.5,
+    "viewport": {
+      "width": 1920,
+      "height": 1200
+    }
+  },
+  {
+    "field": "对比车型",
+    "filename": "11-对比车型.png",
+    "box": {
+      "x": 444,
+      "y": 676,
+      "width": 610,
+      "height": 504
+    },
+    "screenshotScale": 1.5,
+    "viewport": {
+      "width": 1920,
+      "height": 1200
+    }
+  }
+]

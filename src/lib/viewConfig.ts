@@ -40,10 +40,19 @@ export function buildDefaultStatusGroups(values: string[]): StatusGroup[] {
 
 // ── View config ───────────────────────────────────────────────
 
+export interface StatusVariable {
+  id: string;
+  name: string;
+  fieldKey: string;
+  groups: StatusGroup[];
+}
+
 export interface ViewConfig {
   statusVariableName?: string;
   statusFieldKey?:    string;
   statusGroups?:      StatusGroup[];
+  statusVariables?:   StatusVariable[];
+  activeStatusVariableId?: string;
   dateBlocks?:        DateBlock[];
   geoRegionKey?:      string;
   geoProvinceKey?:    string;
@@ -158,22 +167,35 @@ function explicitOrderStatusField(dataset: Dataset) {
   );
 }
 
+function vehicleConfigField(dataset: Dataset) {
+  const matches = (value: string) => /\u8f66\u578b\u914d\u7f6e|\u914d\u7f6e\u8f66\u578b|\u8f66\u578b\u7248\u672c/.test(value.replace(/\s/g, ''));
+  return dataset.fields.find(field => matches(field.name) || matches(field.key));
+}
+
 /** Prevent a blank 订单状态 column from falling through to unrelated fields such as 工作生活状态. */
 export function normalizeViewConfig(dataset: Dataset, config: ViewConfig): ViewConfig {
+  const configuredVariables = config.statusVariables?.filter(item => item.fieldKey && dataset.fields.some(field => field.key === item.fieldKey)) ?? [];
+  if (configuredVariables.length) {
+    const active = configuredVariables.find(item => item.id === config.activeStatusVariableId) ?? configuredVariables[0];
+    if (config.statusFieldKey !== active.fieldKey || config.activeStatusVariableId !== active.id) {
+      return { ...config, activeStatusVariableId: active.id, statusVariableName: active.name, statusFieldKey: active.fieldKey, statusGroups: active.groups };
+    }
+  }
   // A saved choice is authoritative; detection only fills unconfigured datasets.
   if (config.statusFieldKey === '') return { ...config, statusGroups: [] };
   if (config.statusFieldKey && dataset.fields.some(field => field.key === config.statusFieldKey)) {
     return config;
   }
-  const explicit = explicitOrderStatusField(dataset);
-  if (!explicit) return config;
-  const values = fieldValues(dataset, explicit.key);
+  const comparisonField = explicitOrderStatusField(dataset) ?? vehicleConfigField(dataset);
+  if (!comparisonField) return config;
+  const values = fieldValues(dataset, comparisonField.key);
   if (!values.length) return { ...config, statusFieldKey: undefined, statusGroups: [] };
   return {
     ...config,
-    statusFieldKey: explicit.key,
+    statusFieldKey: comparisonField.key,
+    statusVariableName: config.statusVariableName?.trim() || comparisonField.name,
     statusGroups:
-      config.statusFieldKey === explicit.key && config.statusGroups?.length
+      config.statusFieldKey === comparisonField.key && config.statusGroups?.length
         ? config.statusGroups
         : buildDefaultStatusGroups(values),
   };
@@ -190,9 +212,10 @@ export function autoDetectViewConfig(dataset: Dataset): ViewConfig {
     ? (fieldValues(dataset, explicitStatusField.key).length ? explicitStatusField : undefined)
     : dataset.fields.find(f =>
         f.type === 'single_choice' && statusKw.some(kw => f.name.toLowerCase().includes(kw))
-      );
+      ) ?? vehicleConfigField(dataset);
   if (statusField) {
     config.statusFieldKey = statusField.key;
+    if (!explicitStatusField && statusField === vehicleConfigField(dataset)) config.statusVariableName = statusField.name;
     config.statusGroups   = buildDefaultStatusGroups(statusField.options ?? fieldValues(dataset, statusField.key));
   }
 

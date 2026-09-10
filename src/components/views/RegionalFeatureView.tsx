@@ -622,7 +622,7 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
   );
 
   // AI cache key
-  const aiCacheKey = `rfeat_${geoLevel}_${selStatus.join(',')}_${selMonths.join(',')}_${displayedRegions.join(',')}_${personaFields.map(f => f.key).join(',')}`;
+  const aiCacheKey = `rfeat_${viewConfig.statusFieldKey ?? ''}_${geoLevel}_${selStatus.join(',')}_${selMonths.join(',')}_${displayedRegions.join(',')}_${personaFields.map(f => f.key).join(',')}`;
   const cachedAI   = viewConfig.insightResults?.[aiCacheKey];
 
   if (!geoFieldKey) {
@@ -669,6 +669,9 @@ export function RegionalFeatureView({ dataset, viewConfig }: Props) {
         </div>
 
         <StatusFilterGroups
+          datasetId={dataset.id}
+          viewConfig={viewConfig}
+          onStatusVariableChange={() => setSelStatus(['__all'])}
           orderLabel={viewConfig.statusVariableName?.trim() || '订单状态'}
           orderOptions={statusOptions}
           selectedOrders={selStatus}

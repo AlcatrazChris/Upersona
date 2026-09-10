@@ -4,6 +4,7 @@ import { normalizeHuajingSurvey } from '@/lib/huajingSurveyNormalizer';
 import { normalizeIndustryFields } from '@/lib/industryNormalizer';
 import { applyCityTierEnrichment, applyRegionEnrichment, detectEnrichable } from '@/lib/fieldEnricher';
 import { classifyPreviousVehicle } from '@/lib/vehicleClassifier';
+import { normalizeSurveyFields } from '@/lib/surveyNormalizer';
 
 export type CleaningOperation = 'builtin' | 'replace' | 'clear' | 'set_default' | 'rename_field' | 'delete_field' | 'delimiter';
 
@@ -105,6 +106,10 @@ function matcher(rule: CleaningRule) {
 export function applyCleaningTemplate(dataset: Dataset, template?: CleaningTemplate): Dataset {
   if (!template?.enabled) return dataset;
   let records = dataset.records.map(record => ({ ...record }));
+  if (template.rules.some(rule => rule.enabled && rule.operation === 'builtin' && rule.match === 'huajing_schema')) {
+    records = normalizeHuajingSurvey(records);
+  }
+  records = normalizeSurveyFields(records);
 
   for (const rule of template.rules.filter(item => item.enabled)) {
     if (rule.operation === 'builtin') {

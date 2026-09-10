@@ -1,0 +1,4 @@
+interface:
+  display_name: "How2Report 汇报掌控大师"
+  short_description: "把零散业务信息转化为专业、可信、可决策的企业汇报方案"
+  default_prompt: "使用 $how2repoert 帮我梳理这次汇报，并生成结构、逐页框架和讲稿。"

@@ -360,6 +360,9 @@ export function PersonaView({ dataset, viewConfig }: Props) {
         </div>
 
         <StatusFilterGroups
+          datasetId={dataset.id}
+          viewConfig={viewConfig}
+          onStatusVariableChange={() => setSelStatus(['__all'])}
           orderLabel={viewConfig.statusVariableName?.trim() || '订单状态'}
           orderOptions={statusOptions}
           selectedOrders={selStatus}

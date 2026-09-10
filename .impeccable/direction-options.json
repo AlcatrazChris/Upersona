@@ -1,0 +1,76 @@
+{
+  "title": "选择 Upersona 的新视觉体系",
+  "question": "保留克制的数据产品基调，选择整套系统将遵循的视觉世界。",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Quiet Research Instrument",
+      "kicker": "THE DIRECTION",
+      "lineage": "研究编码表、精密仪器与 Apple 系统应用",
+      "thesis": "把复杂调研工作压缩成一台安静、精确、始终可读的数据仪器。",
+      "palette": ["#F5F5F7", "#FFFFFF", "#1D1D1F", "#007AFF", "#86868B"],
+      "materials": ["雾面系统表面", "细线数据刻度", "轻量分层"],
+      "viewport": "浅色侧栏给出四类能力，主区域以页面标题、唯一主操作和真实数据表直接进入任务。",
+      "risk": "克制过度时可能缺少品牌记忆，因此以 U 形标识和精确的数据刻度作为签名。",
+      "raised": [
+        {"from": "Data Sublime", "raise": "继承其数据密度纪律，但不用黑白闪烁或装饰性条码。"},
+        {"from": "Airport Wayfinding", "raise": "每层导航只展示当前决策所需入口。"},
+        {"from": "Cloud Edge", "raise": "色彩严格收束到交互边缘和状态。"}
+      ],
+      "comp": ".impeccable/mocks/decision/assigned.png"
+    },
+    {
+      "id": "model-pick",
+      "label": "Health Intelligence Desk",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "Apple Health、研究简报与高管阅读桌面",
+      "thesis": "让画像、趋势和对比像健康指标一样自然可读。",
+      "palette": ["#F5F5F7", "#FFFFFF", "#1D1D1F", "#007AFF", "#34C759"],
+      "materials": ["大留白", "连续数据面板", "低饱和图表"],
+      "viewport": "当前数据集与关键分析占据首屏，导航退后，管理入口收进数据中心。",
+      "risk": "最贴近熟悉的 Apple 数据产品，也最容易落入通用 SaaS 的安全答案。",
+      "comp": ".impeccable/mocks/decision/model-pick.png"
+    },
+    {
+      "id": "challenger-cloud",
+      "label": "Iridescent Evidence Field",
+      "verdict": "competitive",
+      "lineage": "云缘衍射与证据分层",
+      "thesis": "用近乎无色的界面承载数据，只在洞察形成处出现极窄光谱。",
+      "palette": ["#FAFAFA", "#FFFFFF", "#242426", "#007AFF", "#D9E8FF"],
+      "materials": ["白色证据场", "窄色带", "半透明筛选层"],
+      "viewport": "宽阔数据画布上只有一条分析路径被蓝色边缘标记，其余内容保持中性。",
+      "case": "在平静感上胜出，但光谱语言会削弱单一主色和企业任务清晰度。",
+      "risk": "边缘色控制不严会变成无意义渐变。",
+      "comp": ".impeccable/mocks/decision/challenger-cloud.png",
+      "hero": "https://impeccable.style/worlds/cards/clouds-storms-auroras-iridescent-cloud-edge-hero.webp"
+    },
+    {
+      "id": "challenger-wayfinding",
+      "label": "Terminal Wayfinding",
+      "verdict": "declined",
+      "lineage": "国际机场导视系统",
+      "thesis": "把上传、处理和分析组织成连续决策节点。",
+      "palette": ["#FFD600", "#111111", "#FFFFFF"],
+      "materials": ["悬挂导视带", "严格箭头规则"],
+      "viewport": "每个页面只显示当前任务与下一步方向。",
+      "case": "流程清晰，但高饱和黄色和巨型导视不适合长时间数据工作。",
+      "kept": "只展示下一步所需选择。",
+      "risk": "会把专业分析工具变成交通导视主题。",
+      "hero": "https://impeccable.style/worlds/cards/wayfinding-cartography-signage-terminal-yellow-wayfinding-hero.webp"
+    }
+  ],
+  "reroll": {"registers": ["safer", "bolder"]},
+  "buildPath": {"value": "comp", "toggle": true},
+  "canon": true,
+  "canonCard": {
+    "label": "标准数据后台",
+    "thesis": "常规浅色侧栏、统计卡片和数据表，执行完整但没有鲜明产品立场。",
+    "palette": ["#F8FAFC", "#FFFFFF", "#111827", "#2563EB"],
+    "materials": ["标准卡片", "常规表格"],
+    "viewport": "侧栏、顶部栏、指标卡和内容表格组成熟悉的企业后台。",
+    "risk": "容易理解，也最接近本次明确要求摆脱的传统后台感。",
+    "comp": ".impeccable/mocks/decision/canon.png"
+  },
+  "steer": true
+}

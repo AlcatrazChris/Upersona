@@ -233,7 +233,7 @@ export function RegionalView({ dataset, viewConfig }: Props) {
   const handleLevelChange = (lv: GeoLevel) => { setGeoLevel(lv); setSelectedGeo([]); };
 
   // AI insight helpers
-  const insightCacheKey = `regional_${geoLevel}_${selectedGeo.join(',')}_${dimKey}_${selStatus.join(',')}_${selMonths.join(',')}`;
+  const insightCacheKey = `regional_${viewConfig.statusFieldKey ?? ''}_${geoLevel}_${selectedGeo.join(',')}_${dimKey}_${selStatus.join(',')}_${selMonths.join(',')}`;
   const insightLabel = selectedGeo.length === 0
     ? '（请先选择地区）'
     : `${selectedGeo.join(' vs ')} · ${dimensionField?.name ?? ''}`;
@@ -324,6 +324,9 @@ export function RegionalView({ dataset, viewConfig }: Props) {
         </div>
 
         <StatusFilterGroups
+          datasetId={dataset.id}
+          viewConfig={viewConfig}
+          onStatusVariableChange={() => setSelStatus(['__all'])}
           orderLabel={viewConfig.statusVariableName?.trim() || '订单状态'}
           orderOptions={statusOptions}
           selectedOrders={selStatus}

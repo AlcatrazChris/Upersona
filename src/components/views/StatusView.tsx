@@ -786,7 +786,7 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
     );
 
   // ── AI Insight helpers ─────────────────────────────
-  const insightCacheKey = `status_${compareBasis}_${selectedGroups.map(group => group.key).join(',')}_${geoLevel}_${selectedGeo.join(',')}_${selectedDimKeys.join(',')}_${compareDatasetId ?? ''}`;
+  const insightCacheKey = `status_${viewConfig.statusFieldKey ?? ''}_${compareBasis}_${selectedGroups.map(group => group.key).join(',')}_${geoLevel}_${selectedGeo.join(',')}_${selectedDimKeys.join(',')}_${compareDatasetId ?? ''}`;
   const insightLabel = selectedGroups.length === 0
     ? `（请先选择${compareBasis === 'time' ? '时间' : statusVariableName}）`
     : `${selectedGroups.map(g => g.label).join(' vs ')} · ${
@@ -882,6 +882,9 @@ export function StatusView({ dataset, viewConfig, onOpenDataCenter }: Props) {
         <div className="flex items-start gap-2 flex-wrap">
           <div className="flex-1 min-w-0">
             <StatusFilterGroups
+              datasetId={dataset.id}
+              viewConfig={viewConfig}
+              onStatusVariableChange={() => setSelectedOrderStatuses(['__all'])}
               orderLabel={statusVariableName}
               orderOptions={orderOptions}
               selectedOrders={selectedOrderStatuses}

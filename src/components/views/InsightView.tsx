@@ -521,8 +521,8 @@ export function InsightView({ dataset, viewConfig }: Props) {
   const monthLabels = useMemo(() => Object.fromEntries(dateBlocks.map(block => [block.key, block.label])), [dateBlocks]);
 
   const cacheKey = useMemo(
-    () => `${geoLevel}_${selectedGeo.join(',')}_s${selStatus.join(',')}_t${selMonths.join(',')}_r${dataset.rowCount}_m${clusterMethod}`,
-    [geoLevel, selectedGeo, selStatus, selMonths, dataset.rowCount, clusterMethod],
+    () => `${geoLevel}_${selectedGeo.join(',')}_s${viewConfig.statusFieldKey ?? ''}_${selStatus.join(',')}_t${selMonths.join(',')}_r${dataset.rowCount}_m${clusterMethod}`,
+    [geoLevel, selectedGeo, selStatus, selMonths, dataset.rowCount, clusterMethod, viewConfig.statusFieldKey],
   );
 
   const cachedResult: ClusterInsightResult | undefined = viewConfig.clusterResults?.[cacheKey];
@@ -667,6 +667,9 @@ export function InsightView({ dataset, viewConfig }: Props) {
         </div>
 
         <StatusFilterGroups
+          datasetId={dataset.id}
+          viewConfig={viewConfig}
+          onStatusVariableChange={() => setSelStatus(['__all'])}
           orderLabel={viewConfig.statusVariableName?.trim() || '订单状态'}
           orderOptions={statusOptions}
           selectedOrders={selStatus}
